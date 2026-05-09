@@ -14,20 +14,21 @@ type Store struct {
 }
 
 type TaskRow struct {
-	ID         int64           `json:"id"`
-	IssueNumber int            `json:"issue_number"`
-	Role       string          `json:"role"`
-	Assignee   string          `json:"assignee"`
-	Action     string          `json:"action"`
-	Status     string          `json:"status"`
-	PayloadRaw string          `json:"payload_json"`
-	Payload    json.RawMessage `json:"payload"`
-	CreatedAt  string          `json:"created_at"`
-	ClaimedAt  sql.NullString  `json:"claimed_at"`
-	FinishedAt sql.NullString  `json:"finished_at"`
-	HeartbeatAt sql.NullString `json:"heartbeat_at"`
-	ClaimedBy  sql.NullString  `json:"claimed_by"`
-	ErrorText  sql.NullString  `json:"error_text"`
+	ID          int64           `json:"id"`
+	IssueNumber int             `json:"issue_number"`
+	Role        string          `json:"role"`
+	Assignee    string          `json:"assignee"`
+	Action      string          `json:"action"`
+	Status      string          `json:"status"`
+	DedupKey    string          `json:"dedup_key"`
+	PayloadRaw  string          `json:"payload_json"`
+	Payload     json.RawMessage `json:"payload"`
+	CreatedAt   string          `json:"created_at"`
+	ClaimedAt   sql.NullString  `json:"claimed_at"`
+	FinishedAt  sql.NullString  `json:"finished_at"`
+	HeartbeatAt sql.NullString  `json:"heartbeat_at"`
+	ClaimedBy   sql.NullString  `json:"claimed_by"`
+	ErrorText   sql.NullString  `json:"error_text"`
 }
 
 func OpenStore(path string) (*Store, error) {
@@ -55,6 +56,7 @@ func OpenStore(path string) (*Store, error) {
 			assignee TEXT NOT NULL,
 			action TEXT NOT NULL,
 			status TEXT NOT NULL,
+			dedup_key TEXT NOT NULL,
 			payload_json TEXT NOT NULL,
 			created_at TEXT NOT NULL,
 			claimed_at TEXT,
@@ -66,6 +68,7 @@ func OpenStore(path string) (*Store, error) {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_issue_status ON tasks(issue_number, status);`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_assignee_status ON tasks(assignee, status, created_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_dedup_status ON tasks(dedup_key, status, created_at);`,
 		`CREATE TABLE IF NOT EXISTS failures (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			issue_number INTEGER,
@@ -81,6 +84,8 @@ func OpenStore(path string) (*Store, error) {
 			return nil, err
 		}
 	}
+
+	_, _ = db.Exec(`ALTER TABLE tasks ADD COLUMN dedup_key TEXT NOT NULL DEFAULT ''`)
 
 	return &Store{db: db}, nil
 }
@@ -123,9 +128,9 @@ func (s *Store) MarkDeliveryFailed(id, errText string) error {
 func (s *Store) QueueTask(task AgentTask) (int64, error) {
 	b, _ := json.Marshal(task)
 	res, err := s.db.Exec(
-		`INSERT INTO tasks (issue_number, role, assignee, action, status, payload_json, created_at)
-		 VALUES (?, ?, ?, ?, 'queued', ?, ?)`,
-		task.IssueNumber, task.Role, task.Assignee, task.Action, string(b), nowUTC(),
+		`INSERT INTO tasks (issue_number, role, assignee, action, status, dedup_key, payload_json, created_at)
+		 VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)`,
+		task.IssueNumber, task.Role, task.Assignee, task.Action, task.DedupKey, string(b), nowUTC(),
 	)
 	if err != nil {
 		return 0, err
@@ -133,9 +138,45 @@ func (s *Store) QueueTask(task AgentTask) (int64, error) {
 	return res.LastInsertId()
 }
 
+func (s *Store) FindActiveTaskByDedupKey(dedupKey string) (*TaskRow, error) {
+	row := s.db.QueryRow(
+		`SELECT id, issue_number, role, assignee, action, status, dedup_key, payload_json, created_at, claimed_at, finished_at, heartbeat_at, claimed_by, error_text
+		 FROM tasks
+		 WHERE dedup_key = ? AND status IN ('queued','claimed','running')
+		 ORDER BY id DESC
+		 LIMIT 1`,
+		dedupKey,
+	)
+
+	var t TaskRow
+	if err := row.Scan(
+		&t.ID,
+		&t.IssueNumber,
+		&t.Role,
+		&t.Assignee,
+		&t.Action,
+		&t.Status,
+		&t.DedupKey,
+		&t.PayloadRaw,
+		&t.CreatedAt,
+		&t.ClaimedAt,
+		&t.FinishedAt,
+		&t.HeartbeatAt,
+		&t.ClaimedBy,
+		&t.ErrorText,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	t.Payload = json.RawMessage(t.PayloadRaw)
+	return &t, nil
+}
+
 func (s *Store) ListQueuedTasksForAssignee(assignee string, limit int) ([]TaskRow, error) {
 	rows, err := s.db.Query(
-		`SELECT id, issue_number, role, assignee, action, status, payload_json, created_at, claimed_at, finished_at, heartbeat_at, claimed_by, error_text
+		`SELECT id, issue_number, role, assignee, action, status, dedup_key, payload_json, created_at, claimed_at, finished_at, heartbeat_at, claimed_by, error_text
 		 FROM tasks
 		 WHERE assignee = ? AND status IN ('queued','claimed','running')
 		 ORDER BY created_at ASC
@@ -157,6 +198,7 @@ func (s *Store) ListQueuedTasksForAssignee(assignee string, limit int) ([]TaskRo
 			&t.Assignee,
 			&t.Action,
 			&t.Status,
+			&t.DedupKey,
 			&t.PayloadRaw,
 			&t.CreatedAt,
 			&t.ClaimedAt,
@@ -211,7 +253,7 @@ func (s *Store) CompleteTask(taskID int64, agent string, result map[string]any, 
 	raw, _ := json.Marshal(result)
 	res, err := s.db.Exec(
 		`UPDATE tasks
-		 SET status = 'completed', finished_at = ?, heartbeat_at = ?, claimed_by = COALESCE(claimed_by, ?), last_message = ?, error_text = NULL, payload_json = payload_json
+		 SET status = 'completed', finished_at = ?, heartbeat_at = ?, claimed_by = COALESCE(claimed_by, ?), last_message = ?, error_text = NULL
 		 WHERE id = ? AND status IN ('claimed','running')`,
 		nowUTC(), nowUTC(), agent, withResultMessage(message, raw), taskID,
 	)
@@ -241,6 +283,25 @@ func (s *Store) FailTask(taskID int64, agent, message string, result map[string]
 		return fmt.Errorf("task not fail-able")
 	}
 	return nil
+}
+
+func (s *Store) RecoverStaleTasks(staleAfterSeconds int) (int64, error) {
+	res, err := s.db.Exec(
+		`UPDATE tasks
+		 SET status = 'queued',
+		     claimed_at = NULL,
+		     claimed_by = NULL,
+		     last_message = 'recovered stale task',
+		     error_text = NULL
+		 WHERE status IN ('claimed','running')
+		   AND heartbeat_at IS NOT NULL
+		   AND heartbeat_at < datetime('now', '-' || ? || ' seconds')`,
+		staleAfterSeconds,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func withResultMessage(message string, raw []byte) string {

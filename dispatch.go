@@ -20,6 +20,7 @@ type AgentTask struct {
 	Status       string            `json:"status"`
 	Context      map[string]string `json:"context,omitempty"`
 	CreatedAtUTC string            `json:"created_at_utc"`
+	DedupKey     string            `json:"dedup_key"`
 }
 
 func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}, error) {
@@ -35,6 +36,21 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 			"issue":    issue,
 			"workflow": state,
 			"queued":   false,
+		}, nil
+	}
+
+	existing, err := s.store.FindActiveTaskByDedupKey(next.DedupKey)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return map[string]interface{}{
+			"issue":          issue,
+			"workflow":       state,
+			"queued":         false,
+			"deduplicated":   true,
+			"existing_task":  existing,
+			"dedup_key":      next.DedupKey,
 		}, nil
 	}
 
@@ -65,14 +81,17 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 
 func decideNextAction(issue Issue, state WorkflowState) (AgentTask, bool) {
 	mk := func(role, assignee, action string) AgentTask {
+		status := state.StatusLabel
+		dedupKey := fmt.Sprintf("issue:%d|role:%s|action:%s|status:%s", issue.Number, role, action, status)
 		return AgentTask{
 			IssueNumber:  issue.Number,
 			IssueURL:     issue.HTMLURL,
 			Role:         role,
 			Assignee:     assignee,
 			Action:       action,
-			Status:       state.StatusLabel,
+			Status:       status,
 			CreatedAtUTC: nowUTC(),
+			DedupKey:     dedupKey,
 			Context: map[string]string{
 				"title":       issue.Title,
 				"stakeholder": state.Stakeholder,
