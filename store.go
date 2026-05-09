@@ -31,6 +31,25 @@ type TaskRow struct {
 	ErrorText   sql.NullString  `json:"error_text"`
 }
 
+type TransitionAuditRow struct {
+	ID               int64           `json:"id"`
+	IssueNumber      int             `json:"issue_number"`
+	FromStatus       string          `json:"from_status"`
+	ToStatus         string          `json:"to_status"`
+	FromAssignee     string          `json:"from_assignee"`
+	ToAssignee       string          `json:"to_assignee"`
+	Actor            string          `json:"actor"`
+	TriggerType      string          `json:"trigger_type"`
+	TriggerCommentID sql.NullInt64   `json:"trigger_comment_id"`
+	Result           string          `json:"result"`
+	Reason           string          `json:"reason"`
+	ValidationRaw    string          `json:"validation_json"`
+	Validation       json.RawMessage `json:"validation"`
+	MetadataRaw      string          `json:"metadata_json"`
+	Metadata         json.RawMessage `json:"metadata"`
+	CreatedAt        string          `json:"created_at"`
+}
+
 func OpenStore(path string) (*Store, error) {
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
@@ -77,6 +96,26 @@ func OpenStore(path string) (*Store, error) {
 			created_at TEXT NOT NULL,
 			context_json TEXT
 		);`,
+		`CREATE TABLE IF NOT EXISTS transition_audit (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			issue_number INTEGER NOT NULL,
+			from_status TEXT,
+			to_status TEXT,
+			from_assignee TEXT,
+			to_assignee TEXT,
+			actor TEXT,
+			trigger_type TEXT NOT NULL,
+			trigger_comment_id INTEGER,
+			result TEXT NOT NULL,
+			reason TEXT,
+			validation_json TEXT,
+			metadata_json TEXT,
+			created_at TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_transition_audit_issue_created
+			ON transition_audit(issue_number, created_at, id);`,
+		`CREATE INDEX IF NOT EXISTS idx_transition_audit_issue_result
+			ON transition_audit(issue_number, result, created_at);`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
@@ -322,4 +361,191 @@ func (s *Store) RecordFailure(issueNumber int, stage, errText string, ctxJSON in
 		issueNumber, stage, errText, nowUTC(), string(b),
 	)
 	return err
+}
+
+func (s *Store) RecordTransitionAudit(
+	issueNumber int,
+	fromStatus string,
+	toStatus string,
+	fromAssignee string,
+	toAssignee string,
+	actor string,
+	triggerType string,
+	triggerCommentID *int64,
+	result string,
+	reason string,
+	validation interface{},
+	metadata interface{},
+) error {
+	var triggerID interface{}
+	if triggerCommentID != nil {
+		triggerID = *triggerCommentID
+	}
+
+	var validationJSON string
+	if validation != nil {
+		if b, err := json.Marshal(validation); err == nil {
+			validationJSON = string(b)
+		}
+	}
+
+	var metadataJSON string
+	if metadata != nil {
+		if b, err := json.Marshal(metadata); err == nil {
+			metadataJSON = string(b)
+		}
+	}
+
+	_, err := s.db.Exec(
+		`INSERT INTO transition_audit (
+			issue_number,
+			from_status,
+			to_status,
+			from_assignee,
+			to_assignee,
+			actor,
+			trigger_type,
+			trigger_comment_id,
+			result,
+			reason,
+			validation_json,
+			metadata_json,
+			created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		issueNumber,
+		fromStatus,
+		toStatus,
+		fromAssignee,
+		toAssignee,
+		actor,
+		triggerType,
+		triggerID,
+		result,
+		reason,
+		validationJSON,
+		metadataJSON,
+		nowUTC(),
+	)
+	return err
+}
+
+func (s *Store) ListTransitionAudit(issueNumber int, limit int) ([]TransitionAuditRow, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	rows, err := s.db.Query(
+		`SELECT
+			id,
+			issue_number,
+			from_status,
+			to_status,
+			from_assignee,
+			to_assignee,
+			actor,
+			trigger_type,
+			trigger_comment_id,
+			result,
+			reason,
+			validation_json,
+			metadata_json,
+			created_at
+		 FROM transition_audit
+		 WHERE issue_number = ?
+		 ORDER BY id DESC
+		 LIMIT ?`,
+		issueNumber,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TransitionAuditRow
+	for rows.Next() {
+		var r TransitionAuditRow
+		if err := rows.Scan(
+			&r.ID,
+			&r.IssueNumber,
+			&r.FromStatus,
+			&r.ToStatus,
+			&r.FromAssignee,
+			&r.ToAssignee,
+			&r.Actor,
+			&r.TriggerType,
+			&r.TriggerCommentID,
+			&r.Result,
+			&r.Reason,
+			&r.ValidationRaw,
+			&r.MetadataRaw,
+			&r.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		r.Validation = json.RawMessage(r.ValidationRaw)
+		r.Metadata = json.RawMessage(r.MetadataRaw)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListTasksByIssue(issueNumber int, limit int) ([]TaskRow, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	rows, err := s.db.Query(
+		`SELECT
+			id,
+			issue_number,
+			role,
+			assignee,
+			action,
+			status,
+			dedup_key,
+			payload_json,
+			created_at,
+			claimed_at,
+			finished_at,
+			heartbeat_at,
+			claimed_by,
+			error_text
+		 FROM tasks
+		 WHERE issue_number = ?
+		 ORDER BY id DESC
+		 LIMIT ?`,
+		issueNumber,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TaskRow
+	for rows.Next() {
+		var t TaskRow
+		if err := rows.Scan(
+			&t.ID,
+			&t.IssueNumber,
+			&t.Role,
+			&t.Assignee,
+			&t.Action,
+			&t.Status,
+			&t.DedupKey,
+			&t.PayloadRaw,
+			&t.CreatedAt,
+			&t.ClaimedAt,
+			&t.FinishedAt,
+			&t.HeartbeatAt,
+			&t.ClaimedBy,
+			&t.ErrorText,
+		); err != nil {
+			return nil, err
+		}
+		t.Payload = json.RawMessage(t.PayloadRaw)
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }

@@ -21,6 +21,7 @@ func (s *Server) runHTTP(ctx context.Context) error {
 
 	mux.HandleFunc("/api/v1/agent/tasks", s.handleAgentTasks)
 	mux.HandleFunc("/api/v1/agent/tasks/", s.handleAgentTaskAction)
+	mux.HandleFunc("/api/v1/agent/comment", s.handleAgentComment)
 
 	srv := &http.Server{
 		Addr:    s.cfg.HTTPAddr,
@@ -104,15 +105,15 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 
 	_ = s.store.MarkDeliveryProcessed(deliveryID)
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"ok":         true,
+		"ok":          true,
 		"delivery_id": deliveryID,
 	})
 }
 
 func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryID string, payload []byte) error {
 	var env struct {
-		Action string `json:"action"`
-		Issue  Issue  `json:"issue"`
+		Action  string `json:"action"`
+		Issue   Issue  `json:"issue"`
 		Comment struct {
 			ID   int64      `json:"id"`
 			Body string     `json:"body"`
@@ -127,7 +128,28 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		return nil
 	}
 
-	s.logger.Printf("webhook delivery=%s event=%s action=%s issue=%d", deliveryID, eventType, env.Action, env.Issue.Number)
+	s.logger.Printf(
+		"webhook delivery=%s event=%s action=%s issue=%d",
+		deliveryID, eventType, env.Action, env.Issue.Number,
+	)
+
+	// Comment-driven transitions first.
+	if eventType == "issue_comment" && (env.Action == "created" || env.Action == "edited") {
+		handled, err := s.processIssueCommentDirective(
+			ctx,
+			env.Issue.Number,
+			env.Comment.ID,
+			env.Comment.User.Login,
+			env.Comment.Body,
+		)
+		if err != nil {
+			return err
+		}
+		if handled {
+			return nil
+		}
+	}
+
 	_, err := s.processIssue(ctx, env.Issue.Number)
 	return err
 }
@@ -253,6 +275,45 @@ func (s *Server) handleAgentTaskAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusNotFound, "unknown action")
 	}
+}
+
+func (s *Server) handleAgentComment(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeAgent(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var body struct {
+		IssueNumber int    `json:"issue_number"`
+		Body        string `json:"body"`
+		Agent       string `json:"agent"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if body.IssueNumber <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid issue_number")
+		return
+	}
+	if strings.TrimSpace(body.Body) == "" {
+		writeError(w, http.StatusBadRequest, "empty body")
+		return
+	}
+
+	comment, err := s.gh.PostIssueComment(r.Context(), body.IssueNumber, body.Body)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"comment": comment,
+	})
 }
 
 func (s *Server) authorizeAgent(w http.ResponseWriter, r *http.Request) bool {

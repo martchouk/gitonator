@@ -80,6 +80,31 @@ type TransitionValidationResult struct {
 	MatchedRuleDescription string   `json:"matchedRuleDescription,omitempty"`
 }
 
+type CommentTransitionDecision struct {
+	Matched     bool   `json:"matched"`
+	Reason      string `json:"reason"`
+	ToStatus    string `json:"toStatus"`
+	ToAssignee  string `json:"toAssignee"`
+	Actor       string `json:"actor"`
+	SourceKind  string `json:"sourceKind"`
+	CommentID   int64  `json:"commentId"`
+	BodyPreview string `json:"bodyPreview"`
+}
+
+type IssueTimelineEntry struct {
+	Kind     string      `json:"kind"`
+	SortTime string      `json:"sort_time"`
+	Comment  interface{} `json:"comment,omitempty"`
+	Audit    interface{} `json:"audit,omitempty"`
+	Task     interface{} `json:"task,omitempty"`
+}
+
+type IssueTimelineResult struct {
+	Issue    Issue                `json:"issue"`
+	Workflow WorkflowState        `json:"workflow"`
+	Timeline []IssueTimelineEntry `json:"timeline"`
+}
+
 var (
 	statusLabels = []string{
 		"status:new",
@@ -324,6 +349,30 @@ func (s *Server) tools() []Tool {
 			},
 			"required": []string{"issue_number"},
 		}),
+		newTool("get_transition_audit", "List transition audit entries", map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"issue_number": map[string]interface{}{"type": "integer"},
+				"limit":        map[string]interface{}{"type": "integer", "default": 50},
+			},
+			"required": []string{"issue_number"},
+		}),
+		newTool("get_issue_timeline", "Return a merged chronological timeline of comments, transition audit, and tasks", map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"issue_number": map[string]interface{}{"type": "integer"},
+				"limit":        map[string]interface{}{"type": "integer", "default": 100},
+			},
+			"required": []string{"issue_number"},
+		}),
+		newTool("get_issue_tasks", "List task rows for an issue", map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"issue_number": map[string]interface{}{"type": "integer"},
+				"limit":        map[string]interface{}{"type": "integer", "default": 50},
+			},
+			"required": []string{"issue_number"},
+		}),
 	}
 }
 
@@ -517,7 +566,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.Actor)
+		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.Actor, "mcp_tool", nil, nil)
 
 	case "get_transition_matrix":
 		return map[string]interface{}{
@@ -538,6 +587,66 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		}
 		return s.processIssue(ctx, args.IssueNumber)
 
+	case "get_transition_audit":
+		var args struct {
+			IssueNumber int `json:"issue_number"`
+			Limit       int `json:"limit"`
+		}
+		if err := json.Unmarshal(raw, &args); err != nil {
+			return nil, err
+		}
+		rows, err := s.store.ListTransitionAudit(args.IssueNumber, args.Limit)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"audit": rows}, nil
+	case "get_issue_timeline":
+		var args struct {
+			IssueNumber int `json:"issue_number"`
+			Limit       int `json:"limit"`
+		}
+		if err := json.Unmarshal(raw, &args); err != nil {
+			return nil, err
+		}
+		if args.Limit <= 0 {
+			args.Limit = 100
+		}
+
+		issue, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, args.Limit)
+		if err != nil {
+			return nil, err
+		}
+		workflow := computeWorkflowState(s.cfg, issue, comments)
+
+		auditRows, err := s.store.ListTransitionAudit(args.IssueNumber, args.Limit)
+		if err != nil {
+			return nil, err
+		}
+		taskRows, err := s.store.ListTasksByIssue(args.IssueNumber, args.Limit)
+		if err != nil {
+			return nil, err
+		}
+
+		timeline := buildIssueTimeline(comments, auditRows, taskRows)
+
+		return IssueTimelineResult{
+			Issue:    issue,
+			Workflow: workflow,
+			Timeline: timeline,
+		}, nil
+	case "get_issue_tasks":
+		var args struct {
+			IssueNumber int `json:"issue_number"`
+			Limit       int `json:"limit"`
+		}
+		if err := json.Unmarshal(raw, &args); err != nil {
+			return nil, err
+		}
+		rows, err := s.store.ListTasksByIssue(args.IssueNumber, args.Limit)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"tasks": rows}, nil
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -555,14 +664,57 @@ func (s *Server) loadIssueAndComments(ctx context.Context, issueNumber, limit in
 	return issue, comments, nil
 }
 
-func (s *Server) transitionIssue(ctx context.Context, issueNumber int, toStatus, assignee, comment, actor string) (interface{}, error) {
+func currentAssigneeOfIssue(issue Issue) string {
+	if len(issue.Assignees) == 0 {
+		return ""
+	}
+	return issue.Assignees[0].Login
+}
+
+func (s *Server) transitionIssue(
+	ctx context.Context,
+	issueNumber int,
+	toStatus string,
+	assignee string,
+	comment string,
+	actor string,
+	triggerType string,
+	triggerCommentID *int64,
+	triggerMetadata interface{},
+) (interface{}, error) {
 	issue, comments, err := s.loadIssueAndComments(ctx, issueNumber, 100)
 	if err != nil {
 		return nil, err
 	}
 
+	if strings.TrimSpace(triggerType) == "" {
+		triggerType = "mcp_tool"
+	}
+
+	fromStatus := computeWorkflowState(s.cfg, issue, comments).StatusLabel
+	fromAssignee := currentAssigneeOfIssue(issue)
+
 	validation := validateTransition(s.cfg, issue, comments, actor, toStatus, assignee)
 	if !validation.Allowed {
+		_ = s.store.RecordTransitionAudit(
+			issueNumber,
+			fromStatus,
+			toStatus,
+			fromAssignee,
+			assignee,
+			actor,
+			triggerType,
+			triggerCommentID,
+			"rejected",
+			strings.Join(validation.Violations, "; "),
+			validation,
+			mergeAuditMetadata(
+				triggerMetadata,
+				map[string]interface{}{
+					"comment_body_present": strings.TrimSpace(comment) != "",
+				},
+			),
+		)
 		return nil, fmt.Errorf("transition rejected: %s", strings.Join(validation.Violations, "; "))
 	}
 
@@ -580,11 +732,39 @@ func (s *Server) transitionIssue(ctx context.Context, issueNumber int, toStatus,
 	nextLabels = append(nextLabels, toStatus)
 
 	if _, err := s.gh.SetIssueLabels(ctx, issueNumber, nextLabels); err != nil {
+		_ = s.store.RecordTransitionAudit(
+			issueNumber,
+			fromStatus,
+			toStatus,
+			fromAssignee,
+			assignee,
+			actor,
+			triggerType,
+			triggerCommentID,
+			"failed",
+			"set labels failed: "+err.Error(),
+			validation,
+			triggerMetadata,
+		)
 		return nil, err
 	}
 
 	if strings.TrimSpace(assignee) != "" {
 		if _, err := s.gh.AssignIssue(ctx, issueNumber, []string{assignee}); err != nil {
+			_ = s.store.RecordTransitionAudit(
+				issueNumber,
+				fromStatus,
+				toStatus,
+				fromAssignee,
+				assignee,
+				actor,
+				triggerType,
+				triggerCommentID,
+				"failed",
+				"assign issue failed: "+err.Error(),
+				validation,
+				triggerMetadata,
+			)
 			return nil, err
 		}
 	}
@@ -593,6 +773,20 @@ func (s *Server) transitionIssue(ctx context.Context, issueNumber int, toStatus,
 	if strings.TrimSpace(comment) != "" {
 		c, err := s.gh.PostIssueComment(ctx, issueNumber, comment)
 		if err != nil {
+			_ = s.store.RecordTransitionAudit(
+				issueNumber,
+				fromStatus,
+				toStatus,
+				fromAssignee,
+				assignee,
+				actor,
+				triggerType,
+				triggerCommentID,
+				"failed",
+				"post comment failed: "+err.Error(),
+				validation,
+				triggerMetadata,
+			)
 			return nil, err
 		}
 		posted = &c
@@ -600,8 +794,42 @@ func (s *Server) transitionIssue(ctx context.Context, issueNumber int, toStatus,
 
 	updated, err := s.gh.GetIssue(ctx, issueNumber)
 	if err != nil {
+		_ = s.store.RecordTransitionAudit(
+			issueNumber,
+			fromStatus,
+			toStatus,
+			fromAssignee,
+			assignee,
+			actor,
+			triggerType,
+			triggerCommentID,
+			"failed",
+			"reload issue failed: "+err.Error(),
+			validation,
+			triggerMetadata,
+		)
 		return nil, err
 	}
+
+	_ = s.store.RecordTransitionAudit(
+		issueNumber,
+		fromStatus,
+		toStatus,
+		fromAssignee,
+		assignee,
+		actor,
+		triggerType,
+		triggerCommentID,
+		"applied",
+		"",
+		validation,
+		mergeAuditMetadata(
+			triggerMetadata,
+			map[string]interface{}{
+				"comment_posted": posted != nil,
+			},
+		),
+	)
 
 	result := map[string]interface{}{
 		"issue":      updated,
@@ -894,4 +1122,269 @@ func decodeID(raw json.RawMessage) interface{} {
 		return string(raw)
 	}
 	return v
+}
+
+func normalizeWorkflowStatusLabel(raw string) string {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	s = strings.TrimPrefix(s, "status:")
+	s = strings.ReplaceAll(s, "_", "-")
+	s = strings.ReplaceAll(s, " ", "-")
+
+	switch s {
+	case "new":
+		return "status:new"
+	case "po-analysis":
+		return "status:po-analysis"
+	case "awaiting-stakeholder-approval", "stakeholder-approval":
+		return "status:awaiting-stakeholder-approval"
+	case "approved-for-dev":
+		return "status:approved-for-dev"
+	case "in-progress":
+		return "status:in-progress"
+	case "ready-for-review":
+		return "status:ready-for-review"
+	case "review-in-progress":
+		return "status:review-in-progress"
+	case "changes-requested":
+		return "status:changes-requested"
+	case "ready-for-po-review":
+		return "status:ready-for-po-review"
+	case "po-review-in-progress":
+		return "status:po-review-in-progress"
+	case "awaiting-final-stakeholder-approval", "final-approval":
+		return "status:awaiting-final-stakeholder-approval"
+	case "blocked":
+		return "status:blocked"
+	case "done":
+		return "status:done"
+	case "rejected":
+		return "status:rejected"
+	default:
+		return ""
+	}
+}
+
+func detectCommentDrivenTransition(cfg Config, issue Issue, comments []IssueComment, actor string, commentID int64, body string) CommentTransitionDecision {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return CommentTransitionDecision{}
+	}
+
+	ws := computeWorkflowState(cfg, issue, comments)
+
+	if fields, ok := parseTaggedBlock(body, "handoff"); ok {
+		toStatus := normalizeWorkflowStatusLabel(fields["state"])
+		toAssignee := strings.TrimSpace(fields["to"])
+		if toStatus == "" {
+			return CommentTransitionDecision{
+				Matched:     true,
+				Reason:      "handoff comment had unrecognized state",
+				Actor:       actor,
+				CommentID:   commentID,
+				SourceKind:  "handoff",
+				BodyPreview: preview(body),
+			}
+		}
+		return CommentTransitionDecision{
+			Matched:     true,
+			Reason:      "handoff comment",
+			ToStatus:    toStatus,
+			ToAssignee:  toAssignee,
+			Actor:       actor,
+			CommentID:   commentID,
+			SourceKind:  "handoff",
+			BodyPreview: preview(body),
+		}
+	}
+
+	if fields, ok := parseTaggedBlock(body, "po-analysis"); ok {
+		if stakeholder := strings.TrimSpace(fields["stakeholder"]); stakeholder != "" {
+			return CommentTransitionDecision{
+				Matched:     true,
+				Reason:      "po-analysis comment requested stakeholder approval",
+				ToStatus:    "status:awaiting-stakeholder-approval",
+				ToAssignee:  stakeholder,
+				Actor:       actor,
+				CommentID:   commentID,
+				SourceKind:  "po-analysis",
+				BodyPreview: preview(body),
+			}
+		}
+		return CommentTransitionDecision{
+			Matched:     true,
+			Reason:      "po-analysis comment",
+			ToStatus:    "status:po-analysis",
+			ToAssignee:  poUser,
+			Actor:       actor,
+			CommentID:   commentID,
+			SourceKind:  "po-analysis",
+			BodyPreview: preview(body),
+		}
+	}
+
+	if containsApprove(body) {
+		switch ws.StatusLabel {
+		case "status:awaiting-stakeholder-approval":
+			return CommentTransitionDecision{
+				Matched:     true,
+				Reason:      "stakeholder approval comment",
+				ToStatus:    "status:approved-for-dev",
+				ToAssignee:  developerUser,
+				Actor:       actor,
+				CommentID:   commentID,
+				SourceKind:  "approve",
+				BodyPreview: preview(body),
+			}
+		case "status:awaiting-final-stakeholder-approval":
+			return CommentTransitionDecision{
+				Matched:     true,
+				Reason:      "final stakeholder approval comment",
+				ToStatus:    "status:done",
+				ToAssignee:  ws.Stakeholder,
+				Actor:       actor,
+				CommentID:   commentID,
+				SourceKind:  "approve",
+				BodyPreview: preview(body),
+			}
+		default:
+			return CommentTransitionDecision{
+				Matched:     true,
+				Reason:      "approve comment does not apply in current status",
+				Actor:       actor,
+				CommentID:   commentID,
+				SourceKind:  "approve",
+				BodyPreview: preview(body),
+			}
+		}
+	}
+
+	return CommentTransitionDecision{}
+}
+
+func (s *Server) processIssueCommentDirective(ctx context.Context, issueNumber int, commentID int64, actor, body string) (bool, error) {
+	issue, comments, err := s.loadIssueAndComments(ctx, issueNumber, 100)
+	if err != nil {
+		return false, err
+	}
+
+	fromStatus := computeWorkflowState(s.cfg, issue, comments).StatusLabel
+	fromAssignee := currentAssigneeOfIssue(issue)
+
+	decision := detectCommentDrivenTransition(s.cfg, issue, comments, actor, commentID, body)
+	if !decision.Matched {
+		return false, nil
+	}
+	if decision.ToStatus == "" {
+		_ = s.store.RecordTransitionAudit(
+			issueNumber,
+			fromStatus,
+			"",
+			fromAssignee,
+			"",
+			actor,
+			"webhook_comment",
+			&commentID,
+			"ignored",
+			decision.Reason,
+			nil,
+			decision,
+		)
+		_ = s.store.RecordFailure(issueNumber, "comment-transition-ignored", decision.Reason, decision)
+		s.logger.Printf("comment transition ignored: issue=%d actor=%s reason=%s", issueNumber, actor, decision.Reason)
+		return true, nil
+	}
+
+	s.logger.Printf(
+		"comment transition candidate: issue=%d actor=%s to=%s assignee=%s source=%s",
+		issueNumber, actor, decision.ToStatus, decision.ToAssignee, decision.SourceKind,
+	)
+
+	_, err = s.transitionIssue(
+		ctx,
+		issueNumber,
+		decision.ToStatus,
+		decision.ToAssignee,
+		"",
+		actor,
+		"webhook_comment",
+		&commentID,
+		map[string]interface{}{
+			"decision": decision,
+		},
+	)
+	if err != nil {
+		_ = s.store.RecordFailure(issueNumber, "comment-transition-failed", err.Error(), map[string]interface{}{
+			"decision": decision,
+		})
+		return true, err
+	}
+
+	_, err = s.processIssue(ctx, issueNumber)
+	return true, err
+}
+
+func mergeAuditMetadata(base interface{}, extra map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{}
+
+	if baseMap, ok := base.(map[string]interface{}); ok {
+		for k, v := range baseMap {
+			out[k] = v
+		}
+	}
+
+	for k, v := range extra {
+		out[k] = v
+	}
+
+	return out
+}
+
+func buildIssueTimeline(
+	comments []IssueComment,
+	auditRows []TransitionAuditRow,
+	taskRows []TaskRow,
+) []IssueTimelineEntry {
+	var out []IssueTimelineEntry
+
+	for _, c := range comments {
+		out = append(out, IssueTimelineEntry{
+			Kind:     "comment",
+			SortTime: c.CreatedAt.UTC().Format(time.RFC3339),
+			Comment:  c,
+		})
+	}
+
+	for _, a := range auditRows {
+		out = append(out, IssueTimelineEntry{
+			Kind:     "transition_audit",
+			SortTime: a.CreatedAt,
+			Audit:    a,
+		})
+	}
+
+	for _, t := range taskRows {
+		sortTime := t.CreatedAt
+		if t.FinishedAt.Valid && t.FinishedAt.String != "" {
+			sortTime = t.FinishedAt.String
+		} else if t.HeartbeatAt.Valid && t.HeartbeatAt.String != "" {
+			sortTime = t.HeartbeatAt.String
+		} else if t.ClaimedAt.Valid && t.ClaimedAt.String != "" {
+			sortTime = t.ClaimedAt.String
+		}
+
+		out = append(out, IssueTimelineEntry{
+			Kind:     "task",
+			SortTime: sortTime,
+			Task:     t,
+		})
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SortTime == out[j].SortTime {
+			return out[i].Kind < out[j].Kind
+		}
+		return out[i].SortTime < out[j].SortTime
+	})
+
+	return out
 }
