@@ -1,0 +1,8 @@
+export ORCH_BASE_URL='https://YOUR_MCP_SERVER_URL'
+export AGENT_SHARED_TOKEN='YOUR_AGENT_SHARED_TOKEN'
+export AGENT='GITHUB_ACCOUNT'
+export TMUX_TARGET='TMUX_NAME'
+export TASKS_DIR="$HOME/agent_tasks"
+export DISPATCH_COMMAND='tmux send-keys -t {tmux_target} "python3 ~/bin/agent_runner.py --task {file}" C-m'
+
+go run bridge.go
