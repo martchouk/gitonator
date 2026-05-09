@@ -12,6 +12,8 @@ export DISPATCH_TMUX_TEMPLATE=''
 export STAKEHOLDER_OVERRIDE=''
 export AGENT_SHARED_TOKEN='YOUR_AGENT_SHARED_TOKEN'
 export LOG_LEVEL=DEBUG #optional, set to DEBUG for stderr debug logs
+export STALE_AFTER_SECONDS=900
+export RECOVER_EVERY_SECONDS=30
 
 #go run main.go
 ./github.mcp
