@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -58,15 +57,17 @@ func main() {
 		cfg: cfg,
 		gh: &GitHubClient{
 			baseURL: "https://api.github.com",
-			httpClient: &http.Client{
-				Timeout: 30 * time.Second,
-			},
-			token: cfg.GitHubToken,
-			owner: cfg.Owner,
-			repo:  cfg.Repo,
+			token:   cfg.GitHubToken,
+			owner:   cfg.Owner,
+			repo:    cfg.Repo,
 		},
 		store:  store,
 		logger: logger,
+	}
+
+	if strings.TrimSpace(cfg.HTTPAddr) == "" {
+		logger.Println("fatal: HTTP_ADDR must not be empty")
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -75,11 +76,6 @@ func main() {
 	errCh := make(chan error, 1)
 
 	go server.runRecoveryLoop(ctx)
-
-	if strings.TrimSpace(cfg.HTTPAddr) == "" {
-		logger.Println("fatal: HTTP_ADDR must not be empty")
-		os.Exit(1)
-	}
 
 	go func() {
 		errCh <- server.runHTTP(ctx)
