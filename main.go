@@ -5,26 +5,30 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
-	"strings"
+	"os/signal"
 	"strconv"
+	"strings"
+	"syscall"
+	"time"
 )
 
 type Config struct {
-	GitHubToken          	string
-	Owner                	string
-	Repo                 	string
-	Debug                	bool
-	HTTPAddr             	string
-	WebhookSecret       	string
-	SQLitePath           	string
-	DispatchDir          	string
-	DispatchCommand      	string
-	DispatchTmuxTemplate 	string
-	StakeholderOverride  	string
-	AgentSharedToken 	string
-	StaleAfterSeconds   	int
-	RecoverEverySeconds 	int
+	GitHubToken          string
+	Owner                string
+	Repo                 string
+	Debug                bool
+	HTTPAddr             string
+	WebhookSecret        string
+	SQLitePath           string
+	DispatchDir          string
+	DispatchCommand      string
+	DispatchTmuxTemplate string
+	StakeholderOverride  string
+	AgentSharedToken     string
+	StaleAfterSeconds    int
+	RecoverEverySeconds  int
 }
 
 type Server struct {
@@ -54,9 +58,12 @@ func main() {
 		cfg: cfg,
 		gh: &GitHubClient{
 			baseURL: "https://api.github.com",
-			token:   cfg.GitHubToken,
-			owner:   cfg.Owner,
-			repo:    cfg.Repo,
+			httpClient: &http.Client{
+				Timeout: 30 * time.Second,
+			},
+			token: cfg.GitHubToken,
+			owner: cfg.Owner,
+			repo:  cfg.Repo,
 		},
 		store:  store,
 		logger: logger,
@@ -65,38 +72,53 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if strings.TrimSpace(cfg.HTTPAddr) != "" {
-		go func() {
-			if err := server.runHTTP(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				logger.Println("http server error:", err)
-			}
-		}()
-	}
+	errCh := make(chan error, 1)
+
 	go server.runRecoveryLoop(ctx)
 
-	if err := server.runStdio(ctx, os.Stdin, os.Stdout); err != nil {
-		logger.Println("fatal:", err)
+	if strings.TrimSpace(cfg.HTTPAddr) == "" {
+		logger.Println("fatal: HTTP_ADDR must not be empty")
 		os.Exit(1)
 	}
 
+	go func() {
+		errCh <- server.runHTTP(ctx)
+	}()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-sigCh:
+		logger.Println("shutdown signal received:", sig)
+		cancel()
+		time.Sleep(1 * time.Second)
+
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			logger.Println("fatal:", err)
+			os.Exit(1)
+		}
+		logger.Println("http server stopped")
+	}
 }
 
 func loadConfig() (Config, error) {
 	cfg := Config{
-		GitHubToken:          	strings.TrimSpace(os.Getenv("GITHUB_TOKEN")),
-		Owner:                	strings.TrimSpace(os.Getenv("GITHUB_OWNER")),
-		Repo:                 	strings.TrimSpace(os.Getenv("GITHUB_REPO")),
-		Debug:                	strings.EqualFold(strings.TrimSpace(os.Getenv("LOG_LEVEL")), "DEBUG"),
-		HTTPAddr:             	defaultString(os.Getenv("HTTP_ADDR"), "127.0.0.1:7777"),
-		WebhookSecret:        	strings.TrimSpace(os.Getenv("WEBHOOK_SECRET")),
-		SQLitePath:           	defaultString(os.Getenv("SQLITE_PATH"), "orchestrator.db"),
-		DispatchDir:          	defaultString(os.Getenv("DISPATCH_DIR"), "./dispatch"),
-		DispatchCommand:      	strings.TrimSpace(os.Getenv("DISPATCH_COMMAND")),
-		DispatchTmuxTemplate: 	strings.TrimSpace(os.Getenv("DISPATCH_TMUX_TEMPLATE")),
-		StakeholderOverride:  	strings.TrimSpace(os.Getenv("STAKEHOLDER_OVERRIDE")),
-		AgentSharedToken:     	strings.TrimSpace(os.Getenv("AGENT_SHARED_TOKEN")),
-		StaleAfterSeconds: 	getEnvInt("STALE_AFTER_SECONDS", 900),
-		RecoverEverySeconds: 	getEnvInt("RECOVER_EVERY_SECONDS", 30),
+		GitHubToken:          strings.TrimSpace(os.Getenv("GITHUB_TOKEN")),
+		Owner:                strings.TrimSpace(os.Getenv("GITHUB_OWNER")),
+		Repo:                 strings.TrimSpace(os.Getenv("GITHUB_REPO")),
+		Debug:                strings.EqualFold(strings.TrimSpace(os.Getenv("LOG_LEVEL")), "DEBUG"),
+		HTTPAddr:             defaultString(os.Getenv("HTTP_ADDR"), "127.0.0.1:7777"),
+		WebhookSecret:        strings.TrimSpace(os.Getenv("WEBHOOK_SECRET")),
+		SQLitePath:           defaultString(os.Getenv("SQLITE_PATH"), "orchestrator.db"),
+		DispatchDir:          defaultString(os.Getenv("DISPATCH_DIR"), "./dispatch"),
+		DispatchCommand:      strings.TrimSpace(os.Getenv("DISPATCH_COMMAND")),
+		DispatchTmuxTemplate: strings.TrimSpace(os.Getenv("DISPATCH_TMUX_TEMPLATE")),
+		StakeholderOverride:  strings.TrimSpace(os.Getenv("STAKEHOLDER_OVERRIDE")),
+		AgentSharedToken:     strings.TrimSpace(os.Getenv("AGENT_SHARED_TOKEN")),
+		StaleAfterSeconds:    getEnvInt("STALE_AFTER_SECONDS", 900),
+		RecoverEverySeconds:  getEnvInt("RECOVER_EVERY_SECONDS", 30),
 	}
 	if cfg.GitHubToken == "" {
 		return cfg, fmt.Errorf("GITHUB_TOKEN is required")

@@ -1,3 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH=$PATH:/usr/local/go/bin
+cd /home/USER_NAME/PATH_TO_THE_REPO/github.mcp
+
 go build -o github.mcp .
 
 export GITHUB_TOKEN=YOUR_PAT #GitHub personal access token or GitHub App token
@@ -16,4 +21,4 @@ export STALE_AFTER_SECONDS=900
 export RECOVER_EVERY_SECONDS=30
 
 #go run main.go
-./github.mcp
+exec ./github.mcp
