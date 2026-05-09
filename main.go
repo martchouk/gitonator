@@ -62,8 +62,6 @@ func main() {
 		logger: logger,
 	}
 
-	go server.runRecoveryLoop(ctx)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -74,11 +72,13 @@ func main() {
 			}
 		}()
 	}
+	go server.runRecoveryLoop(ctx)
 
 	if err := server.runStdio(ctx, os.Stdin, os.Stdout); err != nil {
 		logger.Println("fatal:", err)
 		os.Exit(1)
 	}
+
 }
 
 func loadConfig() (Config, error) {
