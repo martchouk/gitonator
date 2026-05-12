@@ -133,8 +133,16 @@ func TestRequirementsReviewTransitions(t *testing.T) {
 		}
 	})
 
-	t.Run("reviewer can reject requirements back to po-analysis", func(t *testing.T) {
+	t.Run("reviewer can reject requirements back to po-analysis from in-progress", func(t *testing.T) {
 		issue := Issue{Number: 1, User: GitHubUser{Login: "creator"}, Labels: []GitHubLabel{{Name: "status:requirements-review-in-progress"}}}
+		res := validateTransition(issue, nil, "reviewer", "status:po-analysis")
+		if !res.Allowed {
+			t.Errorf("expected allowed, violations: %v", res.Violations)
+		}
+	})
+
+	t.Run("reviewer can reject requirements back to po-analysis from ready state", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: "creator"}, Labels: []GitHubLabel{{Name: "status:ready-for-requirements-review"}}}
 		res := validateTransition(issue, nil, "reviewer", "status:po-analysis")
 		if !res.Allowed {
 			t.Errorf("expected allowed, violations: %v", res.Violations)
