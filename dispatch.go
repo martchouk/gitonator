@@ -23,8 +23,12 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 	}
 
 	state := computeWorkflowState(issue, comments)
+	s.debugf("processIssue: issue=%d status=%s suggested_role=%s assignees=%v",
+		issueNumber, state.StatusLabel, state.SuggestedRole, state.CurrentAssignees)
+
 	pkg, ok := decideNextAction(s.cfg, issue, state, comments)
 	if !ok {
+		s.debugf("processIssue: issue=%d no action — terminal or wait state", issueNumber)
 		return map[string]interface{}{
 			"issue":    issue,
 			"workflow": state,
@@ -43,6 +47,8 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 		return nil, err
 	}
 	if existing != nil {
+		s.debugf("processIssue: issue=%d task deduplicated existing_task_id=%d role=%s",
+			issueNumber, existing.ID, existing.Role)
 		return map[string]interface{}{
 			"issue":         issue,
 			"workflow":      state,
@@ -57,6 +63,8 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 		return nil, err
 	}
 	pkg.ID = taskID
+	s.logger.Printf("task queued: issue=%d role=%s assignee=%s task_id=%d status=%s",
+		issueNumber, pkg.Role, pkg.Assignee, taskID, pkg.CurrentStatus)
 
 	return map[string]interface{}{
 		"issue":    issue,

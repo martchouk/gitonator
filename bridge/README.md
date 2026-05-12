@@ -127,6 +127,8 @@ Two value forms are supported:
 
 If a `$VAR` reference is not set in the host environment, the bridge logs an error and exits rather than passing an empty value.
 
+Only bare `$VAR` is supported — `${VAR}` is not interpolated and will cause a startup error if used.
+
 **Primary use case — per-agent `GH_TOKEN` for isolated GitHub identities:**
 
 ```json

@@ -620,7 +620,10 @@ func (s *Server) transitionIssue(
 	fromAssignee := currentAssigneeOfIssue(issue)
 
 	validation := validateTransition(issue, comments, actorRole, toStatus)
+	s.debugf("transitionIssue: issue=%d from=%s to=%s actor=%s allowed=%v",
+		issueNumber, fromStatus, toStatus, actorRole, validation.Allowed)
 	if !validation.Allowed {
+		s.debugf("transitionIssue: issue=%d rejected violations=%q", issueNumber, strings.Join(validation.Violations, "; "))
 		_ = s.store.RecordTransitionAudit(
 			issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
 			triggerType, triggerCommentID, "rejected",
@@ -683,6 +686,8 @@ func (s *Server) transitionIssue(
 		triggerType, triggerCommentID, "applied", "", validation,
 		mergeAuditMetadata(triggerMetadata, map[string]interface{}{"comment_posted": posted != nil}),
 	)
+	s.debugf("transitionIssue: issue=%d applied from=%s to=%s assignee=%q comment_posted=%v",
+		issueNumber, fromStatus, toStatus, assignee, posted != nil)
 
 	result := map[string]interface{}{
 		"issue":      updated,

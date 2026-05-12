@@ -90,6 +90,13 @@ func (s *Server) handleWorkNext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if pkg != nil {
+		s.logger.Printf("work claimed: bridge=%s roles=%s task=%d issue=%d role=%s assignee=%s",
+			bridgeID, rolesRaw, pkg.ID, pkg.IssueID, pkg.Role, pkg.Assignee)
+	} else {
+		s.debugf("work/next: bridge=%s roles=%s no work available", bridgeID, rolesRaw)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":   true,
 		"task": pkg, // nil when no work is available
@@ -122,11 +129,14 @@ func (s *Server) handleMCPToolsCall(w http.ResponseWriter, r *http.Request) {
 		req.Arguments = json.RawMessage(`{}`)
 	}
 
+	s.debugf("tool call: name=%s", req.Name)
 	result, err := s.callTool(r.Context(), req.Name, req.Arguments)
 	if err != nil {
+		s.debugf("tool call failed: name=%s err=%v", req.Name, err)
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	s.debugf("tool call ok: name=%s", req.Name)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "result": result})
 }
 
@@ -135,7 +145,9 @@ func (s *Server) handleMCPToolsList(w http.ResponseWriter, r *http.Request) {
 	if !s.authorizeAgent(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "tools": s.tools()})
+	tools := s.tools()
+	s.debugf("tools/list: serving %d tools", len(tools))
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "tools": tools})
 }
 
 func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +183,7 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if processed {
+		s.debugf("webhook: duplicate delivery ignored delivery=%s event=%s", deliveryID, eventType)
 		writeJSON(w, http.StatusAccepted, map[string]any{
 			"ok":      true,
 			"message": "duplicate delivery ignored",
@@ -259,13 +272,8 @@ func (s *Server) processApproveComment(ctx context.Context, issueNumber int, com
 
 	ws := computeWorkflowState(issue, nil)
 
-	var toStatus string
-	switch ws.StatusLabel {
-	case "status:awaiting-stakeholder-approval":
-		toStatus = "status:architect-analysis"
-	case "status:awaiting-final-stakeholder-approval":
-		toStatus = "status:done"
-	default:
+	toStatus, ok := approveTransitionTarget(ws.StatusLabel)
+	if !ok {
 		return false, nil
 	}
 
@@ -301,6 +309,19 @@ func (s *Server) processApproveComment(ctx context.Context, issueNumber int, com
 	)
 	s.logger.Printf("approve transition applied: issue=%d from=%s to=%s actor=%s", issueNumber, fromStatus, toStatus, actor)
 	return true, nil
+}
+
+// approveTransitionTarget maps a stakeholder-wait status to the status it transitions to
+// when a valid /approve comment is received. Returns ("", false) for all other statuses.
+func approveTransitionTarget(fromStatus string) (string, bool) {
+	switch fromStatus {
+	case "status:awaiting-stakeholder-approval":
+		return "status:architect-analysis", true
+	case "status:awaiting-final-stakeholder-approval":
+		return "status:done", true
+	default:
+		return "", false
+	}
 }
 
 func validateWebhookSignature(secret string, payload []byte, provided string) bool {

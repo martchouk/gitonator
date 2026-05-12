@@ -29,6 +29,8 @@ func (s *Server) runRecoveryLoop(ctx context.Context) {
 			if len(bridges) > 0 {
 				s.logger.Printf("recovered %d stale dispatched task(s) from bridge(s): %s",
 					len(bridges), strings.Join(bridges, ", "))
+			} else {
+				s.debugf("recovery tick: no stale tasks")
 			}
 		}
 	}

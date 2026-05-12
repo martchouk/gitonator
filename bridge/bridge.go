@@ -93,10 +93,24 @@ func main() {
 	roles := collectRoles(roster)
 	logger.Printf("started: bridge_id=%s agents=%d roles=%s poll=%ds",
 		cfg.BridgeID, len(roster.Agents), strings.Join(roles, ","), cfg.PollSeconds)
+	if debug {
+		for _, a := range roster.Agents {
+			if len(a.Env) > 0 {
+				keys := make([]string, 0, len(a.Env))
+				for k := range a.Env {
+					keys = append(keys, k)
+				}
+				logger.Printf("DEBUG agent env configured: agent=%s keys=%s", a.Name, strings.Join(keys, ","))
+			}
+		}
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 
 	for {
+		if debug {
+			logger.Printf("DEBUG poll: bridge=%s roles=%s", cfg.BridgeID, strings.Join(roles, ","))
+		}
 		pkg, err := fetchNextWork(client, cfg, roles)
 		if err != nil {
 			logger.Println("poll error:", err)
@@ -106,10 +120,14 @@ func main() {
 
 		if pkg == nil {
 			if debug {
-				logger.Println("no work available")
+				logger.Println("DEBUG no work available")
 			}
 			time.Sleep(time.Duration(cfg.PollSeconds) * time.Second)
 			continue
+		}
+		if debug {
+			logger.Printf("DEBUG work received: task=%d issue=%d role=%s assignee=%s status=%s",
+				pkg.ID, pkg.IssueID, pkg.Role, pkg.Assignee, pkg.CurrentStatus)
 		}
 
 		agent := selectAgent(roster, pkg)
