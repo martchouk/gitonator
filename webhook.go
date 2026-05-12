@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -19,9 +18,12 @@ func (s *Server) runHTTP(ctx context.Context) error {
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/webhook/github", s.handleGitHubWebhook)
 
-	mux.HandleFunc("/api/v1/agent/tasks", s.handleAgentTasks)
-	mux.HandleFunc("/api/v1/agent/tasks/", s.handleAgentTaskAction)
-	mux.HandleFunc("/api/v1/agent/comment", s.handleAgentComment)
+	// Bridge polling endpoint.
+	mux.HandleFunc("/api/v1/work/next", s.handleWorkNext)
+
+	// MCP tool inspection and manual override (replaces the removed stdio interface).
+	mux.HandleFunc("/mcp/tools/call", s.handleMCPToolsCall)
+	mux.HandleFunc("/mcp/tools/list", s.handleMCPToolsList)
 
 	srv := &http.Server{
 		Addr:    s.cfg.HTTPAddr,
@@ -46,6 +48,94 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 		"ok":      true,
 		"service": "github-issue-orchestrator",
 	})
+}
+
+// handleWorkNext implements GET /api/v1/work/next?roles=po,developer&bridge_id=my-bridge
+// It atomically selects and marks dispatched the oldest queued task matching the requested roles.
+func (s *Server) handleWorkNext(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeAgent(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	rolesRaw := strings.TrimSpace(r.URL.Query().Get("roles"))
+	if rolesRaw == "" {
+		writeError(w, http.StatusBadRequest, "roles query parameter is required")
+		return
+	}
+	bridgeID := strings.TrimSpace(r.URL.Query().Get("bridge_id"))
+	if bridgeID == "" {
+		writeError(w, http.StatusBadRequest, "bridge_id query parameter is required")
+		return
+	}
+
+	var roles []string
+	for _, rr := range strings.Split(rolesRaw, ",") {
+		rr = strings.TrimSpace(rr)
+		if rr != "" {
+			roles = append(roles, rr)
+		}
+	}
+	if len(roles) == 0 {
+		writeError(w, http.StatusBadRequest, "roles must contain at least one role")
+		return
+	}
+
+	pkg, err := s.store.GetNextWorkPackage(bridgeID, roles)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":   true,
+		"task": pkg, // nil when no work is available
+	})
+}
+
+// handleMCPToolsCall implements POST /mcp/tools/call for manual inspection and overrides.
+func (s *Server) handleMCPToolsCall(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeAgent(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if req.Arguments == nil {
+		req.Arguments = json.RawMessage(`{}`)
+	}
+
+	result, err := s.callTool(r.Context(), req.Name, req.Arguments)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "result": result})
+}
+
+// handleMCPToolsList implements GET /mcp/tools/list for discoverability.
+func (s *Server) handleMCPToolsList(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeAgent(w, r) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "tools": s.tools()})
 }
 
 func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
@@ -133,9 +223,9 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		deliveryID, eventType, env.Action, env.Issue.Number,
 	)
 
-	// Comment-driven transitions first.
+	// Handle /approve comments for stakeholder-wait states.
 	if eventType == "issue_comment" && (env.Action == "created" || env.Action == "edited") {
-		handled, err := s.processIssueCommentDirective(
+		handled, err := s.processApproveComment(
 			ctx,
 			env.Issue.Number,
 			env.Comment.ID,
@@ -146,12 +236,71 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 			return err
 		}
 		if handled {
-			return nil
+			// Approve transitions are applied inline; processIssue queues the next task.
 		}
 	}
 
 	_, err := s.processIssue(ctx, env.Issue.Number)
 	return err
+}
+
+// processApproveComment handles /approve comments in stakeholder-wait states.
+// Verification that the commenter is the stakeholder is done here, not in validateTransition,
+// to avoid GitHub API timing issues with RequiresStakeholderApprove.
+func (s *Server) processApproveComment(ctx context.Context, issueNumber int, commentID int64, actor, body string) (bool, error) {
+	if !containsApprove(body) {
+		return false, nil
+	}
+
+	issue, _, err := s.loadIssueAndComments(ctx, issueNumber, 0)
+	if err != nil {
+		return false, err
+	}
+
+	ws := computeWorkflowState(issue, nil)
+
+	var toStatus string
+	switch ws.StatusLabel {
+	case "status:awaiting-stakeholder-approval":
+		toStatus = "status:approved-for-dev"
+	case "status:awaiting-final-stakeholder-approval":
+		toStatus = "status:done"
+	default:
+		return false, nil
+	}
+
+	stakeholder := resolveStakeholder(issue)
+	if actor != stakeholder {
+		s.logger.Printf("approve comment ignored: actor=%s is not stakeholder=%s issue=%d", actor, stakeholder, issueNumber)
+		return false, nil
+	}
+
+	fromStatus := ws.StatusLabel
+	fromAssignee := currentAssigneeOfIssue(issue)
+
+	currentLabels := labelsToStrings(issue.Labels)
+	var nextLabels []string
+	for _, l := range currentLabels {
+		if !strings.HasPrefix(l, "status:") {
+			nextLabels = append(nextLabels, l)
+		}
+	}
+	nextLabels = append(nextLabels, toStatus)
+
+	if _, err := s.gh.SetIssueLabels(ctx, issueNumber, nextLabels); err != nil {
+		_ = s.store.RecordTransitionAudit(
+			issueNumber, fromStatus, toStatus, fromAssignee, "", actor,
+			"webhook_comment", &commentID, "failed", "set labels failed: "+err.Error(), nil, nil,
+		)
+		return true, err
+	}
+
+	_ = s.store.RecordTransitionAudit(
+		issueNumber, fromStatus, toStatus, fromAssignee, "", actor,
+		"webhook_comment", &commentID, "applied", "", nil, nil,
+	)
+	s.logger.Printf("approve transition applied: issue=%d from=%s to=%s actor=%s", issueNumber, fromStatus, toStatus, actor)
+	return true, nil
 }
 
 func validateWebhookSignature(secret string, payload []byte, provided string) bool {
@@ -164,164 +313,11 @@ func validateWebhookSignature(secret string, payload []byte, provided string) bo
 	return hmac.Equal([]byte(expected), []byte(provided))
 }
 
-func (s *Server) handleAgentTasks(w http.ResponseWriter, r *http.Request) {
-	if !s.authorizeAgent(w, r) {
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		assignee := strings.TrimSpace(r.URL.Query().Get("assignee"))
-		if assignee == "" {
-			writeError(w, http.StatusBadRequest, "missing assignee")
-			return
-		}
-
-		limit := 20
-		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
-			if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 200 {
-				limit = v
-			}
-		}
-
-		tasks, err := s.store.ListQueuedTasksForAssignee(assignee, limit)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":    true,
-			"tasks": tasks,
-		})
-
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-	}
-}
-
-func (s *Server) handleAgentTaskAction(w http.ResponseWriter, r *http.Request) {
-	if !s.authorizeAgent(w, r) {
-		return
-	}
-
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/agent/tasks/")
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) != 2 {
-		writeError(w, http.StatusNotFound, "not found")
-		return
-	}
-
-	taskID, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || taskID <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid task id")
-		return
-	}
-	action := parts[1]
-
-	var body struct {
-		Agent    string                 `json:"agent"`
-		Message  string                 `json:"message"`
-		Result   map[string]any         `json:"result"`
-		Metadata map[string]interface{} `json:"metadata"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-
-	switch action {
-	case "claim":
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		if err := s.store.ClaimTask(taskID, strings.TrimSpace(body.Agent)); err != nil {
-			writeError(w, http.StatusConflict, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-
-	case "heartbeat":
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		if err := s.store.HeartbeatTask(taskID, strings.TrimSpace(body.Agent), body.Message); err != nil {
-			writeError(w, http.StatusConflict, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-
-	case "complete":
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		if err := s.store.CompleteTask(taskID, strings.TrimSpace(body.Agent), body.Result, body.Message); err != nil {
-			writeError(w, http.StatusConflict, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-
-	case "fail":
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		if err := s.store.FailTask(taskID, strings.TrimSpace(body.Agent), body.Message, body.Result); err != nil {
-			writeError(w, http.StatusConflict, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-
-	default:
-		writeError(w, http.StatusNotFound, "unknown action")
-	}
-}
-
-func (s *Server) handleAgentComment(w http.ResponseWriter, r *http.Request) {
-	if !s.authorizeAgent(w, r) {
-		return
-	}
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var body struct {
-		IssueNumber int    `json:"issue_number"`
-		Body        string `json:"body"`
-		Agent       string `json:"agent"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	if body.IssueNumber <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid issue_number")
-		return
-	}
-	if strings.TrimSpace(body.Body) == "" {
-		writeError(w, http.StatusBadRequest, "empty body")
-		return
-	}
-
-	comment, err := s.gh.PostIssueComment(r.Context(), body.IssueNumber, body.Body)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":      true,
-		"comment": comment,
-	})
-}
-
 func (s *Server) authorizeAgent(w http.ResponseWriter, r *http.Request) bool {
 	if s.cfg.AgentSharedToken == "" {
 		writeError(w, http.StatusInternalServerError, "agent auth not configured")
 		return false
 	}
-
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	const prefix = "Bearer "
 	if !strings.HasPrefix(auth, prefix) {
@@ -350,8 +346,5 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]any{
-		"ok":    false,
-		"error": msg,
-	})
+	writeJSON(w, status, map[string]any{"ok": false, "error": msg})
 }

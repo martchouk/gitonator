@@ -1,3 +1,11 @@
 run.sh
 github.mcp
+github-issue-orchestrator
 orchestrator.db*
+bridge/agent-bridge
+agent/agent-task
+
+# Agent role files — applied by apply-role.sh (not for version control)
+CLAUDE.md
+GIT_HYGIENE.md
+.claude/

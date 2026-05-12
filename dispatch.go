@@ -3,24 +3,17 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
-	"strings"
-	"time"
 )
 
-type AgentTask struct {
-	IssueNumber  int               `json:"issue_number"`
-	IssueURL     string            `json:"issue_url"`
-	Role         string            `json:"role"`
-	Assignee     string            `json:"assignee"`
-	Action       string            `json:"action"`
-	Status       string            `json:"status"`
-	Context      map[string]string `json:"context,omitempty"`
-	CreatedAtUTC string            `json:"created_at_utc"`
-	DedupKey     string            `json:"dedup_key"`
+// WorkPackage is the canonical work unit exchanged between orchestrator and bridge.
+type WorkPackage struct {
+	ID            int64  `json:"id"`
+	Repo          string `json:"repo"`
+	IssueID       int    `json:"issue_id"`
+	Role          string `json:"role"`
+	Assignee      string `json:"assignee"`
+	LastCommentID int64  `json:"last_comment_id"`
+	CurrentStatus string `json:"current_status"`
 }
 
 func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}, error) {
@@ -29,8 +22,8 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 		return nil, err
 	}
 
-	state := computeWorkflowState(s.cfg, issue, comments)
-	next, ok := decideNextAction(issue, state)
+	state := computeWorkflowState(issue, comments)
+	pkg, ok := decideNextAction(s.cfg, issue, state, comments)
 	if !ok {
 		return map[string]interface{}{
 			"issue":    issue,
@@ -39,117 +32,77 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 		}, nil
 	}
 
-	existing, err := s.store.FindActiveTaskByDedupKey(next.DedupKey)
+	// Close out any dispatched task for this issue before queuing a new one.
+	// This is a no-op if no dispatched task exists.
+	if err := s.store.CompleteDispatchedTask(issueNumber); err != nil {
+		s.logger.Printf("close-out dispatched task failed: issue=%d err=%v", issueNumber, err)
+	}
+
+	existing, err := s.store.FindActiveTaskByIssue(issueNumber)
 	if err != nil {
 		return nil, err
 	}
 	if existing != nil {
 		return map[string]interface{}{
-			"issue":          issue,
-			"workflow":       state,
-			"queued":         false,
-			"deduplicated":   true,
-			"existing_task":  existing,
-			"dedup_key":      next.DedupKey,
+			"issue":         issue,
+			"workflow":      state,
+			"queued":        false,
+			"deduplicated":  true,
+			"existing_task": existing,
 		}, nil
 	}
 
-	taskID, err := s.store.QueueTask(next)
+	taskID, err := s.store.QueueTask(pkg)
 	if err != nil {
 		return nil, err
 	}
-
-	if err := s.dispatchTask(next); err != nil {
-		_ = s.store.RecordFailure(issueNumber, "dispatch", err.Error(), next)
-		return map[string]interface{}{
-			"issue":          issue,
-			"workflow":       state,
-			"queued":         true,
-			"task_id":        taskID,
-			"dispatch_error": err.Error(),
-		}, nil
-	}
+	pkg.ID = taskID
 
 	return map[string]interface{}{
 		"issue":    issue,
 		"workflow": state,
 		"queued":   true,
 		"task_id":  taskID,
-		"task":     next,
+		"task":     pkg,
 	}, nil
 }
 
-func decideNextAction(issue Issue, state WorkflowState) (AgentTask, bool) {
-	mk := func(role, assignee, action string) AgentTask {
-		status := state.StatusLabel
-		dedupKey := fmt.Sprintf("issue:%d|role:%s|action:%s|status:%s", issue.Number, role, action, status)
-		return AgentTask{
-			IssueNumber:  issue.Number,
-			IssueURL:     issue.HTMLURL,
-			Role:         role,
-			Assignee:     assignee,
-			Action:       action,
-			Status:       status,
-			CreatedAtUTC: nowUTC(),
-			DedupKey:     dedupKey,
-			Context: map[string]string{
-				"title":       issue.Title,
-				"stakeholder": state.Stakeholder,
-			},
-		}
-	}
-
+// decideNextAction derives the next work package from the current workflow state.
+// The orchestrator has no knowledge of GitHub usernames — role is derived from the status label.
+func decideNextAction(cfg Config, issue Issue, state WorkflowState, comments []IssueComment) (WorkPackage, bool) {
+	role := ""
 	switch state.StatusLabel {
-	case "status:new", "status:po-analysis":
-		return mk("po", poUser, "prepare-analysis-or-user-story"), true
-	case "status:awaiting-stakeholder-approval":
-		return mk("stakeholder", state.Stakeholder, "review-and-approve-scope"), true
+	case "status:new", "status:po-analysis",
+		"status:ready-for-po-review", "status:po-review-in-progress",
+		"status:blocked":
+		role = "po"
 	case "status:approved-for-dev", "status:in-progress", "status:changes-requested":
-		return mk("developer", developerUser, "implement-or-refine"), true
+		role = "developer"
 	case "status:ready-for-review", "status:review-in-progress":
-		return mk("reviewer", reviewerUser, "static-review"), true
-	case "status:ready-for-po-review", "status:po-review-in-progress":
-		return mk("po", poUser, "po-review"), true
-	case "status:awaiting-final-stakeholder-approval":
-		return mk("stakeholder", state.Stakeholder, "final-approval"), true
+		role = "reviewer"
+	// Human-wait states: no task queued; Bridge waits for webhook.
+	case "status:awaiting-stakeholder-approval", "status:awaiting-final-stakeholder-approval":
+		return WorkPackage{}, false
+	// Terminal states.
+	case "status:done", "status:rejected":
+		return WorkPackage{}, false
 	default:
-		return AgentTask{}, false
-	}
-}
-
-func (s *Server) dispatchTask(task AgentTask) error {
-	if err := os.MkdirAll(s.cfg.DispatchDir, 0o755); err != nil {
-		return err
+		return WorkPackage{}, false
 	}
 
-	filename := filepath.Join(
-		s.cfg.DispatchDir,
-		fmt.Sprintf("issue-%d-%s-%d.json", task.IssueNumber, task.Role, time.Now().UnixNano()),
-	)
-
-	if err := os.WriteFile(filename, []byte(prettyJSON(task)), 0o644); err != nil {
-		return err
+	var lastCommentID int64
+	if len(comments) > 0 {
+		lastCommentID = comments[len(comments)-1].ID
 	}
 
-	if cmdTemplate := strings.TrimSpace(s.cfg.DispatchCommand); cmdTemplate != "" {
-		cmdLine := strings.ReplaceAll(cmdTemplate, "{file}", filename)
-		cmdLine = strings.ReplaceAll(cmdLine, "{assignee}", task.Assignee)
-		cmdLine = strings.ReplaceAll(cmdLine, "{issue}", strconv.Itoa(task.IssueNumber))
-		cmd := exec.Command("sh", "-lc", cmdLine)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("dispatch command failed: %w: %s", err, strings.TrimSpace(string(out)))
-		}
-	}
+	repo := fmt.Sprintf("%s/%s", cfg.Owner, cfg.Repo)
 
-	if tmuxTemplate := strings.TrimSpace(s.cfg.DispatchTmuxTemplate); tmuxTemplate != "" {
-		cmdLine := strings.ReplaceAll(tmuxTemplate, "{file}", filename)
-		cmdLine = strings.ReplaceAll(cmdLine, "{assignee}", task.Assignee)
-		cmdLine = strings.ReplaceAll(cmdLine, "{issue}", strconv.Itoa(task.IssueNumber))
-		cmd := exec.Command("sh", "-lc", cmdLine)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("dispatch tmux failed: %w: %s", err, strings.TrimSpace(string(out)))
-		}
-	}
-
-	return nil
+	return WorkPackage{
+		Repo:          repo,
+		IssueID:       issue.Number,
+		Role:          role,
+		Assignee:      currentAssigneeOfIssue(issue),
+		LastCommentID: lastCommentID,
+		CurrentStatus: state.StatusLabel,
+	}, true
 }
