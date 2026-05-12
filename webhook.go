@@ -262,7 +262,7 @@ func (s *Server) processApproveComment(ctx context.Context, issueNumber int, com
 	var toStatus string
 	switch ws.StatusLabel {
 	case "status:awaiting-stakeholder-approval":
-		toStatus = "status:approved-for-dev"
+		toStatus = "status:architect-analysis"
 	case "status:awaiting-final-stakeholder-approval":
 		toStatus = "status:done"
 	default:

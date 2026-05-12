@@ -15,7 +15,10 @@ func TestStatusLabelToRole(t *testing.T) {
 	cases := []tc{
 		{"status:new", "po"},
 		{"status:po-analysis", "po"},
+		{"status:ready-for-requirements-review", "reviewer"},
+		{"status:requirements-review-in-progress", "reviewer"},
 		{"status:awaiting-stakeholder-approval", "stakeholder"},
+		{"status:architect-analysis", "architect"},
 		{"status:approved-for-dev", "developer"},
 		{"status:in-progress", "developer"},
 		{"status:ready-for-review", "reviewer"},
@@ -60,7 +63,10 @@ func TestDecideNextActionQueuesCorrectRole(t *testing.T) {
 	cases := []tc{
 		{"status:new", true, "po"},
 		{"status:po-analysis", true, "po"},
+		{"status:ready-for-requirements-review", true, "reviewer"},
+		{"status:requirements-review-in-progress", true, "reviewer"},
 		{"status:awaiting-stakeholder-approval", false, ""},
+		{"status:architect-analysis", true, "architect"},
 		{"status:approved-for-dev", true, "developer"},
 		{"status:in-progress", true, "developer"},
 		{"status:ready-for-review", true, "reviewer"},
@@ -91,6 +97,96 @@ func TestDecideNextActionQueuesCorrectRole(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRequirementsReviewTransitions verifies the PO→reviewer→stakeholder path.
+func TestRequirementsReviewTransitions(t *testing.T) {
+	t.Run("po can publish to ready-for-requirements-review from po-analysis", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: "creator"}, Labels: []GitHubLabel{{Name: "status:po-analysis"}}}
+		res := validateTransition(issue, nil, "po", "status:ready-for-requirements-review")
+		if !res.Allowed {
+			t.Errorf("expected allowed, violations: %v", res.Violations)
+		}
+	})
+
+	t.Run("po cannot skip to awaiting-stakeholder-approval directly", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: "creator"}, Labels: []GitHubLabel{{Name: "status:po-analysis"}}}
+		res := validateTransition(issue, nil, "po", "status:awaiting-stakeholder-approval")
+		if res.Allowed {
+			t.Error("expected not allowed: po cannot skip requirements review")
+		}
+	})
+
+	t.Run("reviewer can begin requirements review", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: "creator"}, Labels: []GitHubLabel{{Name: "status:ready-for-requirements-review"}}}
+		res := validateTransition(issue, nil, "reviewer", "status:requirements-review-in-progress")
+		if !res.Allowed {
+			t.Errorf("expected allowed, violations: %v", res.Violations)
+		}
+	})
+
+	t.Run("reviewer can approve requirements to awaiting-stakeholder-approval", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: "creator"}, Labels: []GitHubLabel{{Name: "status:requirements-review-in-progress"}}}
+		res := validateTransition(issue, nil, "reviewer", "status:awaiting-stakeholder-approval")
+		if !res.Allowed {
+			t.Errorf("expected allowed, violations: %v", res.Violations)
+		}
+	})
+
+	t.Run("reviewer can reject requirements back to po-analysis", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: "creator"}, Labels: []GitHubLabel{{Name: "status:requirements-review-in-progress"}}}
+		res := validateTransition(issue, nil, "reviewer", "status:po-analysis")
+		if !res.Allowed {
+			t.Errorf("expected allowed, violations: %v", res.Violations)
+		}
+	})
+
+	t.Run("developer cannot touch requirements review states", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: "creator"}, Labels: []GitHubLabel{{Name: "status:ready-for-requirements-review"}}}
+		res := validateTransition(issue, nil, "developer", "status:requirements-review-in-progress")
+		if res.Allowed {
+			t.Error("expected not allowed for developer")
+		}
+	})
+}
+
+// TestArchitectTransitions verifies the stakeholder-approval→architect→developer path.
+func TestArchitectTransitions(t *testing.T) {
+	creator := "alice"
+
+	t.Run("stakeholder approve routes to architect-analysis not approved-for-dev", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: creator}, Labels: []GitHubLabel{{Name: "status:awaiting-stakeholder-approval"}}}
+		comments := []IssueComment{{ID: 1, User: GitHubUser{Login: creator}, Body: "/approve"}}
+		res := validateTransition(issue, comments, "stakeholder", "status:architect-analysis")
+		if !res.Allowed {
+			t.Errorf("expected allowed, violations: %v", res.Violations)
+		}
+	})
+
+	t.Run("stakeholder cannot skip to approved-for-dev directly", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: creator}, Labels: []GitHubLabel{{Name: "status:awaiting-stakeholder-approval"}}}
+		comments := []IssueComment{{ID: 1, User: GitHubUser{Login: creator}, Body: "/approve"}}
+		res := validateTransition(issue, comments, "stakeholder", "status:approved-for-dev")
+		if res.Allowed {
+			t.Error("expected not allowed: must go through architect-analysis")
+		}
+	})
+
+	t.Run("architect can transition to approved-for-dev", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: creator}, Labels: []GitHubLabel{{Name: "status:architect-analysis"}}}
+		res := validateTransition(issue, nil, "architect", "status:approved-for-dev")
+		if !res.Allowed {
+			t.Errorf("expected allowed, violations: %v", res.Violations)
+		}
+	})
+
+	t.Run("developer cannot self-start from architect-analysis", func(t *testing.T) {
+		issue := Issue{Number: 1, User: GitHubUser{Login: creator}, Labels: []GitHubLabel{{Name: "status:architect-analysis"}}}
+		res := validateTransition(issue, nil, "developer", "status:approved-for-dev")
+		if res.Allowed {
+			t.Error("expected not allowed for developer")
+		}
+	})
 }
 
 // TestValidateTransitionAllowedRoles verifies the role-based actor check.
@@ -143,14 +239,14 @@ func TestValidateTransitionStakeholderApprove(t *testing.T) {
 		comments := []IssueComment{
 			{ID: 1, User: GitHubUser{Login: creator}, Body: "/approve"},
 		}
-		res := validateTransition(issue, comments, "stakeholder", "status:approved-for-dev")
+		res := validateTransition(issue, comments, "stakeholder", "status:architect-analysis")
 		if !res.Allowed {
 			t.Errorf("expected allowed, violations: %v", res.Violations)
 		}
 	})
 
 	t.Run("stakeholder cannot approve without approve comment", func(t *testing.T) {
-		res := validateTransition(issue, nil, "stakeholder", "status:approved-for-dev")
+		res := validateTransition(issue, nil, "stakeholder", "status:architect-analysis")
 		if res.Allowed {
 			t.Error("expected not allowed without /approve comment")
 		}

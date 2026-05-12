@@ -60,7 +60,10 @@ var (
 	statusLabels = []string{
 		"status:new",
 		"status:po-analysis",
+		"status:ready-for-requirements-review",
+		"status:requirements-review-in-progress",
 		"status:awaiting-stakeholder-approval",
+		"status:architect-analysis",
 		"status:approved-for-dev",
 		"status:in-progress",
 		"status:ready-for-review",
@@ -83,16 +86,40 @@ var (
 		},
 		{
 			FromStatuses: []string{"status:new", "status:po-analysis"},
-			ToStatus:     "status:awaiting-stakeholder-approval",
+			ToStatus:     "status:ready-for-requirements-review",
 			AllowedRoles: []string{"po"},
-			Description:  "PO can request stakeholder approval.",
+			Description:  "PO publishes analysis for reviewer requirements review.",
+		},
+		{
+			FromStatuses: []string{"status:ready-for-requirements-review", "status:requirements-review-in-progress"},
+			ToStatus:     "status:requirements-review-in-progress",
+			AllowedRoles: []string{"reviewer"},
+			Description:  "Reviewer can begin or continue requirements review.",
+		},
+		{
+			FromStatuses: []string{"status:ready-for-requirements-review", "status:requirements-review-in-progress"},
+			ToStatus:     "status:po-analysis",
+			AllowedRoles: []string{"reviewer"},
+			Description:  "Reviewer can send requirements back to PO for rework.",
+		},
+		{
+			FromStatuses: []string{"status:requirements-review-in-progress"},
+			ToStatus:     "status:awaiting-stakeholder-approval",
+			AllowedRoles: []string{"reviewer"},
+			Description:  "Reviewer can approve requirements and request stakeholder sign-off.",
 		},
 		{
 			FromStatuses:               []string{"status:awaiting-stakeholder-approval"},
-			ToStatus:                   "status:approved-for-dev",
+			ToStatus:                   "status:architect-analysis",
 			AllowedRoles:               []string{"stakeholder", "po"},
 			RequiresStakeholderApprove: true,
-			Description:                "Stakeholder-approved scope can move to developer.",
+			Description:                "Stakeholder-approved requirements move to architect for analysis.",
+		},
+		{
+			FromStatuses: []string{"status:architect-analysis"},
+			ToStatus:     "status:approved-for-dev",
+			AllowedRoles: []string{"architect"},
+			Description:  "Architect hands off to developer after architecture work is done.",
 		},
 		{
 			FromStatuses: []string{"status:approved-for-dev", "status:changes-requested", "status:in-progress"},
@@ -703,8 +730,12 @@ func computeWorkflowState(issue Issue, comments []IssueComment) WorkflowState {
 	switch status {
 	case "status:new", "status:po-analysis":
 		ws.SuggestedRole = "po"
+	case "status:ready-for-requirements-review", "status:requirements-review-in-progress":
+		ws.SuggestedRole = "reviewer"
 	case "status:awaiting-stakeholder-approval":
 		ws.SuggestedRole = "stakeholder"
+	case "status:architect-analysis":
+		ws.SuggestedRole = "architect"
 	case "status:approved-for-dev", "status:in-progress", "status:changes-requested":
 		ws.SuggestedRole = "developer"
 	case "status:ready-for-review", "status:review-in-progress":

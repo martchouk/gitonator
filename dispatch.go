@@ -76,6 +76,10 @@ func decideNextAction(cfg Config, issue Issue, state WorkflowState, comments []I
 		"status:ready-for-po-review", "status:po-review-in-progress",
 		"status:blocked":
 		role = "po"
+	case "status:ready-for-requirements-review", "status:requirements-review-in-progress":
+		role = "reviewer"
+	case "status:architect-analysis":
+		role = "architect"
 	case "status:approved-for-dev", "status:in-progress", "status:changes-requested":
 		role = "developer"
 	case "status:ready-for-review", "status:review-in-progress":
