@@ -77,7 +77,8 @@ Roles are strings defined in the Bridge's `agents.json`. Common conventions:
 
 - `po` — product owner
 - `developer` — developer
-- `reviewer` — code/static reviewer
+- `reviewer` — code and requirements reviewer
+- `architect` — architect (requirements analysis and architecture design)
 
 The orchestrator routes tasks to roles. The Bridge maps roles to agent processes.
 
@@ -97,7 +98,10 @@ Supported status labels:
 
 - `status:new`
 - `status:po-analysis`
+- `status:ready-for-requirements-review`
+- `status:requirements-review-in-progress`
 - `status:awaiting-stakeholder-approval`
+- `status:architect-analysis`
 - `status:approved-for-dev`
 - `status:in-progress`
 - `status:ready-for-review`
@@ -119,12 +123,17 @@ Supported status labels:
 Typical feature flow:
 
 1. New issue is created → `status:new` → PO task queued
-2. PO completes analysis → `status:awaiting-stakeholder-approval`
-3. Stakeholder posts `/approve` → `status:approved-for-dev` → Developer task queued
-4. Developer implements → `status:ready-for-review` → Reviewer task queued
-5. Reviewer accepts → `status:ready-for-po-review` → PO task queued
-6. PO approves → `status:awaiting-final-stakeholder-approval`
-7. Stakeholder posts `/approve` → `status:done`
+2. PO completes analysis → `status:ready-for-requirements-review` → Reviewer task queued
+3. Reviewer reviews requirements → `status:requirements-review-in-progress`
+4. Reviewer approves requirements → `status:awaiting-stakeholder-approval`
+5. Stakeholder posts `/approve` → `status:architect-analysis` → Architect task queued
+6. Architect completes architecture → `status:approved-for-dev` → Developer task queued
+7. Developer implements → `status:ready-for-review` → Reviewer task queued
+8. Reviewer accepts code → `status:ready-for-po-review` → PO task queued
+9. PO approves → `status:awaiting-final-stakeholder-approval`
+10. Stakeholder posts `/approve` → `status:done`
+
+If the reviewer sends requirements back to PO (`status:po-analysis`), the PO reworks and publishes again into the requirements review cycle.
 
 ### Review loop
 
