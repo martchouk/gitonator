@@ -9,7 +9,7 @@
         "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
       },
       "worktrees": {
-        "martchouk/github.mcp": "/home/john/git/agents/bud-dev/github.mcp"
+        "martchouk/github.mcp": "/path/to/your/worktree/bud-dev/github.mcp"
       }
     },
     {
@@ -21,7 +21,7 @@
         "GH_TOKEN": "$MUD_REV_GH_TOKEN"
       },
       "worktrees": {
-        "martchouk/github.mcp": "/home/john/git/agents/mud-rev/github.mcp"
+        "martchouk/github.mcp": "/path/to/your/worktree/mud-rev/github.mcp"
       }
     }
   ]

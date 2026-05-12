@@ -272,13 +272,8 @@ func (s *Server) processApproveComment(ctx context.Context, issueNumber int, com
 
 	ws := computeWorkflowState(issue, nil)
 
-	var toStatus string
-	switch ws.StatusLabel {
-	case "status:awaiting-stakeholder-approval":
-		toStatus = "status:architect-analysis"
-	case "status:awaiting-final-stakeholder-approval":
-		toStatus = "status:done"
-	default:
+	toStatus, ok := approveTransitionTarget(ws.StatusLabel)
+	if !ok {
 		return false, nil
 	}
 
@@ -314,6 +309,19 @@ func (s *Server) processApproveComment(ctx context.Context, issueNumber int, com
 	)
 	s.logger.Printf("approve transition applied: issue=%d from=%s to=%s actor=%s", issueNumber, fromStatus, toStatus, actor)
 	return true, nil
+}
+
+// approveTransitionTarget maps a stakeholder-wait status to the status it transitions to
+// when a valid /approve comment is received. Returns ("", false) for all other statuses.
+func approveTransitionTarget(fromStatus string) (string, bool) {
+	switch fromStatus {
+	case "status:awaiting-stakeholder-approval":
+		return "status:architect-analysis", true
+	case "status:awaiting-final-stakeholder-approval":
+		return "status:done", true
+	default:
+		return "", false
+	}
 }
 
 func validateWebhookSignature(secret string, payload []byte, provided string) bool {

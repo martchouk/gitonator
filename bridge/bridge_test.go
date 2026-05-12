@@ -119,7 +119,7 @@ func TestBuildEnvAgentVarOverridesHost(t *testing.T) {
 	}
 }
 
-func TestBuildEnvEmptyAgentEnvReturnHostEnv(t *testing.T) {
+func TestBuildEnvEmptyAgentEnvReturnsHostEnv(t *testing.T) {
 	t.Setenv("TEST_SENTINEL_VAR", "present")
 	env := buildEnv(nil)
 	var found bool
