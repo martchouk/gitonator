@@ -817,46 +817,6 @@ func labelsToStrings(labels []GitHubLabel) []string {
 	return out
 }
 
-func normalizeWorkflowStatusLabel(raw string) string {
-	s := strings.TrimSpace(strings.ToLower(raw))
-	s = strings.TrimPrefix(s, "status:")
-	s = strings.ReplaceAll(s, "_", "-")
-	s = strings.ReplaceAll(s, " ", "-")
-
-	switch s {
-	case "new":
-		return "status:new"
-	case "po-analysis":
-		return "status:po-analysis"
-	case "awaiting-stakeholder-approval", "stakeholder-approval":
-		return "status:awaiting-stakeholder-approval"
-	case "approved-for-dev":
-		return "status:approved-for-dev"
-	case "in-progress":
-		return "status:in-progress"
-	case "ready-for-review":
-		return "status:ready-for-review"
-	case "review-in-progress":
-		return "status:review-in-progress"
-	case "changes-requested":
-		return "status:changes-requested"
-	case "ready-for-po-review":
-		return "status:ready-for-po-review"
-	case "po-review-in-progress":
-		return "status:po-review-in-progress"
-	case "awaiting-final-stakeholder-approval", "final-approval":
-		return "status:awaiting-final-stakeholder-approval"
-	case "blocked":
-		return "status:blocked"
-	case "done":
-		return "status:done"
-	case "rejected":
-		return "status:rejected"
-	default:
-		return ""
-	}
-}
-
 func mergeAuditMetadata(base interface{}, extra map[string]interface{}) map[string]interface{} {
 	out := map[string]interface{}{}
 	if baseMap, ok := base.(map[string]interface{}); ok {
@@ -916,5 +876,3 @@ func buildIssueTimeline(
 	return out
 }
 
-// normalizeWorkflowStatusLabel is referenced here to avoid the compiler dropping it.
-var _ = normalizeWorkflowStatusLabel

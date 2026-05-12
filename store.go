@@ -286,7 +286,13 @@ func (s *Store) RecoverStaleTasks(staleAfterSeconds int) (int64, error) {
 
 // RecoverStaleTasksWithLog returns the bridge_ids of recovered tasks for logging.
 func (s *Store) RecoverStaleTasksWithLog(staleAfterSeconds int) ([]string, error) {
-	rows, err := s.db.Query(
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	rows, err := tx.Query(
 		`SELECT COALESCE(bridge_id, '<unknown>') FROM tasks
 		 WHERE status='dispatched'
 		   AND claimed_at IS NOT NULL
@@ -296,7 +302,6 @@ func (s *Store) RecoverStaleTasksWithLog(staleAfterSeconds int) ([]string, error
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var bridges []string
 	for rows.Next() {
 		var b string
@@ -304,21 +309,28 @@ func (s *Store) RecoverStaleTasksWithLog(staleAfterSeconds int) ([]string, error
 			bridges = append(bridges, b)
 		}
 	}
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
 	if len(bridges) > 0 {
-		_, err = s.db.Exec(
+		if _, err = tx.Exec(
 			`UPDATE tasks
 			 SET status='queued', bridge_id=NULL, last_message='recovered stale dispatched task'
 			 WHERE status='dispatched'
 			   AND claimed_at IS NOT NULL
 			   AND claimed_at < datetime('now', '-' || ? || ' seconds')`,
 			staleAfterSeconds,
-		)
+		); err != nil {
+			return nil, err
+		}
 	}
-	return bridges, err
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return bridges, nil
 }
 
 func (s *Store) RecordDelivery(id, eventType string, payload []byte) error {

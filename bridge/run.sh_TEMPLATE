@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export PATH=$PATH:/usr/local/go/bin
-cd /home/USER_NAME/PATH_TO_THE_REPO/github.mcp
+cd /home/USER_NAME/PATH_TO_THE_REPO/github.mcp/bridge
 
 export ORCH_BASE_URL='https://YOUR_MCP_SERVER_URL'
 export AGENT_SHARED_TOKEN='YOUR_AGENT_SHARED_TOKEN'
-export AGENT='GITHUB_ACCOUNT'
-export TMUX_TARGET='TMUX_NAME'
-export TASKS_DIR="$HOME/agent_tasks"
-export DISPATCH_COMMAND='tmux send-keys -t {tmux_target} "python3 ~/bin/agent_runner.py --task {file}" C-m'
+export BRIDGE_ID='YOUR_BRIDGE_ID'            # unique name for this Bridge instance
+export AGENTS_CONFIG="$HOME/agents.json"     # path to agents roster JSON file
+export POLL_SECONDS=5
+export LOG_LEVEL=DEBUG
 
 exec go run bridge.go

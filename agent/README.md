@@ -1,44 +1,37 @@
 # agent-task
 
-`agent-task` is a small local CLI helper for working with task files created by the bridge.
+`agent-task` is a small local CLI helper for working with work package files delivered by the Bridge.
 
-It is designed to be used by a human operator, a local AI agent, or a tmux-based workflow.
+It is designed to be used by a human operator, a local AI agent, or any automated process that receives a work package JSON file.
 
-The tool reads one local task envelope JSON file and lets you:
+The tool reads one work package JSON file and lets you:
 
-- inspect the task
+- inspect the package
 - open the linked GitHub issue in a browser
-- post a normal GitHub comment through the orchestrator
-- post a structured `[handoff]` comment
-- post `/approve`
-- mark the task as locally completed
-- mark the task as locally failed
+- post a GitHub comment directly via the GitHub API
+- post `/approve` directly via the GitHub API
 
-It does **not** talk directly to GitHub. Comments are posted through the orchestrator HTTP API.
+Comments go directly to GitHub using the agent's own `GITHUB_TOKEN` — the orchestrator is not involved.
 
 ---
 
 ## Where it fits
 
-Typical flow:
+```
+orchestrator → (webhook transition) → queues task
+bridge       → (polls /api/v1/work/next) → writes work package JSON to temp file → spawns agent
+agent        → reads work package JSON → uses agent-task to inspect / comment / approve
+```
 
-1. The central orchestrator creates a task
-2. The local bridge claims it and writes a local task file
-3. `agent-task` is used to inspect and act on that file
-4. `agent-task complete` or `agent-task fail` writes the result file
-5. The bridge detects that result file and reports it back to the orchestrator
+Division of responsibility:
 
-So the division of responsibility is:
-
-- **orchestrator**: workflow engine, queue, GitHub integration
-- **bridge**: polling, claiming, heartbeat, result upload
-- **agent-task**: local operator/agent helper on one task file
+- **orchestrator**: workflow engine, state machine, queue, GitHub label + assignee management
+- **bridge**: polling, atomic task dispatch, agent spawning
+- **agent-task**: operator/agent helper for acting on a single work package
 
 ---
 
 ## Project files
-
-Current directory:
 
 ```text
 agent/
@@ -52,13 +45,12 @@ agent/
 
 ## Build
 
-From the `agent/` directory:
-
 ```bash
+cd agent
 go build -o agent-task .
 ```
 
-If you already have `build.sh`:
+Or:
 
 ```bash
 ./build.sh
@@ -69,13 +61,10 @@ If you already have `build.sh`:
 ## Commands
 
 ```text
-agent-task show     <taskfile>
-agent-task open     <taskfile>
-agent-task comment  <taskfile> --message "..." [--field key=value]...
-agent-task handoff  <taskfile> --to bobwurst --state ready-for-review --summary "..."
-agent-task approve  <taskfile>
-agent-task complete <taskfile> [--message "..."] [--result key=value]...
-agent-task fail     <taskfile> [--message "..."] [--result key=value]...
+agent-task show    <package-file>
+agent-task open    <package-file>
+agent-task comment <package-file> --message "..." [--field key=value]...
+agent-task approve <package-file>
 ```
 
 ---
@@ -84,29 +73,39 @@ agent-task fail     <taskfile> [--message "..."] [--result key=value]...
 
 ### `show`
 
-Prints a readable summary of the task file, including:
+Prints a readable summary of the work package, including:
 
 - task ID
-- issue number
-- issue URL
+- repo
+- issue ID and URL
 - role
 - assignee
-- action
-- status
-- dedup key
-- created/fetched timestamps
-- done/fail result file paths
-- pretty-printed payload JSON
+- last comment ID
+- current workflow status
 
 Example:
 
 ```bash
-agent-task show ./agent_tasks/task-17-issue-42.json
+agent-task show /tmp/work-42-issue-8.json
+```
+
+Output:
+
+```
+Package file:   /tmp/work-42-issue-8.json
+Task ID:        42
+Repo:           martchouk/github.mcp
+Issue ID:       8
+Issue URL:      https://github.com/martchouk/github.mcp/issues/8
+Role:           developer
+Assignee:       bud-dev
+Last comment:   123
+Current status: status:approved-for-dev
 ```
 
 ### `open`
 
-Opens the issue URL from the task file in the default browser.
+Opens the issue URL in the default browser.
 
 Supported platforms:
 
@@ -117,472 +116,149 @@ Supported platforms:
 Example:
 
 ```bash
-agent-task open ./agent_tasks/task-17-issue-42.json
+agent-task open /tmp/work-42-issue-8.json
 ```
 
 ### `comment`
 
-Posts a normal GitHub issue comment through the orchestrator.
+Posts a GitHub issue comment directly to the GitHub API.
 
 Required:
 
-- `--message`
+- `--message "..."`
 
 Optional:
 
-- multiple `--field key=value`
-
-Fields are appended as bullet lines to the comment body.
+- multiple `--field key=value` (appended as bullet lines to the comment body)
 
 Example:
 
 ```bash
-agent-task comment ./agent_tasks/task-17-issue-42.json   --message "Static review completed and posted below."   --field outcome=accepted   --field severity=none
+agent-task comment /tmp/work-42-issue-8.json \
+  --message "Implementation finished, opening PR." \
+  --field pr="https://github.com/martchouk/github.mcp/pull/5"
 ```
 
-This produces a body like:
+Resulting comment body:
 
 ```text
-Static review completed and posted below.
+Implementation finished, opening PR.
 
-- outcome: accepted
-- severity: none
-```
-
-### `handoff`
-
-Posts a structured `[handoff]` comment through the orchestrator.
-
-Required:
-
-- `--to`
-- `--state`
-- `--summary`
-
-The `from:` field is taken from:
-
-1. `AGENT_ASSIGNEE` environment variable, if set
-2. otherwise the `assignee` value from the task file
-
-Example:
-
-```bash
-agent-task handoff ./agent_tasks/task-17-issue-42.json   --to bobwurst   --state ready-for-review   --summary "Implementation finished, ready for static review."
-```
-
-This posts:
-
-```text
-[handoff]
-from: johnvolldepp
-to: bobwurst
-state: ready-for-review
-summary: Implementation finished, ready for static review.
-[/handoff]
+- pr: https://github.com/martchouk/github.mcp/pull/5
 ```
 
 ### `approve`
 
-Posts exactly:
-
-```text
-/approve
-```
-
-through the orchestrator.
+Posts exactly `/approve` as a GitHub issue comment. The orchestrator processes this on the next webhook event and advances the workflow state.
 
 Example:
 
 ```bash
-agent-task approve ./agent_tasks/task-17-issue-42.json
+agent-task approve /tmp/work-42-issue-8.json
 ```
 
-### `complete`
+---
 
-Writes the local `.done.json` result file referenced by the task envelope.
+## Work package format
 
-Optional:
+`agent-task` reads the JSON work package written by the Bridge to a temp file.
 
-- `--message "..."`
-- repeated `--result key=value`
-
-If `--message` is omitted, the default is:
-
-```text
-completed by local worker
+```json
+{
+  "id": 42,
+  "repo": "martchouk/github.mcp",
+  "issue_id": 8,
+  "role": "developer",
+  "assignee": "bud-dev",
+  "last_comment_id": 123,
+  "current_status": "status:approved-for-dev"
+}
 ```
 
-Example:
-
-```bash
-agent-task complete ./agent_tasks/task-17-issue-42.json   --message "Review finished and posted to GitHub"   --result outcome=accepted   --result review_url="https://github.com/org/repo/issues/42#issuecomment-1"
-```
-
-### `fail`
-
-Writes the local `.fail.json` result file referenced by the task envelope.
-
-Optional:
-
-- `--message "..."`
-- repeated `--result key=value`
-
-If `--message` is omitted, the default is:
-
-```text
-failed by local worker
-```
-
-Example:
-
-```bash
-agent-task fail ./agent_tasks/task-17-issue-42.json   --message "Repository checkout missing"   --result reason=missing_checkout
-```
+| Field | Description |
+|---|---|
+| `id` | Orchestrator task database ID |
+| `repo` | `owner/repo` string |
+| `issue_id` | GitHub issue number |
+| `role` | Role this task was queued for |
+| `assignee` | Current GitHub assignee at queue time |
+| `last_comment_id` | Most recent comment ID at queue time — use to know where to start reading |
+| `current_status` | Workflow status label at queue time |
 
 ---
 
 ## Environment variables
 
-`agent-task` uses these environment variables when posting comments:
+`agent-task` uses these environment variables for `comment` and `approve`:
 
-| Variable | Required for comment/handoff/approve | Purpose |
+| Variable | Required | Purpose |
 |---|---|---|
-| `ORCH_BASE_URL` | yes | Base URL of the orchestrator, e.g. `https://mcp.singularia.de` |
-| `AGENT_SHARED_TOKEN` | yes | Bearer token for the orchestrator agent API |
-| `AGENT_ASSIGNEE` | recommended | Used as `agent` in comment requests and as `from:` for handoffs |
+| `GITHUB_TOKEN` | **yes** | Agent's own GitHub token for posting comments |
+| `GITHUB_OWNER` | fallback | Owner portion of `owner/repo`, used if `pkg.repo` is empty |
+| `GITHUB_REPO` | fallback | Repo name, used if `pkg.repo` is empty |
 
-These are **not required** for `show`, `open`, `complete`, or `fail`.
+`show` and `open` require no environment variables.
 
 ### Example
 
 ```bash
-export ORCH_BASE_URL="https://mcp.singularia.de"
-export AGENT_SHARED_TOKEN="supersecret"
-export AGENT_ASSIGNEE="johnvolldepp"
+export GITHUB_TOKEN="ghp_yourtoken"
 ```
 
 ---
 
-## Task file format
+## curl equivalent for comment
 
-`agent-task` expects the JSON task envelope written by the bridge.
-
-A typical file looks like:
-
-```json
-{
-  "task": {
-    "id": 17,
-    "issue_number": 42,
-    "issue_url": "https://github.com/org/repo/issues/42",
-    "role": "developer",
-    "assignee": "johnvolldepp",
-    "action": "implement-or-refine",
-    "status": "queued",
-    "dedup_key": "issue:42|role:developer|action:implement-or-refine|status:approved-for-dev",
-    "payload": {
-      "issue_number": 42,
-      "issue_url": "https://github.com/org/repo/issues/42",
-      "role": "developer",
-      "assignee": "johnvolldepp",
-      "action": "implement-or-refine",
-      "status": "status:approved-for-dev"
-    },
-    "created_at": "2026-05-09T10:00:00Z"
-  },
-  "fetched_at_utc": "2026-05-09T10:00:05Z",
-  "result_hint": {
-    "done_file": "./agent_tasks/task-17-issue-42.done.json",
-    "fail_file": "./agent_tasks/task-17-issue-42.fail.json"
-  }
-}
-```
-
----
-
-## Result file format
-
-### Success
-
-`complete` writes the `done_file` path from `result_hint`.
-
-Example output file:
-
-```json
-{
-  "message": "Review finished and posted to GitHub",
-  "result": {
-    "outcome": "accepted",
-    "review_url": "https://github.com/org/repo/issues/42#issuecomment-1"
-  }
-}
-```
-
-### Failure
-
-`fail` writes the `fail_file` path from `result_hint`.
-
-Example output file:
-
-```json
-{
-  "message": "Repository checkout missing",
-  "result": {
-    "reason": "missing_checkout"
-  }
-}
-```
-
----
-
-## `--result` parsing behavior
-
-For `complete` and `fail`, each `--result key=value` is parsed as follows:
-
-- if `value` is valid JSON, it is stored as parsed JSON
-- otherwise it is stored as a plain string
-
-Examples:
+What `agent-task comment` effectively sends:
 
 ```bash
---result outcome=accepted
---result count=5
---result ok=true
---result meta='{"severity":"low","notes":["a","b"]}'
+curl -sS -X POST \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -H "Content-Type: application/json" \
+  -d '{"body": "Implementation finished.\n\n- pr: https://github.com/martchouk/github.mcp/pull/5"}' \
+  "https://api.github.com/repos/martchouk/github.mcp/issues/8/comments" | jq
 ```
-
-These become:
-
-```json
-{
-  "outcome": "accepted",
-  "count": 5,
-  "ok": true,
-  "meta": {
-    "severity": "low",
-    "notes": ["a", "b"]
-  }
-}
-```
-
-For `comment`, `--field key=value` always stores values as strings.
 
 ---
 
 ## Usage examples
 
-### Inspect a task
+### Inspect a work package
 
 ```bash
-agent-task show ./agent_tasks/task-17-issue-42.json
+agent-task show /tmp/work-42-issue-8.json
 ```
 
 ### Open the issue in browser
 
 ```bash
-agent-task open ./agent_tasks/task-17-issue-42.json
+agent-task open /tmp/work-42-issue-8.json
 ```
 
-### Post a normal comment
+### Post a comment
 
 ```bash
-agent-task comment ./agent_tasks/task-17-issue-42.json   --message "Review completed and posted to the issue."   --field outcome=accepted
-```
-
-### Handoff from developer to reviewer
-
-```bash
-agent-task handoff ./agent_tasks/task-17-issue-42.json   --to bobwurst   --state ready-for-review   --summary "Implementation finished, ready for static review."
+export GITHUB_TOKEN="ghp_yourtoken"
+agent-task comment /tmp/work-42-issue-8.json \
+  --message "Review completed. See findings in the issue thread." \
+  --field outcome=changes-requested
 ```
 
 ### Stakeholder approval
 
 ```bash
-agent-task approve ./agent_tasks/task-17-issue-42.json
-```
-
-### Mark task complete
-
-```bash
-agent-task complete ./agent_tasks/task-17-issue-42.json   --message "Work finished and issue updated"   --result outcome=accepted
-```
-
-### Mark task failed
-
-```bash
-agent-task fail ./agent_tasks/task-17-issue-42.json   --message "Repo checkout missing"   --result reason=missing_checkout
-```
-
----
-
-## curl equivalents for comment API
-
-These are the requests `agent-task` effectively sends for comment-style operations.
-
-Assume:
-
-```bash
-export ORCH_BASE_URL="https://mcp.singularia.de"
-export AGENT_SHARED_TOKEN="supersecret"
-export AGENT_ASSIGNEE="johnvolldepp"
-```
-
-### Normal comment
-
-```bash
-curl -sS -X POST   -H "Authorization: Bearer $AGENT_SHARED_TOKEN"   -H "Content-Type: application/json"   -d '{
-    "issue_number": 42,
-    "agent": "johnvolldepp",
-    "body": "Review completed and posted below.
-
-- outcome: accepted"
-  }'   "$ORCH_BASE_URL/api/v1/agent/comment" | jq
-```
-
-### Handoff comment
-
-```bash
-curl -sS -X POST   -H "Authorization: Bearer $AGENT_SHARED_TOKEN"   -H "Content-Type: application/json"   -d '{
-    "issue_number": 42,
-    "agent": "johnvolldepp",
-    "body": "[handoff]
-from: johnvolldepp
-to: bobwurst
-state: ready-for-review
-summary: Implementation finished, ready for static review.
-[/handoff]"
-  }'   "$ORCH_BASE_URL/api/v1/agent/comment" | jq
-```
-
-### Approve comment
-
-```bash
-curl -sS -X POST   -H "Authorization: Bearer $AGENT_SHARED_TOKEN"   -H "Content-Type: application/json"   -d '{
-    "issue_number": 42,
-    "agent": "johnvolldepp",
-    "body": "/approve"
-  }'   "$ORCH_BASE_URL/api/v1/agent/comment" | jq
-```
-
----
-
-## Local shell verification
-
-Assume:
-
-```bash
-TASK=./agent_tasks/task-17-issue-42.json
-```
-
-### Show task
-
-```bash
-./agent-task show "$TASK"
-```
-
-### Pretty-print task file directly
-
-```bash
-jq . "$TASK"
-```
-
-### Show target result paths
-
-```bash
-jq -r '.result_hint.done_file, .result_hint.fail_file' "$TASK"
-```
-
-### Create a success result manually
-
-```bash
-DONE="$(jq -r '.result_hint.done_file' "$TASK")"
-mkdir -p "$(dirname "$DONE")"
-cat > "$DONE" <<'EOF'
-{
-  "message": "completed manually",
-  "result": {
-    "summary": "ok"
-  }
-}
-EOF
-```
-
-### Create a failure result manually
-
-```bash
-FAIL="$(jq -r '.result_hint.fail_file' "$TASK")"
-mkdir -p "$(dirname "$FAIL")"
-cat > "$FAIL" <<'EOF'
-{
-  "message": "failed manually",
-  "result": {
-    "reason": "example"
-  }
-}
-EOF
-```
-
-### Verify the issue URL in the task file
-
-```bash
-jq -r '.task.issue_url' "$TASK"
-```
-
-### Verify the issue number in the task file
-
-```bash
-jq -r '.task.issue_number' "$TASK"
+export GITHUB_TOKEN="ghp_yourtoken"
+agent-task approve /tmp/work-42-issue-8.json
 ```
 
 ---
 
 ## Exit behavior
 
-- on success, `agent-task` exits with status `0`
-- on invalid usage or runtime error, it exits with non-zero status and prints usage text
-
----
-
-## Typical integrations
-
-### tmux
-
-A common bridge dispatch command is:
-
-```bash
-export DISPATCH_COMMAND='tmux send-keys -t johnvolldepp "agent-task open {file}" C-m'
-```
-
-Or for a pure local summary first:
-
-```bash
-export DISPATCH_COMMAND='tmux send-keys -t johnvolldepp "agent-task show {file}" C-m'
-```
-
-### Human-assisted workflow
-
-1. bridge writes task file
-2. tmux prints/open task
-3. human reads issue
-4. human posts comment or handoff via `agent-task`
-5. human writes `complete` or `fail`
-
-### AI-assisted workflow
-
-1. bridge writes task file
-2. local AI worker consumes it
-3. AI uses `agent-task comment` / `handoff` / `approve`
-4. AI ends with `agent-task complete` or `agent-task fail`
-
----
-
-## Notes
-
-- `agent-task` does not complete or fail tasks remotely by itself. It writes the local result file for the bridge to pick up.
-- `comment`, `handoff`, and `approve` require orchestrator connectivity and auth.
-- `complete` and `fail` are purely local file operations.
-- `open` requires a supported OS launcher to exist.
-- `show` is safe and offline.
+- On success: exits with status `0`
+- On invalid usage or runtime error: exits with non-zero and prints usage text to stderr
 
 ---
 
@@ -590,11 +266,7 @@ export DISPATCH_COMMAND='tmux send-keys -t johnvolldepp "agent-task show {file}"
 
 ```bash
 cd agent
-
-export ORCH_BASE_URL="https://mcp.singularia.de"
-export AGENT_SHARED_TOKEN="supersecret"
-export AGENT_ASSIGNEE="johnvolldepp"
-
+export GITHUB_TOKEN="ghp_yourtoken"
 go build -o agent-task .
-./agent-task show ../bridge/agent_tasks/task-17-issue-42.json
+./agent-task show /tmp/work-42-issue-8.json
 ```

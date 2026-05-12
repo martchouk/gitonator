@@ -172,8 +172,8 @@ func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg *WorkPackag
 	tmpFile.Close()
 
 	cmdLine := agent.LaunchTemplate
-	cmdLine = strings.ReplaceAll(cmdLine, "{worktree}", worktree)
-	cmdLine = strings.ReplaceAll(cmdLine, "{package_file}", tmpPath)
+	cmdLine = strings.ReplaceAll(cmdLine, "{worktree}", shellQuote(worktree))
+	cmdLine = strings.ReplaceAll(cmdLine, "{package_file}", shellQuote(tmpPath))
 
 	cmd := exec.Command("sh", "-c", cmdLine)
 	cmd.Stdout = os.Stdout
@@ -258,6 +258,10 @@ func collectRoles(roster Roster) []string {
 		}
 	}
 	return roles
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 func envOr(key, fallback string) string {
