@@ -4,6 +4,7 @@ github-issue-orchestrator
 orchestrator.db*
 bridge/agent-bridge
 agent/agent-task
+agents.json
 
 # Agent role files — applied by apply-role.sh (not for version control)
 CLAUDE.md

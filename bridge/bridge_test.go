@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -47,6 +48,89 @@ func TestSelectAgentReturnsNilWhenNoMatch(t *testing.T) {
 	agent := selectAgent(roster, pkg)
 	if agent != nil {
 		t.Errorf("expected nil, got %s", agent.Name)
+	}
+}
+
+func TestResolveEnvNilMapReturnsEmpty(t *testing.T) {
+	out, err := resolveEnv(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(out) != 0 {
+		t.Errorf("expected empty map, got %v", out)
+	}
+}
+
+func TestResolveEnvLiteralValuePassesThrough(t *testing.T) {
+	out, err := resolveEnv(map[string]string{"KEY": "literal-value"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out["KEY"] != "literal-value" {
+		t.Errorf("expected literal-value, got %q", out["KEY"])
+	}
+}
+
+func TestResolveEnvDollarVarInterpolatesFromHost(t *testing.T) {
+	t.Setenv("TEST_TOKEN_XYZ", "tok-abc123")
+	out, err := resolveEnv(map[string]string{"GH_TOKEN": "$TEST_TOKEN_XYZ"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out["GH_TOKEN"] != "tok-abc123" {
+		t.Errorf("expected tok-abc123, got %q", out["GH_TOKEN"])
+	}
+}
+
+func TestResolveEnvMissingVarReturnsError(t *testing.T) {
+	_, err := resolveEnv(map[string]string{"GH_TOKEN": "$DEFINITELY_NOT_SET_VAR_XYZ"})
+	if err == nil {
+		t.Fatal("expected error for unset var, got nil")
+	}
+	if !strings.Contains(err.Error(), "DEFINITELY_NOT_SET_VAR_XYZ") {
+		t.Errorf("error should name the missing var, got: %v", err)
+	}
+}
+
+func TestResolveRosterEnvPropagatesAgentName(t *testing.T) {
+	roster := &Roster{Agents: []Agent{
+		{Name: "bud-dev", Env: map[string]string{"GH_TOKEN": "$MISSING_VAR_FOR_AGENT"}},
+	}}
+	err := resolveRosterEnv(roster)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "bud-dev") {
+		t.Errorf("error should name the agent, got: %v", err)
+	}
+}
+
+func TestBuildEnvAgentVarOverridesHost(t *testing.T) {
+	t.Setenv("GH_TOKEN", "host-token")
+	env := buildEnv(map[string]string{"GH_TOKEN": "agent-token"})
+	var found string
+	for _, e := range env {
+		if strings.HasPrefix(e, "GH_TOKEN=") {
+			found = strings.TrimPrefix(e, "GH_TOKEN=")
+		}
+	}
+	if found != "agent-token" {
+		t.Errorf("expected agent-token to override host-token, got %q", found)
+	}
+}
+
+func TestBuildEnvEmptyAgentEnvReturnHostEnv(t *testing.T) {
+	t.Setenv("TEST_SENTINEL_VAR", "present")
+	env := buildEnv(nil)
+	var found bool
+	for _, e := range env {
+		if e == "TEST_SENTINEL_VAR=present" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected host env to be present when agent env is nil")
 	}
 }
 

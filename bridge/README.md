@@ -68,7 +68,7 @@ go build -o agent-bridge .
 
 ## agents.json — roster format
 
-`AGENTS_CONFIG` must point to a JSON file with this structure:
+`AGENTS_CONFIG` must point to a JSON file with this structure (see `agents.json.example` for a ready-to-copy template):
 
 ```json
 {
@@ -78,6 +78,9 @@ go build -o agent-bridge .
       "role": "developer",
       "llm_provider": "anthropic",
       "launch_template": "claude --dangerously-skip-permissions --project-dir {worktree} < {package_file}",
+      "env": {
+        "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
+      },
       "worktrees": {
         "martchouk/github.mcp": "/home/john/git/agents/bud-dev/github.mcp"
       }
@@ -87,6 +90,9 @@ go build -o agent-bridge .
       "role": "reviewer",
       "llm_provider": "anthropic",
       "launch_template": "claude --dangerously-skip-permissions --project-dir {worktree} < {package_file}",
+      "env": {
+        "GH_TOKEN": "$MUD_REV_GH_TOKEN"
+      },
       "worktrees": {
         "martchouk/github.mcp": "/home/john/git/agents/mud-rev/github.mcp"
       }
@@ -94,6 +100,8 @@ go build -o agent-bridge .
   ]
 }
 ```
+
+**`agents.json` is git-ignored** — copy `agents.json.example` and fill in your values. Never commit the real file; it contains tokens.
 
 ### Fields
 
@@ -103,7 +111,31 @@ go build -o agent-bridge .
 | `role` | Role this agent handles (e.g. `developer`, `reviewer`, `po`) |
 | `llm_provider` | Informational; not used by the Bridge itself |
 | `launch_template` | Shell command template (run via `sh -c`) to start the agent |
+| `env` | _(optional)_ Per-agent environment variables injected into the agent subprocess |
 | `worktrees` | Map of `"owner/repo"` → absolute path to the local working directory for that repo |
+
+### Per-agent env variables (`env`)
+
+The `env` block lets you set environment variables that will be injected into each agent's subprocess, merged with (and overriding) the bridge process's own environment.
+
+Two value forms are supported:
+
+| Form | Example | Behaviour |
+|---|---|---|
+| Literal | `"ghp_abc123"` | Used as-is |
+| Host env reference | `"$BUD_DEV_GH_TOKEN"` | Resolved from the bridge process's environment at startup |
+
+If a `$VAR` reference is not set in the host environment, the bridge logs an error and exits rather than passing an empty value.
+
+**Primary use case — per-agent `GH_TOKEN` for isolated GitHub identities:**
+
+```json
+"env": {
+  "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
+}
+```
+
+Export `BUD_DEV_GH_TOKEN=ghp_…` in the shell that starts the bridge (or in a `.env` / systemd `EnvironmentFile`). The bridge resolves it at startup and injects it into every subprocess it spawns for that agent, so `gh` CLI calls inside the agent always use the correct identity — no `gh auth switch` needed.
 
 ### Launch template placeholders
 
@@ -214,22 +246,10 @@ Response when no work is available:
 ```bash
 cd bridge
 
-# Create a roster file
-cat > agents.json <<'EOF'
-{
-  "agents": [
-    {
-      "name": "bud-dev",
-      "role": "developer",
-      "llm_provider": "anthropic",
-      "launch_template": "claude --dangerously-skip-permissions --project-dir {worktree} < {package_file}",
-      "worktrees": {
-        "martchouk/github.mcp": "/home/john/git/agents/bud-dev/github.mcp"
-      }
-    }
-  ]
-}
-EOF
+# Create a roster file from the example
+cp agents.json.example agents.json
+# Edit agents.json: fill in worktree paths and set any literal token values,
+# or export the referenced env vars (e.g. BUD_DEV_GH_TOKEN) before starting.
 
 export ORCH_BASE_URL="https://mcp.singularia.de"
 export AGENT_SHARED_TOKEN="supersecret"
@@ -237,6 +257,9 @@ export BRIDGE_ID="home-bridge"
 export AGENTS_CONFIG="$PWD/agents.json"
 export POLL_SECONDS=5
 export LOG_LEVEL=DEBUG
+
+# If agents.json uses $VAR references, export those too:
+export BUD_DEV_GH_TOKEN="ghp_your_token_here"
 
 go build -o agent-bridge .
 ./agent-bridge
