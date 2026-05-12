@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -20,13 +21,14 @@ func (s *Server) runRecoveryLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			n, err := s.store.RecoverStaleTasks(s.cfg.StaleAfterSeconds)
+			bridges, err := s.store.RecoverStaleTasksWithLog(s.cfg.StaleAfterSeconds)
 			if err != nil {
 				s.logger.Println("recovery error:", err)
 				continue
 			}
-			if n > 0 {
-				s.logger.Printf("recovered %d stale task(s)", n)
+			if len(bridges) > 0 {
+				s.logger.Printf("recovered %d stale dispatched task(s) from bridge(s): %s",
+					len(bridges), strings.Join(bridges, ", "))
 			}
 		}
 	}

@@ -4,32 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
 )
 
-type JSONRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-type JSONRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id,omitempty"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   *RPCError   `json:"error,omitempty"`
-}
-
-type RPCError struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-}
-
+// Tool is used by the /mcp/tools/call HTTP endpoint.
 type Tool struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
@@ -37,58 +17,29 @@ type Tool struct {
 }
 
 type WorkflowState struct {
-	StatusLabel           string          `json:"statusLabel"`
-	TypeLabels            []string        `json:"typeLabels"`
-	CurrentAssignees      []string        `json:"currentAssignees"`
-	SuggestedRole         string          `json:"suggestedRole"`
-	Stakeholder           string          `json:"stakeholder"`
-	RecognizedApprove     bool            `json:"recognizedApprove"`
-	ParsedDirectives      []CommentIntent `json:"parsedDirectives"`
-	NeedsPO               bool            `json:"needsPO"`
-	NeedsReviewer         bool            `json:"needsReviewer"`
-	NeedsDeveloper        bool            `json:"needsDeveloper"`
-	NeedsStakeholder      bool            `json:"needsStakeholder"`
-	NeedsFinalStakeholder bool            `json:"needsFinalStakeholder"`
-}
-
-type CommentIntent struct {
-	Kind        string            `json:"kind"`
-	Actor       string            `json:"actor"`
-	Fields      map[string]string `json:"fields,omitempty"`
-	CommentID   int64             `json:"commentId"`
-	CreatedAt   time.Time         `json:"createdAt"`
-	BodyPreview string            `json:"bodyPreview"`
+	StatusLabel      string   `json:"statusLabel"`
+	TypeLabels       []string `json:"typeLabels"`
+	CurrentAssignees []string `json:"currentAssignees"`
+	SuggestedRole    string   `json:"suggestedRole"`
+	Stakeholder      string   `json:"stakeholder"`
+	RecognizedApprove bool    `json:"recognizedApprove"`
 }
 
 type TransitionRule struct {
 	FromStatuses               []string `json:"fromStatuses"`
 	ToStatus                   string   `json:"toStatus"`
-	AllowedActors              []string `json:"allowedActors"`
-	RequiredAssigneeBefore     []string `json:"requiredAssigneeBefore"`
-	RequiredAssigneeAfter      string   `json:"requiredAssigneeAfter"`
+	AllowedRoles               []string `json:"allowedRoles"`
 	RequiresStakeholderApprove bool     `json:"requiresStakeholderApprove"`
 	Description                string   `json:"description"`
 }
 
 type TransitionValidationResult struct {
 	Allowed                bool     `json:"allowed"`
-	Actor                  string   `json:"actor"`
+	ActorRole              string   `json:"actorRole"`
 	FromStatus             string   `json:"fromStatus"`
 	ToStatus               string   `json:"toStatus"`
-	RequiredAssigneeAfter  string   `json:"requiredAssigneeAfter"`
 	Violations             []string `json:"violations"`
 	MatchedRuleDescription string   `json:"matchedRuleDescription,omitempty"`
-}
-
-type CommentTransitionDecision struct {
-	Matched     bool   `json:"matched"`
-	Reason      string `json:"reason"`
-	ToStatus    string `json:"toStatus"`
-	ToAssignee  string `json:"toAssignee"`
-	Actor       string `json:"actor"`
-	SourceKind  string `json:"sourceKind"`
-	CommentID   int64  `json:"commentId"`
-	BodyPreview string `json:"bodyPreview"`
 }
 
 type IssueTimelineEntry struct {
@@ -100,8 +51,8 @@ type IssueTimelineEntry struct {
 }
 
 type IssueTimelineResult struct {
-	Issue    Issue                `json:"issue"`
-	Workflow WorkflowState        `json:"workflow"`
+	Issue    Issue               `json:"issue"`
+	Workflow WorkflowState       `json:"workflow"`
 	Timeline []IssueTimelineEntry `json:"timeline"`
 }
 
@@ -122,121 +73,96 @@ var (
 		"status:done",
 		"status:rejected",
 	}
-	poUser        = "thebesserwisser"
-	developerUser = "johnvolldepp"
-	reviewerUser  = "bobwurst"
 
 	transitionRules = []TransitionRule{
-		{[]string{"status:new", "status:po-analysis"}, "status:po-analysis", []string{poUser}, []string{"", poUser}, poUser, false, "PO can move a new issue into PO analysis."},
-		{[]string{"status:new", "status:po-analysis"}, "status:awaiting-stakeholder-approval", []string{poUser}, []string{"", poUser}, "$stakeholder", false, "PO can request stakeholder approval."},
-		{[]string{"status:awaiting-stakeholder-approval"}, "status:approved-for-dev", []string{"$stakeholder", poUser}, []string{"$stakeholder", poUser}, developerUser, true, "Stakeholder-approved scope can move to developer."},
-		{[]string{"status:approved-for-dev", "status:changes-requested", "status:in-progress"}, "status:in-progress", []string{developerUser}, []string{developerUser}, developerUser, false, "Developer can start or continue implementation."},
-		{[]string{"status:in-progress", "status:changes-requested"}, "status:ready-for-review", []string{developerUser}, []string{developerUser}, reviewerUser, false, "Developer can hand work to reviewer."},
-		{[]string{"status:ready-for-review", "status:review-in-progress"}, "status:review-in-progress", []string{reviewerUser}, []string{reviewerUser}, reviewerUser, false, "Reviewer can begin or continue review."},
-		{[]string{"status:ready-for-review", "status:review-in-progress"}, "status:changes-requested", []string{reviewerUser}, []string{reviewerUser}, developerUser, false, "Reviewer can reject and send back to developer."},
-		{[]string{"status:ready-for-review", "status:review-in-progress"}, "status:ready-for-po-review", []string{reviewerUser}, []string{reviewerUser}, poUser, false, "Reviewer can accept and hand to PO."},
-		{[]string{"status:ready-for-po-review", "status:po-review-in-progress"}, "status:po-review-in-progress", []string{poUser}, []string{poUser}, poUser, false, "PO can begin or continue PO review."},
-		{[]string{"status:ready-for-po-review", "status:po-review-in-progress"}, "status:changes-requested", []string{poUser}, []string{poUser}, developerUser, false, "PO can reject and send back to developer."},
-		{[]string{"status:ready-for-po-review", "status:po-review-in-progress"}, "status:awaiting-final-stakeholder-approval", []string{poUser}, []string{poUser}, "$stakeholder", false, "PO can request final stakeholder approval."},
-		{[]string{"status:awaiting-final-stakeholder-approval"}, "status:done", []string{"$stakeholder", poUser}, []string{"$stakeholder", poUser}, "$stakeholder", true, "Final stakeholder-approved delivery can be completed."},
-		{statusLabels, "status:blocked", []string{poUser, developerUser, reviewerUser, "$stakeholder"}, []string{"", poUser, developerUser, reviewerUser, "$stakeholder"}, poUser, false, "Any active actor may block the issue and return ownership to PO."},
-		{statusLabels, "status:rejected", []string{poUser, "$stakeholder"}, []string{"", poUser, "$stakeholder"}, poUser, false, "PO or stakeholder may reject an issue."},
+		{
+			FromStatuses: []string{"status:new", "status:po-analysis"},
+			ToStatus:     "status:po-analysis",
+			AllowedRoles: []string{"po"},
+			Description:  "PO can move a new issue into PO analysis.",
+		},
+		{
+			FromStatuses: []string{"status:new", "status:po-analysis"},
+			ToStatus:     "status:awaiting-stakeholder-approval",
+			AllowedRoles: []string{"po"},
+			Description:  "PO can request stakeholder approval.",
+		},
+		{
+			FromStatuses:               []string{"status:awaiting-stakeholder-approval"},
+			ToStatus:                   "status:approved-for-dev",
+			AllowedRoles:               []string{"stakeholder", "po"},
+			RequiresStakeholderApprove: true,
+			Description:                "Stakeholder-approved scope can move to developer.",
+		},
+		{
+			FromStatuses: []string{"status:approved-for-dev", "status:changes-requested", "status:in-progress"},
+			ToStatus:     "status:in-progress",
+			AllowedRoles: []string{"developer"},
+			Description:  "Developer can start or continue implementation.",
+		},
+		{
+			FromStatuses: []string{"status:in-progress", "status:changes-requested"},
+			ToStatus:     "status:ready-for-review",
+			AllowedRoles: []string{"developer"},
+			Description:  "Developer can hand work to reviewer.",
+		},
+		{
+			FromStatuses: []string{"status:ready-for-review", "status:review-in-progress"},
+			ToStatus:     "status:review-in-progress",
+			AllowedRoles: []string{"reviewer"},
+			Description:  "Reviewer can begin or continue review.",
+		},
+		{
+			FromStatuses: []string{"status:ready-for-review", "status:review-in-progress"},
+			ToStatus:     "status:changes-requested",
+			AllowedRoles: []string{"reviewer"},
+			Description:  "Reviewer can reject and send back to developer.",
+		},
+		{
+			FromStatuses: []string{"status:ready-for-review", "status:review-in-progress"},
+			ToStatus:     "status:ready-for-po-review",
+			AllowedRoles: []string{"reviewer"},
+			Description:  "Reviewer can accept and hand to PO.",
+		},
+		{
+			FromStatuses: []string{"status:ready-for-po-review", "status:po-review-in-progress"},
+			ToStatus:     "status:po-review-in-progress",
+			AllowedRoles: []string{"po"},
+			Description:  "PO can begin or continue PO review.",
+		},
+		{
+			FromStatuses: []string{"status:ready-for-po-review", "status:po-review-in-progress"},
+			ToStatus:     "status:changes-requested",
+			AllowedRoles: []string{"po"},
+			Description:  "PO can reject and send back to developer.",
+		},
+		{
+			FromStatuses: []string{"status:ready-for-po-review", "status:po-review-in-progress"},
+			ToStatus:     "status:awaiting-final-stakeholder-approval",
+			AllowedRoles: []string{"po"},
+			Description:  "PO can request final stakeholder approval.",
+		},
+		{
+			FromStatuses:               []string{"status:awaiting-final-stakeholder-approval"},
+			ToStatus:                   "status:done",
+			AllowedRoles:               []string{"stakeholder", "po"},
+			RequiresStakeholderApprove: true,
+			Description:                "Final stakeholder-approved delivery can be completed.",
+		},
+		{
+			FromStatuses: statusLabels,
+			ToStatus:     "status:blocked",
+			AllowedRoles: []string{"po", "developer", "reviewer", "stakeholder"},
+			Description:  "Any active actor may block the issue; PO unblocks.",
+		},
+		{
+			FromStatuses: statusLabels,
+			ToStatus:     "status:rejected",
+			AllowedRoles: []string{"po", "stakeholder"},
+			Description:  "PO or stakeholder may reject an issue.",
+		},
 	}
 )
-
-func (s *Server) runStdio(ctx context.Context, r io.Reader, w io.Writer) error {
-	dec := json.NewDecoder(r)
-	dec.UseNumber()
-
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-
-	for {
-		var req JSONRPCRequest
-		err := dec.Decode(&req)
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			resp := JSONRPCResponse{
-				JSONRPC: "2.0",
-				Error: &RPCError{
-					Code:    -32700,
-					Message: "parse error",
-					Data:    err.Error(),
-				},
-			}
-			if encErr := enc.Encode(resp); encErr != nil {
-				return encErr
-			}
-			continue
-		}
-
-		if s.cfg.Debug {
-			b, _ := json.Marshal(req)
-			s.logger.Println("recv:", string(b))
-		}
-
-		resp := s.handleRequest(ctx, req)
-
-		if s.cfg.Debug {
-			b, _ := json.Marshal(resp)
-			s.logger.Println("send:", string(b))
-		}
-
-		if err := enc.Encode(resp); err != nil {
-			return err
-		}
-	}
-}
-
-func (s *Server) handleRequest(ctx context.Context, req JSONRPCRequest) JSONRPCResponse {
-	id := decodeID(req.ID)
-	respondErr := func(code int, msg string, data interface{}) JSONRPCResponse {
-		return JSONRPCResponse{JSONRPC: "2.0", ID: id, Error: &RPCError{Code: code, Message: msg, Data: data}}
-	}
-
-	switch req.Method {
-	case "initialize":
-		return JSONRPCResponse{
-			JSONRPC: "2.0",
-			ID:      id,
-			Result: map[string]interface{}{
-				"protocolVersion": "2024-11-05",
-				"capabilities":    map[string]interface{}{"tools": map[string]interface{}{}},
-				"serverInfo":      map[string]interface{}{"name": "github-issue-orchestrator", "version": "0.5.0"},
-			},
-		}
-	case "notifications/initialized":
-		return JSONRPCResponse{JSONRPC: "2.0", ID: id, Result: map[string]any{}}
-	case "ping":
-		return JSONRPCResponse{JSONRPC: "2.0", ID: id, Result: map[string]string{"pong": "ok"}}
-	case "tools/list":
-		return JSONRPCResponse{JSONRPC: "2.0", ID: id, Result: map[string]interface{}{"tools": s.tools()}}
-	case "tools/call":
-		var params struct {
-			Name      string          `json:"name"`
-			Arguments json.RawMessage `json:"arguments"`
-		}
-		if err := json.Unmarshal(req.Params, &params); err != nil {
-			return respondErr(-32602, "invalid params", err.Error())
-		}
-		result, err := s.callTool(ctx, params.Name, params.Arguments)
-		if err != nil {
-			return respondErr(-32000, "tool call failed", err.Error())
-		}
-		return JSONRPCResponse{
-			JSONRPC: "2.0",
-			ID:      id,
-			Result: map[string]interface{}{
-				"content":           []map[string]string{{"type": "text", "text": prettyJSON(result)}},
-				"structuredContent": result,
-			},
-		}
-	default:
-		return respondErr(-32601, "method not found", req.Method)
-	}
-}
 
 func (s *Server) tools() []Tool {
 	return []Tool{
@@ -310,33 +236,25 @@ func (s *Server) tools() []Tool {
 			},
 			"required": []string{"issue_number"},
 		}),
-		newTool("parse_comments", "Parse [handoff], [po-analysis], /approve", map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"issue_number": map[string]interface{}{"type": "integer"},
-			},
-			"required": []string{"issue_number"},
-		}),
-		newTool("validate_transition", "Validate transition", map[string]interface{}{
+		newTool("validate_transition", "Validate a transition using role-based actor", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"issue_number": map[string]interface{}{"type": "integer"},
 				"to_status":    map[string]interface{}{"type": "string"},
-				"actor":        map[string]interface{}{"type": "string"},
-				"assignee":     map[string]interface{}{"type": "string"},
+				"actor_role":   map[string]interface{}{"type": "string", "description": "Role name: po, developer, reviewer, architect, tester, designer, stakeholder"},
 			},
-			"required": []string{"issue_number", "to_status", "actor"},
+			"required": []string{"issue_number", "to_status", "actor_role"},
 		}),
-		newTool("transition_issue", "Validate and apply transition", map[string]interface{}{
+		newTool("transition_issue", "Validate and apply a transition using role-based actor", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"issue_number": map[string]interface{}{"type": "integer"},
 				"status":       map[string]interface{}{"type": "string"},
-				"assignee":     map[string]interface{}{"type": "string"},
+				"assignee":     map[string]interface{}{"type": "string", "description": "Optional GitHub username to assign after transition"},
 				"comment":      map[string]interface{}{"type": "string"},
-				"actor":        map[string]interface{}{"type": "string"},
+				"actor_role":   map[string]interface{}{"type": "string", "description": "Role name: po, developer, reviewer, architect, tester, designer, stakeholder"},
 			},
-			"required": []string{"issue_number", "status", "actor"},
+			"required": []string{"issue_number", "status", "actor_role"},
 		}),
 		newTool("get_transition_matrix", "Show allowed transition matrix", map[string]interface{}{
 			"type":       "object",
@@ -357,7 +275,7 @@ func (s *Server) tools() []Tool {
 			},
 			"required": []string{"issue_number"},
 		}),
-		newTool("get_issue_timeline", "Return a merged chronological timeline of comments, transition audit, and tasks", map[string]interface{}{
+		newTool("get_issue_timeline", "Return merged chronological timeline of comments, transitions, and tasks", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"issue_number": map[string]interface{}{"type": "integer"},
@@ -400,7 +318,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		return map[string]interface{}{
 			"issue":    issue,
 			"comments": comments,
-			"workflow": computeWorkflowState(s.cfg, issue, comments),
+			"workflow": computeWorkflowState(issue, comments),
 		}, nil
 
 	case "list_issue_comments":
@@ -500,7 +418,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err != nil {
 			return nil, err
 		}
-		return computeWorkflowState(s.cfg, issue, comments), nil
+		return computeWorkflowState(issue, comments), nil
 
 	case "find_stakeholder_approvals":
 		var args struct {
@@ -513,7 +431,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err != nil {
 			return nil, err
 		}
-		stakeholder := resolveStakeholder(s.cfg, issue, comments)
+		stakeholder := resolveStakeholder(issue)
 		var approvals []IssueComment
 		for _, c := range comments {
 			if c.User.Login == stakeholder && containsApprove(c.Body) {
@@ -526,25 +444,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			"comments":    approvals,
 		}, nil
 
-	case "parse_comments":
-		var args struct {
-			IssueNumber int `json:"issue_number"`
-		}
-		if err := json.Unmarshal(raw, &args); err != nil {
-			return nil, err
-		}
-		_, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, 100)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]interface{}{"directives": parseComments(comments)}, nil
-
 	case "validate_transition":
 		var args struct {
 			IssueNumber int    `json:"issue_number"`
 			ToStatus    string `json:"to_status"`
-			Actor       string `json:"actor"`
-			Assignee    string `json:"assignee"`
+			ActorRole   string `json:"actor_role"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
@@ -553,7 +457,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err != nil {
 			return nil, err
 		}
-		return validateTransition(s.cfg, issue, comments, args.Actor, args.ToStatus, args.Assignee), nil
+		return validateTransition(issue, comments, args.ActorRole, args.ToStatus), nil
 
 	case "transition_issue":
 		var args struct {
@@ -561,22 +465,15 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			Status      string `json:"status"`
 			Assignee    string `json:"assignee"`
 			Comment     string `json:"comment"`
-			Actor       string `json:"actor"`
+			ActorRole   string `json:"actor_role"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.Actor, "mcp_tool", nil, nil)
+		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.ActorRole, "mcp_tool", nil, nil)
 
 	case "get_transition_matrix":
-		return map[string]interface{}{
-			"roles": map[string]string{
-				"po":        poUser,
-				"developer": developerUser,
-				"reviewer":  reviewerUser,
-			},
-			"rules": transitionRules,
-		}, nil
+		return map[string]interface{}{"rules": transitionRules}, nil
 
 	case "process_issue_event":
 		var args struct {
@@ -600,6 +497,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			return nil, err
 		}
 		return map[string]interface{}{"audit": rows}, nil
+
 	case "get_issue_timeline":
 		var args struct {
 			IssueNumber int `json:"issue_number"`
@@ -611,13 +509,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if args.Limit <= 0 {
 			args.Limit = 100
 		}
-
 		issue, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, args.Limit)
 		if err != nil {
 			return nil, err
 		}
-		workflow := computeWorkflowState(s.cfg, issue, comments)
-
+		workflow := computeWorkflowState(issue, comments)
 		auditRows, err := s.store.ListTransitionAudit(args.IssueNumber, args.Limit)
 		if err != nil {
 			return nil, err
@@ -626,14 +522,12 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err != nil {
 			return nil, err
 		}
-
-		timeline := buildIssueTimeline(comments, auditRows, taskRows)
-
 		return IssueTimelineResult{
 			Issue:    issue,
 			Workflow: workflow,
-			Timeline: timeline,
+			Timeline: buildIssueTimeline(comments, auditRows, taskRows),
 		}, nil
+
 	case "get_issue_tasks":
 		var args struct {
 			IssueNumber int `json:"issue_number"`
@@ -647,6 +541,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			return nil, err
 		}
 		return map[string]interface{}{"tasks": rows}, nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -656,6 +551,9 @@ func (s *Server) loadIssueAndComments(ctx context.Context, issueNumber, limit in
 	issue, err := s.gh.GetIssue(ctx, issueNumber)
 	if err != nil {
 		return Issue{}, nil, err
+	}
+	if limit <= 0 {
+		return issue, nil, nil
 	}
 	comments, err := s.gh.ListIssueComments(ctx, issueNumber, limit)
 	if err != nil {
@@ -677,7 +575,7 @@ func (s *Server) transitionIssue(
 	toStatus string,
 	assignee string,
 	comment string,
-	actor string,
+	actorRole string,
 	triggerType string,
 	triggerCommentID *int64,
 	triggerMetadata interface{},
@@ -691,35 +589,17 @@ func (s *Server) transitionIssue(
 		triggerType = "mcp_tool"
 	}
 
-	fromStatus := computeWorkflowState(s.cfg, issue, comments).StatusLabel
+	fromStatus := computeWorkflowState(issue, comments).StatusLabel
 	fromAssignee := currentAssigneeOfIssue(issue)
 
-	validation := validateTransition(s.cfg, issue, comments, actor, toStatus, assignee)
+	validation := validateTransition(issue, comments, actorRole, toStatus)
 	if !validation.Allowed {
 		_ = s.store.RecordTransitionAudit(
-			issueNumber,
-			fromStatus,
-			toStatus,
-			fromAssignee,
-			assignee,
-			actor,
-			triggerType,
-			triggerCommentID,
-			"rejected",
-			strings.Join(validation.Violations, "; "),
-			validation,
-			mergeAuditMetadata(
-				triggerMetadata,
-				map[string]interface{}{
-					"comment_body_present": strings.TrimSpace(comment) != "",
-				},
-			),
+			issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
+			triggerType, triggerCommentID, "rejected",
+			strings.Join(validation.Violations, "; "), validation, triggerMetadata,
 		)
 		return nil, fmt.Errorf("transition rejected: %s", strings.Join(validation.Violations, "; "))
-	}
-
-	if strings.TrimSpace(assignee) == "" {
-		assignee = validation.RequiredAssigneeAfter
 	}
 
 	currentLabels := labelsToStrings(issue.Labels)
@@ -733,18 +613,8 @@ func (s *Server) transitionIssue(
 
 	if _, err := s.gh.SetIssueLabels(ctx, issueNumber, nextLabels); err != nil {
 		_ = s.store.RecordTransitionAudit(
-			issueNumber,
-			fromStatus,
-			toStatus,
-			fromAssignee,
-			assignee,
-			actor,
-			triggerType,
-			triggerCommentID,
-			"failed",
-			"set labels failed: "+err.Error(),
-			validation,
-			triggerMetadata,
+			issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
+			triggerType, triggerCommentID, "failed", "set labels failed: "+err.Error(), validation, triggerMetadata,
 		)
 		return nil, err
 	}
@@ -752,18 +622,8 @@ func (s *Server) transitionIssue(
 	if strings.TrimSpace(assignee) != "" {
 		if _, err := s.gh.AssignIssue(ctx, issueNumber, []string{assignee}); err != nil {
 			_ = s.store.RecordTransitionAudit(
-				issueNumber,
-				fromStatus,
-				toStatus,
-				fromAssignee,
-				assignee,
-				actor,
-				triggerType,
-				triggerCommentID,
-				"failed",
-				"assign issue failed: "+err.Error(),
-				validation,
-				triggerMetadata,
+				issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
+				triggerType, triggerCommentID, "failed", "assign issue failed: "+err.Error(), validation, triggerMetadata,
 			)
 			return nil, err
 		}
@@ -774,18 +634,8 @@ func (s *Server) transitionIssue(
 		c, err := s.gh.PostIssueComment(ctx, issueNumber, comment)
 		if err != nil {
 			_ = s.store.RecordTransitionAudit(
-				issueNumber,
-				fromStatus,
-				toStatus,
-				fromAssignee,
-				assignee,
-				actor,
-				triggerType,
-				triggerCommentID,
-				"failed",
-				"post comment failed: "+err.Error(),
-				validation,
-				triggerMetadata,
+				issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
+				triggerType, triggerCommentID, "failed", "post comment failed: "+err.Error(), validation, triggerMetadata,
 			)
 			return nil, err
 		}
@@ -795,40 +645,16 @@ func (s *Server) transitionIssue(
 	updated, err := s.gh.GetIssue(ctx, issueNumber)
 	if err != nil {
 		_ = s.store.RecordTransitionAudit(
-			issueNumber,
-			fromStatus,
-			toStatus,
-			fromAssignee,
-			assignee,
-			actor,
-			triggerType,
-			triggerCommentID,
-			"failed",
-			"reload issue failed: "+err.Error(),
-			validation,
-			triggerMetadata,
+			issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
+			triggerType, triggerCommentID, "failed", "reload issue failed: "+err.Error(), validation, triggerMetadata,
 		)
 		return nil, err
 	}
 
 	_ = s.store.RecordTransitionAudit(
-		issueNumber,
-		fromStatus,
-		toStatus,
-		fromAssignee,
-		assignee,
-		actor,
-		triggerType,
-		triggerCommentID,
-		"applied",
-		"",
-		validation,
-		mergeAuditMetadata(
-			triggerMetadata,
-			map[string]interface{}{
-				"comment_posted": posted != nil,
-			},
-		),
+		issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
+		triggerType, triggerCommentID, "applied", "", validation,
+		mergeAuditMetadata(triggerMetadata, map[string]interface{}{"comment_posted": posted != nil}),
 	)
 
 	result := map[string]interface{}{
@@ -841,7 +667,7 @@ func (s *Server) transitionIssue(
 	return result, nil
 }
 
-func computeWorkflowState(cfg Config, issue Issue, comments []IssueComment) WorkflowState {
+func computeWorkflowState(issue Issue, comments []IssueComment) WorkflowState {
 	status := ""
 	var types []string
 	for _, l := range issue.Labels {
@@ -858,7 +684,7 @@ func computeWorkflowState(cfg Config, issue Issue, comments []IssueComment) Work
 		assignees = append(assignees, a.Login)
 	}
 
-	stakeholder := resolveStakeholder(cfg, issue, comments)
+	stakeholder := resolveStakeholder(issue)
 	approved := false
 	for _, c := range comments {
 		if c.User.Login == stakeholder && containsApprove(c.Body) {
@@ -872,30 +698,27 @@ func computeWorkflowState(cfg Config, issue Issue, comments []IssueComment) Work
 		CurrentAssignees:  assignees,
 		Stakeholder:       stakeholder,
 		RecognizedApprove: approved,
-		ParsedDirectives:  parseComments(comments),
 	}
 
 	switch status {
 	case "status:new", "status:po-analysis":
 		ws.SuggestedRole = "po"
-		ws.NeedsPO = true
 	case "status:awaiting-stakeholder-approval":
 		ws.SuggestedRole = "stakeholder"
-		ws.NeedsStakeholder = true
 	case "status:approved-for-dev", "status:in-progress", "status:changes-requested":
 		ws.SuggestedRole = "developer"
-		ws.NeedsDeveloper = true
 	case "status:ready-for-review", "status:review-in-progress":
 		ws.SuggestedRole = "reviewer"
-		ws.NeedsReviewer = true
 	case "status:ready-for-po-review", "status:po-review-in-progress":
 		ws.SuggestedRole = "po"
-		ws.NeedsPO = true
 	case "status:awaiting-final-stakeholder-approval":
 		ws.SuggestedRole = "stakeholder"
-		ws.NeedsFinalStakeholder = true
+	case "status:blocked":
+		ws.SuggestedRole = "po"
 	case "status:done":
 		ws.SuggestedRole = "done"
+	case "status:rejected":
+		ws.SuggestedRole = "rejected"
 	default:
 		ws.SuggestedRole = "unknown"
 	}
@@ -903,93 +726,7 @@ func computeWorkflowState(cfg Config, issue Issue, comments []IssueComment) Work
 	return ws
 }
 
-func parseComments(comments []IssueComment) []CommentIntent {
-	var out []CommentIntent
-	for _, c := range comments {
-		body := strings.TrimSpace(c.Body)
-		if body == "" {
-			continue
-		}
-		if containsApprove(body) {
-			out = append(out, CommentIntent{
-				Kind:        "approve",
-				Actor:       c.User.Login,
-				CommentID:   c.ID,
-				CreatedAt:   c.CreatedAt,
-				BodyPreview: preview(body),
-			})
-		}
-		if fields, ok := parseTaggedBlock(body, "handoff"); ok {
-			out = append(out, CommentIntent{
-				Kind:        "handoff",
-				Actor:       c.User.Login,
-				Fields:      fields,
-				CommentID:   c.ID,
-				CreatedAt:   c.CreatedAt,
-				BodyPreview: preview(body),
-			})
-		}
-		if fields, ok := parseTaggedBlock(body, "po-analysis"); ok {
-			out = append(out, CommentIntent{
-				Kind:        "po-analysis",
-				Actor:       c.User.Login,
-				Fields:      fields,
-				CommentID:   c.ID,
-				CreatedAt:   c.CreatedAt,
-				BodyPreview: preview(body),
-			})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
-	return out
-}
-
-func parseTaggedBlock(body, tag string) (map[string]string, bool) {
-	startTag := "[" + tag + "]"
-	endTag := "[/" + tag + "]"
-
-	lower := strings.ToLower(body)
-	start := strings.Index(lower, strings.ToLower(startTag))
-	end := strings.Index(lower, strings.ToLower(endTag))
-	if start < 0 || end < 0 || end <= start {
-		return nil, false
-	}
-
-	content := body[start+len(startTag) : end]
-	fields := map[string]string{}
-	for _, line := range strings.Split(content, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		fields[strings.TrimSpace(strings.ToLower(parts[0]))] = strings.TrimSpace(parts[1])
-	}
-	return fields, true
-}
-
-func preview(s string) string {
-	s = strings.ReplaceAll(strings.TrimSpace(s), "\n", " ")
-	if len(s) > 160 {
-		return s[:160] + "..."
-	}
-	return s
-}
-
-func resolveStakeholder(cfg Config, issue Issue, comments []IssueComment) string {
-	if strings.TrimSpace(cfg.StakeholderOverride) != "" {
-		return cfg.StakeholderOverride
-	}
-	for _, c := range comments {
-		if fields, ok := parseTaggedBlock(c.Body, "po-analysis"); ok {
-			if v := strings.TrimSpace(fields["stakeholder"]); v != "" {
-				return v
-			}
-		}
-	}
+func resolveStakeholder(issue Issue) string {
 	for _, l := range issue.Labels {
 		if strings.HasPrefix(strings.ToLower(l.Name), "stakeholder:") {
 			return strings.TrimSpace(strings.TrimPrefix(l.Name, "stakeholder:"))
@@ -998,25 +735,19 @@ func resolveStakeholder(cfg Config, issue Issue, comments []IssueComment) string
 	return issue.User.Login
 }
 
-func validateTransition(cfg Config, issue Issue, comments []IssueComment, actor, toStatus, requestedAssignee string) TransitionValidationResult {
-	state := computeWorkflowState(cfg, issue, comments)
-	actor = strings.TrimSpace(actor)
-	requestedAssignee = strings.TrimSpace(requestedAssignee)
-
-	currentAssignee := ""
-	if len(issue.Assignees) > 0 {
-		currentAssignee = issue.Assignees[0].Login
-	}
+func validateTransition(issue Issue, comments []IssueComment, actorRole, toStatus string) TransitionValidationResult {
+	state := computeWorkflowState(issue, comments)
+	actorRole = strings.TrimSpace(actorRole)
 
 	res := TransitionValidationResult{
 		Allowed:    false,
-		Actor:      actor,
+		ActorRole:  actorRole,
 		FromStatus: state.StatusLabel,
 		ToStatus:   toStatus,
 	}
 
-	if actor == "" {
-		res.Violations = append(res.Violations, "actor is required")
+	if actorRole == "" {
+		res.Violations = append(res.Violations, "actor_role is required")
 		return res
 	}
 	if !isAllowedStatus(toStatus) {
@@ -1037,54 +768,18 @@ func validateTransition(cfg Config, issue Issue, comments []IssueComment, actor,
 		return res
 	}
 
-	requiredAfter := resolveDynamicActor(cfg, matched.RequiredAssigneeAfter, issue, comments)
-	res.RequiredAssigneeAfter = requiredAfter
 	res.MatchedRuleDescription = matched.Description
 
-	if !containsString(resolveActorList(cfg, matched.AllowedActors, issue, comments), actor) {
-		res.Violations = append(res.Violations, fmt.Sprintf("actor %s is not allowed to perform this transition", actor))
-	}
-
-	before := resolveActorList(cfg, matched.RequiredAssigneeBefore, issue, comments)
-	if len(before) > 0 && !containsString(before, currentAssignee) {
-		res.Violations = append(res.Violations, fmt.Sprintf("current assignee %q does not satisfy rule", currentAssignee))
+	if !containsString(matched.AllowedRoles, actorRole) {
+		res.Violations = append(res.Violations, fmt.Sprintf("role %q is not allowed to perform this transition", actorRole))
 	}
 
 	if matched.RequiresStakeholderApprove && !state.RecognizedApprove {
 		res.Violations = append(res.Violations, "required stakeholder /approve comment not found")
 	}
 
-	if requestedAssignee != "" && requiredAfter != "" && requestedAssignee != requiredAfter {
-		res.Violations = append(res.Violations, fmt.Sprintf("requested assignee %s does not match required assignee %s", requestedAssignee, requiredAfter))
-	}
-
 	res.Allowed = len(res.Violations) == 0
 	return res
-}
-
-func resolveDynamicActor(cfg Config, token string, issue Issue, comments []IssueComment) string {
-	token = strings.TrimSpace(token)
-	if token == "$stakeholder" {
-		return resolveStakeholder(cfg, issue, comments)
-	}
-	return token
-}
-
-func resolveActorList(cfg Config, values []string, issue Issue, comments []IssueComment) []string {
-	out := make([]string, 0, len(values))
-	for _, v := range values {
-		out = append(out, resolveDynamicActor(cfg, v, issue, comments))
-	}
-	return out
-}
-
-func containsString(values []string, target string) bool {
-	for _, v := range values {
-		if v == target {
-			return true
-		}
-	}
-	return false
 }
 
 func containsApprove(body string) bool {
@@ -1105,23 +800,21 @@ func isAllowedStatus(status string) bool {
 	return false
 }
 
+func containsString(values []string, target string) bool {
+	for _, v := range values {
+		if v == target {
+			return true
+		}
+	}
+	return false
+}
+
 func labelsToStrings(labels []GitHubLabel) []string {
 	out := make([]string, 0, len(labels))
 	for _, l := range labels {
 		out = append(out, l.Name)
 	}
 	return out
-}
-
-func decodeID(raw json.RawMessage) interface{} {
-	if len(raw) == 0 {
-		return nil
-	}
-	var v interface{}
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return string(raw)
-	}
-	return v
 }
 
 func normalizeWorkflowStatusLabel(raw string) string {
@@ -1164,178 +857,16 @@ func normalizeWorkflowStatusLabel(raw string) string {
 	}
 }
 
-func detectCommentDrivenTransition(cfg Config, issue Issue, comments []IssueComment, actor string, commentID int64, body string) CommentTransitionDecision {
-	body = strings.TrimSpace(body)
-	if body == "" {
-		return CommentTransitionDecision{}
-	}
-
-	ws := computeWorkflowState(cfg, issue, comments)
-
-	if fields, ok := parseTaggedBlock(body, "handoff"); ok {
-		toStatus := normalizeWorkflowStatusLabel(fields["state"])
-		toAssignee := strings.TrimSpace(fields["to"])
-		if toStatus == "" {
-			return CommentTransitionDecision{
-				Matched:     true,
-				Reason:      "handoff comment had unrecognized state",
-				Actor:       actor,
-				CommentID:   commentID,
-				SourceKind:  "handoff",
-				BodyPreview: preview(body),
-			}
-		}
-		return CommentTransitionDecision{
-			Matched:     true,
-			Reason:      "handoff comment",
-			ToStatus:    toStatus,
-			ToAssignee:  toAssignee,
-			Actor:       actor,
-			CommentID:   commentID,
-			SourceKind:  "handoff",
-			BodyPreview: preview(body),
-		}
-	}
-
-	if fields, ok := parseTaggedBlock(body, "po-analysis"); ok {
-		if stakeholder := strings.TrimSpace(fields["stakeholder"]); stakeholder != "" {
-			return CommentTransitionDecision{
-				Matched:     true,
-				Reason:      "po-analysis comment requested stakeholder approval",
-				ToStatus:    "status:awaiting-stakeholder-approval",
-				ToAssignee:  stakeholder,
-				Actor:       actor,
-				CommentID:   commentID,
-				SourceKind:  "po-analysis",
-				BodyPreview: preview(body),
-			}
-		}
-		return CommentTransitionDecision{
-			Matched:     true,
-			Reason:      "po-analysis comment",
-			ToStatus:    "status:po-analysis",
-			ToAssignee:  poUser,
-			Actor:       actor,
-			CommentID:   commentID,
-			SourceKind:  "po-analysis",
-			BodyPreview: preview(body),
-		}
-	}
-
-	if containsApprove(body) {
-		switch ws.StatusLabel {
-		case "status:awaiting-stakeholder-approval":
-			return CommentTransitionDecision{
-				Matched:     true,
-				Reason:      "stakeholder approval comment",
-				ToStatus:    "status:approved-for-dev",
-				ToAssignee:  developerUser,
-				Actor:       actor,
-				CommentID:   commentID,
-				SourceKind:  "approve",
-				BodyPreview: preview(body),
-			}
-		case "status:awaiting-final-stakeholder-approval":
-			return CommentTransitionDecision{
-				Matched:     true,
-				Reason:      "final stakeholder approval comment",
-				ToStatus:    "status:done",
-				ToAssignee:  ws.Stakeholder,
-				Actor:       actor,
-				CommentID:   commentID,
-				SourceKind:  "approve",
-				BodyPreview: preview(body),
-			}
-		default:
-			return CommentTransitionDecision{
-				Matched:     true,
-				Reason:      "approve comment does not apply in current status",
-				Actor:       actor,
-				CommentID:   commentID,
-				SourceKind:  "approve",
-				BodyPreview: preview(body),
-			}
-		}
-	}
-
-	return CommentTransitionDecision{}
-}
-
-func (s *Server) processIssueCommentDirective(ctx context.Context, issueNumber int, commentID int64, actor, body string) (bool, error) {
-	issue, comments, err := s.loadIssueAndComments(ctx, issueNumber, 100)
-	if err != nil {
-		return false, err
-	}
-
-	fromStatus := computeWorkflowState(s.cfg, issue, comments).StatusLabel
-	fromAssignee := currentAssigneeOfIssue(issue)
-
-	decision := detectCommentDrivenTransition(s.cfg, issue, comments, actor, commentID, body)
-	if !decision.Matched {
-		return false, nil
-	}
-	if decision.ToStatus == "" {
-		_ = s.store.RecordTransitionAudit(
-			issueNumber,
-			fromStatus,
-			"",
-			fromAssignee,
-			"",
-			actor,
-			"webhook_comment",
-			&commentID,
-			"ignored",
-			decision.Reason,
-			nil,
-			decision,
-		)
-		_ = s.store.RecordFailure(issueNumber, "comment-transition-ignored", decision.Reason, decision)
-		s.logger.Printf("comment transition ignored: issue=%d actor=%s reason=%s", issueNumber, actor, decision.Reason)
-		return true, nil
-	}
-
-	s.logger.Printf(
-		"comment transition candidate: issue=%d actor=%s to=%s assignee=%s source=%s",
-		issueNumber, actor, decision.ToStatus, decision.ToAssignee, decision.SourceKind,
-	)
-
-	_, err = s.transitionIssue(
-		ctx,
-		issueNumber,
-		decision.ToStatus,
-		decision.ToAssignee,
-		"",
-		actor,
-		"webhook_comment",
-		&commentID,
-		map[string]interface{}{
-			"decision": decision,
-		},
-	)
-	if err != nil {
-		_ = s.store.RecordFailure(issueNumber, "comment-transition-failed", err.Error(), map[string]interface{}{
-			"decision": decision,
-		})
-		return true, err
-	}
-
-	_, err = s.processIssue(ctx, issueNumber)
-	return true, err
-}
-
 func mergeAuditMetadata(base interface{}, extra map[string]interface{}) map[string]interface{} {
 	out := map[string]interface{}{}
-
 	if baseMap, ok := base.(map[string]interface{}); ok {
 		for k, v := range baseMap {
 			out[k] = v
 		}
 	}
-
 	for k, v := range extra {
 		out[k] = v
 	}
-
 	return out
 }
 
@@ -1353,7 +884,6 @@ func buildIssueTimeline(
 			Comment:  c,
 		})
 	}
-
 	for _, a := range auditRows {
 		out = append(out, IssueTimelineEntry{
 			Kind:     "transition_audit",
@@ -1361,7 +891,6 @@ func buildIssueTimeline(
 			Audit:    a,
 		})
 	}
-
 	for _, t := range taskRows {
 		sortTime := t.CreatedAt
 		if t.FinishedAt.Valid && t.FinishedAt.String != "" {
@@ -1371,7 +900,6 @@ func buildIssueTimeline(
 		} else if t.ClaimedAt.Valid && t.ClaimedAt.String != "" {
 			sortTime = t.ClaimedAt.String
 		}
-
 		out = append(out, IssueTimelineEntry{
 			Kind:     "task",
 			SortTime: sortTime,
@@ -1385,6 +913,8 @@ func buildIssueTimeline(
 		}
 		return out[i].SortTime < out[j].SortTime
 	})
-
 	return out
 }
+
+// normalizeWorkflowStatusLabel is referenced here to avoid the compiler dropping it.
+var _ = normalizeWorkflowStatusLabel
