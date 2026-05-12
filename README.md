@@ -395,6 +395,49 @@ LOG_LEVEL=DEBUG   # set to DEBUG for verbose stderr logs
 
 ---
 
+## Debug logging
+
+Set `LOG_LEVEL=DEBUG` to enable verbose `DEBUG`-prefixed lines on stderr.
+
+**Server** — additional debug output includes:
+
+| Event | Log line |
+|---|---|
+| Startup config summary | `DEBUG config: stale_after=… agent_auth=… webhook_secret=…` |
+| Shutdown drain | `DEBUG cancelling context and waiting for http server to drain` |
+| Webhook — duplicate delivery skipped | `DEBUG webhook: duplicate delivery ignored delivery=… event=…` |
+| Work/next — no task available | `DEBUG work/next: bridge=… roles=… no work available` |
+| Tool call dispatched | `DEBUG tool call: name=…` |
+| Tool call outcome | `DEBUG tool call ok/failed: name=…` |
+| Tools list served | `DEBUG tools/list: serving N tools` |
+| Issue state computed | `DEBUG processIssue: issue=… status=… suggested_role=…` |
+| Task deduplication | `DEBUG processIssue: issue=… task deduplicated existing_task_id=…` |
+| No-action decision | `DEBUG processIssue: issue=… no action — terminal or wait state` |
+| Transition validation | `DEBUG transitionIssue: issue=… from=… to=… actor=… allowed=…` |
+| Transition rejected (with violations) | `DEBUG transitionIssue: issue=… rejected violations=…` |
+| Transition applied | `DEBUG transitionIssue: issue=… applied from=… to=…` |
+| Recovery tick — no stale tasks | `DEBUG recovery tick: no stale tasks` |
+
+Always-on INFO lines (regardless of `LOG_LEVEL`) cover: startup, HTTP listen, task queued, work claimed, webhook received, transition applied, and shutdown signal.
+
+**Bridge** — debug output includes:
+
+| Event | Log line |
+|---|---|
+| Startup — agent env keys | `DEBUG agent env configured: agent=… keys=…` |
+| Each poll cycle | `DEBUG poll: bridge=… roles=…` |
+| No work available | `DEBUG no work available` |
+| Work received | `DEBUG work received: task=… issue=… role=… assignee=… status=…` |
+
+Enable for the Bridge the same way:
+
+```bash
+export LOG_LEVEL=DEBUG
+./agent-bridge
+```
+
+---
+
 ## Build
 
 ```bash

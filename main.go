@@ -30,6 +30,13 @@ type Server struct {
 	gh     *GitHubClient
 	store  *Store
 	logger *log.Logger
+	debug  bool
+}
+
+func (s *Server) debugf(format string, args ...interface{}) {
+	if s.debug {
+		s.logger.Printf("DEBUG "+format, args...)
+	}
 }
 
 func main() {
@@ -39,6 +46,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	debug := strings.ToUpper(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) == "DEBUG"
 	logger := log.New(os.Stderr, "[github-mcp] ", log.LstdFlags|log.LUTC)
 
 	store, err := OpenStore(cfg.SQLitePath)
@@ -58,6 +66,15 @@ func main() {
 		},
 		store:  store,
 		logger: logger,
+		debug:  debug,
+	}
+
+	logger.Printf("started: repo=%s/%s addr=%s sqlite=%s",
+		cfg.Owner, cfg.Repo, cfg.HTTPAddr, cfg.SQLitePath)
+	if debug {
+		logger.Printf("DEBUG config: stale_after=%ds recover_every=%ds agent_auth=%v webhook_secret=%v",
+			cfg.StaleAfterSeconds, cfg.RecoverEverySeconds,
+			cfg.AgentSharedToken != "", cfg.WebhookSecret != "")
 	}
 
 	if strings.TrimSpace(cfg.HTTPAddr) == "" {
@@ -82,6 +99,7 @@ func main() {
 	select {
 	case sig := <-sigCh:
 		logger.Println("shutdown signal received:", sig)
+		server.debugf("cancelling context and waiting for http server to drain")
 		cancel()
 		time.Sleep(1 * time.Second)
 
