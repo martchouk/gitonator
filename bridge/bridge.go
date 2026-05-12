@@ -27,6 +27,7 @@ type Agent struct {
 	Role           string            `json:"role"`
 	LLMProvider    string            `json:"llm_provider"`
 	LaunchTemplate string            `json:"launch_template"`
+	Env            map[string]string `json:"env,omitempty"`
 	Worktrees      map[string]string `json:"worktrees"`
 }
 
@@ -79,6 +80,10 @@ func main() {
 	}
 	if len(roster.Agents) == 0 {
 		fmt.Fprintln(os.Stderr, "agents config contains no agents")
+		os.Exit(1)
+	}
+	if err := resolveRosterEnv(&roster); err != nil {
+		fmt.Fprintln(os.Stderr, "agents config env resolution failed:", err)
 		os.Exit(1)
 	}
 
@@ -178,6 +183,7 @@ func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg *WorkPackag
 	cmd := exec.Command("sh", "-c", cmdLine)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = buildEnv(agent.Env)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("spawn agent: %w", err)
@@ -234,6 +240,55 @@ func fetchNextWork(client *http.Client, cfg Config, roles []string) (*WorkPackag
 		return nil, fmt.Errorf("decode work/next response: %w", err)
 	}
 	return out.Task, nil
+}
+
+// resolveRosterEnv resolves $VAR references in each agent's Env map in-place.
+// It returns an error naming the agent and variable if a referenced var is unset.
+func resolveRosterEnv(roster *Roster) error {
+	for i := range roster.Agents {
+		resolved, err := resolveEnv(roster.Agents[i].Env)
+		if err != nil {
+			return fmt.Errorf("agent %q: %w", roster.Agents[i].Name, err)
+		}
+		roster.Agents[i].Env = resolved
+	}
+	return nil
+}
+
+// resolveEnv resolves a single env map: values starting with "$" are looked up
+// in the host environment; other values are used as literals.
+func resolveEnv(raw map[string]string) (map[string]string, error) {
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if strings.HasPrefix(v, "$") {
+			varName := v[1:]
+			resolved, ok := os.LookupEnv(varName)
+			if !ok {
+				return nil, fmt.Errorf("env var $%s is not set in host environment", varName)
+			}
+			out[k] = resolved
+		} else {
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+
+// buildEnv merges the host environment with agentEnv, with agentEnv taking precedence.
+func buildEnv(agentEnv map[string]string) []string {
+	envMap := make(map[string]string)
+	for _, e := range os.Environ() {
+		k, v, _ := strings.Cut(e, "=")
+		envMap[k] = v
+	}
+	for k, v := range agentEnv {
+		envMap[k] = v
+	}
+	result := make([]string, 0, len(envMap))
+	for k, v := range envMap {
+		result = append(result, k+"="+v)
+	}
+	return result
 }
 
 func loadRoster(path string) (Roster, error) {

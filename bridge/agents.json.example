@@ -1,0 +1,28 @@
+{
+  "agents": [
+    {
+      "name": "bud-dev",
+      "role": "developer",
+      "llm_provider": "anthropic",
+      "launch_template": "claude --dangerously-skip-permissions --project-dir {worktree} < {package_file}",
+      "env": {
+        "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
+      },
+      "worktrees": {
+        "martchouk/github.mcp": "/home/john/git/agents/bud-dev/github.mcp"
+      }
+    },
+    {
+      "name": "mud-rev",
+      "role": "reviewer",
+      "llm_provider": "anthropic",
+      "launch_template": "claude --dangerously-skip-permissions --project-dir {worktree} < {package_file}",
+      "env": {
+        "GH_TOKEN": "$MUD_REV_GH_TOKEN"
+      },
+      "worktrees": {
+        "martchouk/github.mcp": "/home/john/git/agents/mud-rev/github.mcp"
+      }
+    }
+  ]
+}
