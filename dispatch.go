@@ -61,15 +61,24 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 		return nil, err
 	}
 	if existing != nil {
-		s.debugf("processIssue: issue=%d task deduplicated existing_task_id=%d role=%s",
-			issueNumber, existing.ID, existing.Role)
-		return map[string]interface{}{
-			"issue":         issue,
-			"workflow":      state,
-			"queued":        false,
-			"deduplicated":  true,
-			"existing_task": existing,
-		}, nil
+		if existing.Role == pkg.Role {
+			s.debugf("processIssue: issue=%d task deduplicated existing_task_id=%d role=%s",
+				issueNumber, existing.ID, existing.Role)
+			return map[string]interface{}{
+				"issue":         issue,
+				"workflow":      state,
+				"queued":        false,
+				"deduplicated":  true,
+				"existing_task": existing,
+			}, nil
+		}
+		// Role changed — the issue transitioned to a different workflow stage.
+		// Supersede the stale queued task so the new one can be dispatched.
+		s.debugf("processIssue: issue=%d superseding stale task existing_task_id=%d old_role=%s new_role=%s",
+			issueNumber, existing.ID, existing.Role, pkg.Role)
+		if err := s.store.SupersedeQueuedTask(issueNumber); err != nil {
+			return nil, fmt.Errorf("supersede stale task: %w", err)
+		}
 	}
 
 	taskID, err := s.store.QueueTask(pkg)
