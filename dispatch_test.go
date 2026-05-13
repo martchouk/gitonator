@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"testing"
 )
@@ -13,9 +14,14 @@ type mockGitHub struct {
 	getIssueIdx     int
 	setLabelsCalled bool
 	setLabelsArgs   []string
+	setLabelsErr    error // if non-nil, returned by SetIssueLabels
 }
 
 func (m *mockGitHub) GetIssue(_ context.Context, _ int) (Issue, error) {
+	if m.getIssueIdx >= len(m.issues) {
+		return Issue{}, fmt.Errorf("mockGitHub: GetIssue called %d times but only %d issues configured",
+			m.getIssueIdx+1, len(m.issues))
+	}
 	i := m.getIssueIdx
 	m.getIssueIdx++
 	return m.issues[i], nil
@@ -32,6 +38,9 @@ func (m *mockGitHub) AssignIssue(_ context.Context, _ int, _ []string) (Issue, e
 func (m *mockGitHub) SetIssueLabels(_ context.Context, _ int, labels []string) ([]GitHubLabel, error) {
 	m.setLabelsCalled = true
 	m.setLabelsArgs = labels
+	if m.setLabelsErr != nil {
+		return nil, m.setLabelsErr
+	}
 	out := make([]GitHubLabel, len(labels))
 	for i, l := range labels {
 		out[i] = GitHubLabel{Name: l}
@@ -97,6 +106,31 @@ func TestProcessIssueLabelBootstrap(t *testing.T) {
 	}
 	if task.CurrentStatus != "status:new" {
 		t.Errorf("task.CurrentStatus=%q, want \"status:new\"", task.CurrentStatus)
+	}
+}
+
+// TestProcessIssueLabelBootstrapSetLabelsError verifies that a GitHub API failure during
+// bootstrap is propagated as an error and does not silently succeed.
+func TestProcessIssueLabelBootstrapSetLabelsError(t *testing.T) {
+	unlabeled := Issue{
+		Number: 11,
+		User:   GitHubUser{Login: "martchouk"},
+	}
+	mock := &mockGitHub{
+		issues:       []Issue{unlabeled},
+		setLabelsErr: fmt.Errorf("github: 403 forbidden"),
+	}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	_, err := s.processIssue(context.Background(), 11)
+	if err == nil {
+		t.Fatal("expected an error when SetIssueLabels fails, got nil")
 	}
 }
 

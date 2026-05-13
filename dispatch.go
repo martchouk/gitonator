@@ -94,6 +94,7 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 func decideNextAction(cfg Config, issue Issue, state WorkflowState, comments []IssueComment) (WorkPackage, bool) {
 	role := ""
 	switch state.StatusLabel {
+	// "" is only reachable from direct callers (MCP tool, tests) that bypass processIssue's bootstrap.
 	case "", "status:new", "status:po-analysis",
 		"status:ready-for-po-review", "status:po-review-in-progress",
 		"status:blocked":
