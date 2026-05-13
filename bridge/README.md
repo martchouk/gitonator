@@ -77,7 +77,7 @@ go build -o agent-bridge .
       "name": "bud-dev",
       "role": "developer",
       "llm_provider": "anthropic",
-      "launch_template": "cd {worktree} && claude --dangerously-skip-permissions < {package_file}",
+      "launch_template": "cd {worktree} && claude --dangerously-skip-permissions --print < {package_file}",
       "env": {
         "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
       },
@@ -89,7 +89,7 @@ go build -o agent-bridge .
       "name": "mud-rev",
       "role": "reviewer",
       "llm_provider": "anthropic",
-      "launch_template": "cd {worktree} && claude --dangerously-skip-permissions < {package_file}",
+      "launch_template": "cd {worktree} && claude --dangerously-skip-permissions --print < {package_file}",
       "env": {
         "GH_TOKEN": "$MUD_REV_GH_TOKEN"
       },
@@ -147,6 +147,8 @@ Export `BUD_DEV_GH_TOKEN=ghp_…` in the shell that starts the bridge (or in a `
 | `{package_file}` | Absolute path to a temp file containing the work package JSON (shell-quoted) |
 
 Both values are single-quoted before shell injection, so paths with spaces and other shell metacharacters are safe.
+
+**Important — use `--print` for headless agent mode.** Without `--print`, Claude defaults to its interactive TUI when its stdout is a TTY (which it is when the bridge runs in a terminal). `--print` puts Claude in non-interactive mode: it processes the work package prompt, executes all tool calls autonomously, and exits.
 
 ---
 
