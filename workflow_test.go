@@ -61,6 +61,7 @@ func TestDecideNextActionQueuesCorrectRole(t *testing.T) {
 		wantRole string
 	}
 	cases := []tc{
+		{"", true, "po"},
 		{"status:new", true, "po"},
 		{"status:po-analysis", true, "po"},
 		{"status:ready-for-requirements-review", true, "reviewer"},
