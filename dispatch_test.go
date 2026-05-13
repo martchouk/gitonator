@@ -293,6 +293,67 @@ func TestProcessIssueSameRoleDifferentAssigneeSupersedes(t *testing.T) {
 	}
 }
 
+// TestProcessIssueSameRoleEmptyToNonEmptyAssigneeSupersedes verifies that a first
+// assignment mid-flight (existing task has Assignee=="") also triggers a supersede so
+// the stale unassigned task is replaced by one carrying the new assignee.
+func TestProcessIssueSameRoleEmptyToNonEmptyAssigneeSupersedes(t *testing.T) {
+	issueWithAssignee := Issue{
+		Number:    51,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-progress"}},
+	}
+
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     &mockGitHub{issues: []Issue{issueWithAssignee}},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	// Seed a stale developer task with no assignee (queued before assignment).
+	if _, err := store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       51,
+		Role:          "developer",
+		Assignee:      "",
+		CurrentStatus: "status:in-progress",
+	}); err != nil {
+		t.Fatalf("seed stale task: %v", err)
+	}
+
+	result, err := s.processIssue(context.Background(), 51)
+	if err != nil {
+		t.Fatalf("processIssue returned error: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+
+	// A new task must have been queued (not deduplicated).
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Error("expected queued=true on first assignment mid-flight, got false — stale unassigned task was not superseded")
+	}
+
+	// The active task must carry the new assignee.
+	task, err := store.FindActiveTaskByIssue(51)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected an active task after first assignment, got nil")
+	}
+	if task.Role != "developer" {
+		t.Errorf("task.Role=%q, want \"developer\"", task.Role)
+	}
+	if task.Assignee != "bud-dev" {
+		t.Errorf("task.Assignee=%q, want \"bud-dev\"", task.Assignee)
+	}
+}
+
 // TestProcessIssueAlreadyLabeledSkipsBootstrap verifies that a labeled issue is not
 // re-labeled — SetIssueLabels must not be called when a status label is already present.
 func TestProcessIssueAlreadyLabeledSkipsBootstrap(t *testing.T) {

@@ -256,7 +256,7 @@ func (s *Store) GetNextWorkPackage(bridgeID string, roles []string) (*WorkPackag
 }
 
 // SupersedeQueuedTask cancels any queued (not yet dispatched) task for the given issue.
-// Called when the issue transitions to a new workflow state requiring a different role,
+// Called when the issue transitions to a new workflow state or its assignee changes,
 // so the stale queued task does not block the incoming one.
 func (s *Store) SupersedeQueuedTask(issueNumber int) error {
 	dedupKey := fmt.Sprintf("issue:%d", issueNumber)
