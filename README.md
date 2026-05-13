@@ -192,7 +192,10 @@ queued → dispatched → completed
 
 ### Deduplication
 
-Tasks are deduplicated by `dedup_key = issue:<N>`. If an active task for the same issue already exists (queued or dispatched), a new one is not queued.
+Tasks are deduplicated by `dedup_key = issue:<N>`. If an active task for the same
+issue already exists **with the same role and same assignee**, a new one is not queued.
+If the role changed or the assignee changed within the same role, the stale task is
+superseded and a fresh task is queued with the updated state.
 
 ### Stale task recovery
 
