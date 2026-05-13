@@ -77,7 +77,7 @@ go build -o agent-bridge .
       "name": "bud-dev",
       "role": "developer",
       "llm_provider": "anthropic",
-      "launch_template": "claude --dangerously-skip-permissions --project-dir {worktree} < {package_file}",
+      "launch_template": "cd {worktree} && claude --dangerously-skip-permissions < {package_file}",
       "env": {
         "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
       },
@@ -89,7 +89,7 @@ go build -o agent-bridge .
       "name": "mud-rev",
       "role": "reviewer",
       "llm_provider": "anthropic",
-      "launch_template": "claude --dangerously-skip-permissions --project-dir {worktree} < {package_file}",
+      "launch_template": "cd {worktree} && claude --dangerously-skip-permissions < {package_file}",
       "env": {
         "GH_TOKEN": "$MUD_REV_GH_TOKEN"
       },
