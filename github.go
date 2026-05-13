@@ -13,6 +13,18 @@ import (
 	"time"
 )
 
+// GitHubAPI is the interface for all GitHub operations used by the server.
+// *GitHubClient satisfies this interface; tests substitute a mock.
+type GitHubAPI interface {
+	GetIssue(ctx context.Context, issueNumber int) (Issue, error)
+	ListIssueComments(ctx context.Context, issueNumber, limit int) ([]IssueComment, error)
+	PostIssueComment(ctx context.Context, issueNumber int, body string) (IssueComment, error)
+	AssignIssue(ctx context.Context, issueNumber int, assignees []string) (Issue, error)
+	SetIssueLabels(ctx context.Context, issueNumber int, labels []string) ([]GitHubLabel, error)
+	AddIssueLabels(ctx context.Context, issueNumber int, labels []string) ([]GitHubLabel, error)
+	RemoveIssueLabel(ctx context.Context, issueNumber int, label string) error
+}
+
 type GitHubClient struct {
 	baseURL string
 	token   string

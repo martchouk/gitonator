@@ -27,7 +27,7 @@ type Config struct {
 
 type Server struct {
 	cfg    Config
-	gh     *GitHubClient
+	gh     GitHubAPI
 	store  *Store
 	logger *log.Logger
 	debug  bool

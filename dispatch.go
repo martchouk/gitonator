@@ -26,6 +26,20 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 	s.debugf("processIssue: issue=%d status=%s suggested_role=%s assignees=%v",
 		issueNumber, state.StatusLabel, state.SuggestedRole, state.CurrentAssignees)
 
+	// Bootstrap: a freshly created issue with no status label enters the workflow as status:new.
+	if state.StatusLabel == "" {
+		s.debugf("processIssue: issue=%d no status label — bootstrapping to status:new", issueNumber)
+		bootstrapLabels := append(labelsToStrings(issue.Labels), "status:new")
+		if _, err := s.gh.SetIssueLabels(ctx, issueNumber, bootstrapLabels); err != nil {
+			return nil, fmt.Errorf("bootstrap status:new label: %w", err)
+		}
+		issue, comments, err = s.loadIssueAndComments(ctx, issueNumber, 100)
+		if err != nil {
+			return nil, err
+		}
+		state = computeWorkflowState(issue, comments)
+	}
+
 	pkg, ok := decideNextAction(s.cfg, issue, state, comments)
 	if !ok {
 		s.debugf("processIssue: issue=%d no action — terminal or wait state", issueNumber)
@@ -80,7 +94,8 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 func decideNextAction(cfg Config, issue Issue, state WorkflowState, comments []IssueComment) (WorkPackage, bool) {
 	role := ""
 	switch state.StatusLabel {
-	case "status:new", "status:po-analysis",
+	// "" is only reachable from direct callers (MCP tool, tests) that bypass processIssue's bootstrap.
+	case "", "status:new", "status:po-analysis",
 		"status:ready-for-po-review", "status:po-review-in-progress",
 		"status:blocked":
 		role = "po"
