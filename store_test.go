@@ -165,6 +165,85 @@ func TestCompleteDispatchedTask(t *testing.T) {
 	}
 }
 
+func TestSupersedeQueuedTask(t *testing.T) {
+	s := tempStore(t)
+	pkg := testPkg(55, "po")
+
+	if _, err := s.QueueTask(pkg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Task is active before superseding.
+	found, err := s.FindActiveTaskByIssue(55)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found == nil {
+		t.Fatal("expected active task before supersede, got nil")
+	}
+
+	if err := s.SupersedeQueuedTask(55); err != nil {
+		t.Fatalf("SupersedeQueuedTask: %v", err)
+	}
+
+	// No active task after superseding.
+	found2, err := s.FindActiveTaskByIssue(55)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found2 != nil {
+		t.Errorf("expected nil after SupersedeQueuedTask, got status=%s role=%s", found2.Status, found2.Role)
+	}
+
+	// Task row is in 'superseded' status.
+	var status string
+	if err := s.db.QueryRow(`SELECT status FROM tasks WHERE id=?`, found.ID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "superseded" {
+		t.Errorf("task status: got %q, want %q", status, "superseded")
+	}
+}
+
+func TestSupersedeQueuedTaskIsNoopWhenNone(t *testing.T) {
+	s := tempStore(t)
+	// No tasks — must not error.
+	if err := s.SupersedeQueuedTask(404); err != nil {
+		t.Errorf("SupersedeQueuedTask on empty store: %v", err)
+	}
+}
+
+func TestSupersedeQueuedTaskDoesNotAffectDispatched(t *testing.T) {
+	s := tempStore(t)
+	pkg := testPkg(66, "developer")
+
+	if _, err := s.QueueTask(pkg); err != nil {
+		t.Fatal(err)
+	}
+	// Dispatch the task.
+	dp, err := s.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil || dp == nil {
+		t.Fatalf("GetNextWorkPackage: %v %v", dp, err)
+	}
+
+	// Supersede should not touch dispatched tasks.
+	if err := s.SupersedeQueuedTask(66); err != nil {
+		t.Fatalf("SupersedeQueuedTask: %v", err)
+	}
+
+	// Task should still be active (dispatched).
+	found, err := s.FindActiveTaskByIssue(66)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found == nil {
+		t.Fatal("expected dispatched task to remain active after SupersedeQueuedTask")
+	}
+	if found.Status != "dispatched" {
+		t.Errorf("task status: got %q, want %q", found.Status, "dispatched")
+	}
+}
+
 func TestCompleteDispatchedTaskIsNoopWhenNone(t *testing.T) {
 	s := tempStore(t)
 	// No tasks at all — must not error.

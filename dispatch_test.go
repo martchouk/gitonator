@@ -134,6 +134,104 @@ func TestProcessIssueLabelBootstrapSetLabelsError(t *testing.T) {
 	}
 }
 
+// TestProcessIssueRoleTransitionSupersedes reproduces issue #21: when an issue transitions
+// to a new status that requires a different role, any queued task for the old role must be
+// superseded so the new role's task can be dispatched.
+func TestProcessIssueRoleTransitionSupersedes(t *testing.T) {
+	// Issue is now in-progress (requires developer), but a stale PO task is queued.
+	issue := Issue{
+		Number:    20,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "zed-arc"}},
+		Labels:    []GitHubLabel{{Name: "status:in-progress"}},
+	}
+
+	mock := &mockGitHub{issues: []Issue{issue}}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	// Seed a stale queued PO task (as if a prior issue_comment event created it).
+	if _, err := store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       20,
+		Role:          "po",
+		CurrentStatus: "status:new",
+	}); err != nil {
+		t.Fatalf("seed stale task: %v", err)
+	}
+
+	result, err := s.processIssue(context.Background(), 20)
+	if err != nil {
+		t.Fatalf("processIssue returned error: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+
+	// A new task must have been queued (not deduplicated).
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Error("expected queued=true after role transition, got false — stale PO task was not superseded")
+	}
+
+	// The active task must now be for the developer role.
+	task, err := store.FindActiveTaskByIssue(20)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected an active task after role transition, got nil")
+	}
+	if task.Role != "developer" {
+		t.Errorf("task.Role=%q, want %q", task.Role, "developer")
+	}
+}
+
+// TestProcessIssueSameRoleDeduplicates verifies that a second event for the same issue and
+// same role does NOT create a duplicate task.
+func TestProcessIssueSameRoleDeduplicates(t *testing.T) {
+	issue := Issue{
+		Number:    30,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "ada-pow"}},
+		Labels:    []GitHubLabel{{Name: "status:new"}},
+	}
+
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     &mockGitHub{issues: []Issue{issue, issue}},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	if _, err := s.processIssue(context.Background(), 30); err != nil {
+		t.Fatalf("first processIssue: %v", err)
+	}
+
+	result2, err := s.processIssue(context.Background(), 30)
+	if err != nil {
+		t.Fatalf("second processIssue: %v", err)
+	}
+
+	m, ok := result2.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result2)
+	}
+	if queued, _ := m["queued"].(bool); queued {
+		t.Error("expected queued=false on duplicate same-role event, got true")
+	}
+	if deduped, _ := m["deduplicated"].(bool); !deduped {
+		t.Error("expected deduplicated=true on same-role duplicate, got false")
+	}
+}
+
 // TestProcessIssueAlreadyLabeledSkipsBootstrap verifies that a labeled issue is not
 // re-labeled — SetIssueLabels must not be called when a status label is already present.
 func TestProcessIssueAlreadyLabeledSkipsBootstrap(t *testing.T) {

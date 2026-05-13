@@ -255,6 +255,19 @@ func (s *Store) GetNextWorkPackage(bridgeID string, roles []string) (*WorkPackag
 	return &pkg, nil
 }
 
+// SupersedeQueuedTask cancels any queued (not yet dispatched) task for the given issue.
+// Called when the issue transitions to a new workflow state requiring a different role,
+// so the stale queued task does not block the incoming one.
+func (s *Store) SupersedeQueuedTask(issueNumber int) error {
+	dedupKey := fmt.Sprintf("issue:%d", issueNumber)
+	_, err := s.db.Exec(
+		`UPDATE tasks SET status='superseded', finished_at=?
+		 WHERE dedup_key=? AND status='queued'`,
+		nowUTC(), dedupKey,
+	)
+	return err
+}
+
 // CompleteDispatchedTask marks any dispatched task for the given issue as completed.
 // This is called by processIssue before queuing a new task; it is a no-op if none exist.
 func (s *Store) CompleteDispatchedTask(issueNumber int) error {
