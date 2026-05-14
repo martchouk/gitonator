@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"testing"
 )
 
@@ -445,5 +446,106 @@ func TestProcessIssueWith_YAMLWorkflow_QueuesDevTask(t *testing.T) {
 	}
 	if task.CurrentStatus != "status:in-development" {
 		t.Errorf("task.CurrentStatus=%q, want %q", task.CurrentStatus, "status:in-development")
+	}
+}
+
+// TestProcessIssueWith_UnknownStatusLabel_LogsWarning verifies that processIssueWith emits a
+// WARN log when an issue carries a status label that is not defined in the active workflow,
+// and does not queue any task for it (reproduces the silent no-op from issue #32).
+func TestProcessIssueWith_UnknownStatusLabel_LogsWarning(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number:    99,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "ada-pow"}},
+		Labels:    []GitHubLabel{{Name: "status:approved-for-dev"}}, // legacy label, not in lean workflow
+	}
+	mock := &mockGitHub{issues: []Issue{issue}}
+	store := tempStore(t)
+	var logBuf bytes.Buffer
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&logBuf, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 99, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith returned unexpected error: %v", err)
+	}
+
+	// No task must be queued.
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); queued {
+		t.Error("expected queued=false for unknown status label, got true")
+	}
+
+	// A WARN line must appear in the log output.
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "WARN") {
+		t.Errorf("expected WARN in log output for unknown status label, got: %s", logOutput)
+	}
+	if !strings.Contains(logOutput, "status:approved-for-dev") {
+		t.Errorf("expected log to mention the unknown label, got: %s", logOutput)
+	}
+}
+
+// TestProcessIssueWith_PopulatesWorkflowContext verifies that a queued WorkPackage carries
+// the active workflow key and the list of statically-reachable target statuses, so that
+// the bridge can pass this context to spawned agents (fixes the root cause of issue #32).
+func TestProcessIssueWith_PopulatesWorkflowContext(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number:    77,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
+	}
+	mock := &mockGitHub{issues: []Issue{issue}}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 77, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Fatal("expected queued=true for status:in-development")
+	}
+
+	pkg, ok := m["task"].(WorkPackage)
+	if !ok {
+		t.Fatalf("expected task to be WorkPackage, got %T", m["task"])
+	}
+
+	if pkg.WorkflowKey != "lean" {
+		t.Errorf("WorkflowKey=%q, want %q", pkg.WorkflowKey, "lean")
+	}
+	if len(pkg.ValidTransitions) == 0 {
+		t.Error("expected ValidTransitions to be non-empty for status:in-development")
+	}
+	// status:code-review must be reachable from status:in-development.
+	found := false
+	for _, tgt := range pkg.ValidTransitions {
+		if tgt == "status:code-review" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected status:code-review in ValidTransitions, got %v", pkg.ValidTransitions)
 	}
 }

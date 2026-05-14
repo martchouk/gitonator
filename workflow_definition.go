@@ -59,6 +59,27 @@ func (wd *WorkflowDef) HasStatus(id string) bool {
 	return wd.StatusByID(id) != nil
 }
 
+// ValidTransitionsFrom returns all statically-resolvable target status IDs for
+// transitions that originate from fromStatus. Dynamic targets (e.g., "$metadata.*")
+// are excluded because they cannot be resolved without runtime metadata.
+func (wd *WorkflowDef) ValidTransitionsFrom(fromStatus string) []string {
+	var targets []string
+	seen := map[string]bool{}
+	for _, t := range wd.Transitions {
+		if t.From == nil || len(t.To) == 0 || t.To[0] == '$' {
+			continue
+		}
+		for _, f := range t.From {
+			if f == fromStatus && !seen[t.To] {
+				targets = append(targets, t.To)
+				seen[t.To] = true
+				break
+			}
+		}
+	}
+	return targets
+}
+
 // AllStatusIDs returns all status IDs declared in the workflow.
 func (wd *WorkflowDef) AllStatusIDs() []string {
 	ids := make([]string, 0, len(wd.Statuses))

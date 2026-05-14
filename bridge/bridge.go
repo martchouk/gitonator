@@ -36,13 +36,15 @@ type Roster struct {
 }
 
 type WorkPackage struct {
-	ID            int64  `json:"id"`
-	Repo          string `json:"repo"`
-	IssueID       int    `json:"issue_id"`
-	Role          string `json:"role"`
-	Assignee      string `json:"assignee"`
-	LastCommentID int64  `json:"last_comment_id"`
-	CurrentStatus string `json:"current_status"`
+	ID               int64    `json:"id"`
+	Repo             string   `json:"repo"`
+	IssueID          int      `json:"issue_id"`
+	Role             string   `json:"role"`
+	Assignee         string   `json:"assignee"`
+	LastCommentID    int64    `json:"last_comment_id"`
+	CurrentStatus    string   `json:"current_status"`
+	WorkflowKey      string   `json:"workflow_key,omitempty"`
+	ValidTransitions []string `json:"valid_transitions,omitempty"`
 }
 
 type workNextResp struct {

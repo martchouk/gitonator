@@ -228,7 +228,8 @@ func (s *Store) GetNextWorkPackage(bridgeID string, roles []string) (*WorkPackag
 	defer func() { _ = tx.Rollback() }()
 
 	query := `SELECT id, COALESCE(repo,''), issue_number, role, COALESCE(assignee,''),
-	                 COALESCE(last_comment_id,0), COALESCE(current_status,'')
+	                 COALESCE(last_comment_id,0), COALESCE(current_status,''),
+	                 COALESCE(payload_json,'{}')
 	          FROM tasks
 	          WHERE status = 'queued' AND role IN ` + inClause + `
 	          ORDER BY created_at ASC
@@ -237,14 +238,22 @@ func (s *Store) GetNextWorkPackage(bridgeID string, roles []string) (*WorkPackag
 	row := tx.QueryRow(query, placeholders...)
 
 	var pkg WorkPackage
+	var payloadJSON string
 	if err := row.Scan(
 		&pkg.ID, &pkg.Repo, &pkg.IssueID, &pkg.Role,
-		&pkg.Assignee, &pkg.LastCommentID, &pkg.CurrentStatus,
+		&pkg.Assignee, &pkg.LastCommentID, &pkg.CurrentStatus, &payloadJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
+	}
+	// Enrich the package with fields stored only in the JSON payload (e.g., WorkflowKey,
+	// ValidTransitions). If payload_json is absent or malformed, the extra fields stay zero.
+	var enriched WorkPackage
+	if json.Unmarshal([]byte(payloadJSON), &enriched) == nil {
+		pkg.WorkflowKey = enriched.WorkflowKey
+		pkg.ValidTransitions = enriched.ValidTransitions
 	}
 
 	_, err = tx.Exec(

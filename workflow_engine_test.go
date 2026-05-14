@@ -466,6 +466,81 @@ func TestApplyTransitionMetadata_Clear(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// ValidTransitionsFrom
+// ---------------------------------------------------------------------------
+
+func TestValidTransitionsFrom_InDevelopment(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	targets := wd.ValidTransitionsFrom("status:in-development")
+	// Expected static targets from status:in-development:
+	// developer_start_or_continue_implementation → status:in-development (self)
+	// developer_submit_code_review → status:code-review
+	// block_issue → status:blocked
+	// po_reject_active_issue → status:rejected
+	// resume_from_blocked target is dynamic ($metadata.*) and must NOT appear.
+	want := map[string]bool{
+		"status:in-development": true,
+		"status:code-review":    true,
+		"status:blocked":        true,
+		"status:rejected":       true,
+	}
+	if len(targets) != len(want) {
+		t.Errorf("len(targets)=%d, want %d; targets=%v", len(targets), len(want), targets)
+	}
+	for _, tgt := range targets {
+		if !want[tgt] {
+			t.Errorf("unexpected target %q in ValidTransitionsFrom(status:in-development)", tgt)
+		}
+	}
+}
+
+func TestValidTransitionsFrom_BlockedExcludesDynamic(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	targets := wd.ValidTransitionsFrom("status:blocked")
+	// resume_from_blocked has to: "$metadata.blocked_from" — must NOT appear.
+	// blocked_back_to_definition → status:story-definition
+	// po_reject_active_issue → status:rejected
+	for _, tgt := range targets {
+		if len(tgt) > 0 && tgt[0] == '$' {
+			t.Errorf("dynamic target %q must not appear in ValidTransitionsFrom results", tgt)
+		}
+	}
+	found := map[string]bool{}
+	for _, tgt := range targets {
+		found[tgt] = true
+	}
+	if !found["status:story-definition"] {
+		t.Errorf("expected status:story-definition in ValidTransitionsFrom(status:blocked); got %v", targets)
+	}
+	if !found["status:rejected"] {
+		t.Errorf("expected status:rejected in ValidTransitionsFrom(status:blocked); got %v", targets)
+	}
+}
+
+func TestValidTransitionsFrom_TerminalStatusEmpty(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	// status:done has po_reopen_done → status:story-definition
+	targets := wd.ValidTransitionsFrom("status:done")
+	found := false
+	for _, tgt := range targets {
+		if tgt == "status:story-definition" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected status:story-definition (reopen) from status:done; got %v", targets)
+	}
+}
+
+func TestValidTransitionsFrom_UnknownStatusEmpty(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	targets := wd.ValidTransitionsFrom("status:nonexistent")
+	if len(targets) != 0 {
+		t.Errorf("expected empty slice for unknown status, got %v", targets)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // blocked round-trip (integration-style)
 // ---------------------------------------------------------------------------
 

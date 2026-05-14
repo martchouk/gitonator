@@ -347,6 +347,34 @@ func TestIssueMetadataClear(t *testing.T) {
 	}
 }
 
+// TestGetNextWorkPackage_WorkflowContextRoundTrip verifies that WorkflowKey and
+// ValidTransitions stored in payload_json are returned by GetNextWorkPackage.
+func TestGetNextWorkPackage_WorkflowContextRoundTrip(t *testing.T) {
+	s := tempStore(t)
+	pkg := WorkPackage{
+		Repo:             "owner/repo",
+		IssueID:          88,
+		Role:             "developer",
+		CurrentStatus:    "status:in-development",
+		WorkflowKey:      "lean",
+		ValidTransitions: []string{"status:code-review", "status:blocked"},
+	}
+	if _, err := s.QueueTask(pkg); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+
+	got, err := s.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil || got == nil {
+		t.Fatalf("GetNextWorkPackage: %v %v", got, err)
+	}
+	if got.WorkflowKey != "lean" {
+		t.Errorf("WorkflowKey: got %q, want %q", got.WorkflowKey, "lean")
+	}
+	if len(got.ValidTransitions) != 2 {
+		t.Errorf("ValidTransitions: got %v, want [status:code-review status:blocked]", got.ValidTransitions)
+	}
+}
+
 func TestBridgeIDStoredOnDispatch(t *testing.T) {
 	s := tempStore(t)
 	if _, err := s.QueueTask(testPkg(7, "po")); err != nil {
