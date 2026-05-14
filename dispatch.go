@@ -16,14 +16,17 @@ type WorkPackage struct {
 	CurrentStatus string `json:"current_status"`
 }
 
-// processIssue processes an issue using the legacy hard-coded workflow engine.
+// processIssue processes an issue using the default (lean) workflow.
 func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}, error) {
-	return s.processIssueWith(ctx, issueNumber, nil)
+	return s.processIssueWith(ctx, issueNumber, s.workflowDef(""))
 }
 
-// processIssueWith processes an issue. When wd is non-nil the YAML-driven engine is
-// used; when nil the legacy hard-coded engine is used.
+// processIssueWith processes an issue using the supplied YAML WorkflowDef.
+// wd must not be nil; use s.workflowDef("") to get the default (lean) workflow.
 func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *WorkflowDef) (interface{}, error) {
+	if wd == nil {
+		return nil, fmt.Errorf("processIssueWith: workflow definition required (registry not loaded)")
+	}
 	issue, comments, err := s.loadIssueAndComments(ctx, issueNumber, 100)
 	if err != nil {
 		return nil, err
@@ -47,13 +50,7 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 		state = s.computeState(wd, issue, comments)
 	}
 
-	var pkg WorkPackage
-	var ok bool
-	if wd != nil {
-		pkg, ok = decideNextActionFromDef(wd, s.cfg, issue, state, comments)
-	} else {
-		pkg, ok = decideNextAction(s.cfg, issue, state, comments)
-	}
+	pkg, ok := decideNextActionFromDef(wd, s.cfg, issue, state, comments)
 	if !ok {
 		s.debugf("processIssue: issue=%d no action — terminal or wait state", issueNumber)
 		return map[string]interface{}{
@@ -117,56 +114,7 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 	}, nil
 }
 
-// computeState computes the WorkflowState using either the YAML engine (when wd != nil)
-// or the legacy hard-coded engine.
 func (s *Server) computeState(wd *WorkflowDef, issue Issue, comments []IssueComment) WorkflowState {
-	if wd != nil {
-		return computeWorkflowStateFromDef(wd, issue, comments)
-	}
-	return computeWorkflowState(issue, comments)
+	return computeWorkflowStateFromDef(wd, issue, comments)
 }
 
-// decideNextAction derives the next work package from the current workflow state.
-// The orchestrator has no knowledge of GitHub usernames — role is derived from the status label.
-func decideNextAction(cfg Config, issue Issue, state WorkflowState, comments []IssueComment) (WorkPackage, bool) {
-	role := ""
-	switch state.StatusLabel {
-	// "" is only reachable from direct callers (MCP tool, tests) that bypass processIssue's bootstrap.
-	case "", "status:new", "status:po-analysis",
-		"status:ready-for-po-review", "status:po-review-in-progress",
-		"status:blocked":
-		role = "po"
-	case "status:ready-for-requirements-review", "status:requirements-review-in-progress":
-		role = "reviewer"
-	case "status:architect-analysis":
-		role = "architect"
-	case "status:approved-for-dev", "status:in-progress", "status:changes-requested":
-		role = "developer"
-	case "status:ready-for-review", "status:review-in-progress":
-		role = "reviewer"
-	// Human-wait states: no task queued; Bridge waits for webhook.
-	case "status:awaiting-stakeholder-approval", "status:awaiting-final-stakeholder-approval":
-		return WorkPackage{}, false
-	// Terminal states.
-	case "status:done", "status:rejected":
-		return WorkPackage{}, false
-	default:
-		return WorkPackage{}, false
-	}
-
-	var lastCommentID int64
-	if len(comments) > 0 {
-		lastCommentID = comments[len(comments)-1].ID
-	}
-
-	repo := fmt.Sprintf("%s/%s", cfg.Owner, cfg.Repo)
-
-	return WorkPackage{
-		Repo:          repo,
-		IssueID:       issue.Number,
-		Role:          role,
-		Assignee:      currentAssigneeOfIssue(issue),
-		LastCommentID: lastCommentID,
-		CurrentStatus: state.StatusLabel,
-	}, true
-}

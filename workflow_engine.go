@@ -24,26 +24,16 @@ func computeWorkflowStateFromDef(wd *WorkflowDef, issue Issue, comments []IssueC
 		assignees = append(assignees, a.Login)
 	}
 
-	stakeholder := resolveStakeholder(issue)
-	approved := false
-	for _, c := range comments {
-		if c.User.Login == stakeholder && containsApprove(c.Body) {
-			approved = true
-		}
-	}
-
 	suggestedRole := "unknown"
 	if sd := wd.StatusByID(status); sd != nil {
 		suggestedRole = sd.Role
 	}
 
 	return WorkflowState{
-		StatusLabel:       status,
-		TypeLabels:        types,
-		CurrentAssignees:  assignees,
-		SuggestedRole:     suggestedRole,
-		Stakeholder:       stakeholder,
-		RecognizedApprove: approved,
+		StatusLabel:      status,
+		TypeLabels:       types,
+		CurrentAssignees: assignees,
+		SuggestedRole:    suggestedRole,
 	}
 }
 
