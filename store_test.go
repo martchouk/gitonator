@@ -370,8 +370,41 @@ func TestGetNextWorkPackage_WorkflowContextRoundTrip(t *testing.T) {
 	if got.WorkflowKey != "lean" {
 		t.Errorf("WorkflowKey: got %q, want %q", got.WorkflowKey, "lean")
 	}
-	if len(got.ValidTransitions) != 2 {
+	found := map[string]bool{}
+	for _, tgt := range got.ValidTransitions {
+		found[tgt] = true
+	}
+	if !found["status:code-review"] || !found["status:blocked"] {
 		t.Errorf("ValidTransitions: got %v, want [status:code-review status:blocked]", got.ValidTransitions)
+	}
+}
+
+// TestGetNextWorkPackage_OldPayloadMissingWorkflowFields verifies backward-compatibility:
+// a task row inserted before PR #33 (payload_json without workflow_key/valid_transitions)
+// is returned with zero values for those fields rather than an error.
+func TestGetNextWorkPackage_OldPayloadMissingWorkflowFields(t *testing.T) {
+	s := tempStore(t)
+
+	// Insert a task using the legacy (pre-PR-33) payload_json that has no workflow fields.
+	legacyPayload := `{"id":0,"repo":"owner/repo","issue_id":89,"role":"po","assignee":"","last_comment_id":0,"current_status":"status:new"}`
+	_, err := s.db.Exec(
+		`INSERT INTO tasks (issue_number, repo, role, assignee, last_comment_id, current_status, status, dedup_key, payload_json, created_at)
+		 VALUES (89, 'owner/repo', 'po', '', 0, 'status:new', 'queued', 'issue:89', ?, datetime('now'))`,
+		legacyPayload,
+	)
+	if err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+
+	got, err := s.GetNextWorkPackage("bridge-1", []string{"po"})
+	if err != nil || got == nil {
+		t.Fatalf("GetNextWorkPackage: %v %v", got, err)
+	}
+	if got.WorkflowKey != "" {
+		t.Errorf("WorkflowKey: got %q, want empty for legacy row", got.WorkflowKey)
+	}
+	if len(got.ValidTransitions) != 0 {
+		t.Errorf("ValidTransitions: got %v, want nil/empty for legacy row", got.ValidTransitions)
 	}
 }
 

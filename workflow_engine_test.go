@@ -517,7 +517,7 @@ func TestValidTransitionsFrom_BlockedExcludesDynamic(t *testing.T) {
 	}
 }
 
-func TestValidTransitionsFrom_TerminalStatusEmpty(t *testing.T) {
+func TestValidTransitionsFrom_DoneHasReopenTransition(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	// status:done has po_reopen_done → status:story-definition
 	targets := wd.ValidTransitionsFrom("status:done")
