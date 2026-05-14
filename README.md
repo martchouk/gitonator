@@ -33,7 +33,6 @@ Roles are defined externally in the Bridge's `agents.json` — the orchestrator 
 Core features:
 
 - receive GitHub webhook events on `/webhook/github`
-- recognise `/approve` comment directives for stakeholder-wait states
 - validate workflow transitions against a strict state machine
 - apply transitions by:
   - updating `status:*` labels
@@ -86,7 +85,7 @@ The orchestrator routes tasks to roles. The Bridge maps roles to agent processes
 
 The current GitHub assignee of the issue is passed to the Bridge in the work package as `assignee`. The Bridge uses this for priority-1 agent matching (see `bridge/README.md`).
 
-The stakeholder for `/approve` transitions is resolved from the issue labels or the issue creator.
+The stakeholder identity (used for manual approval lookups) is resolved from a `stakeholder:<username>` label on the issue, falling back to the issue creator. The `find_stakeholder_approvals` MCP tool uses this to locate `/approve` comments. The workflow engine itself does not act on `/approve` comments — approval is a manual MCP tool operation, not an automatic engine trigger.
 
 ---
 
@@ -178,45 +177,44 @@ The orchestrator uses exactly one active `status:*` label per issue. The support
 
 ## Workflow model
 
-### Main lifecycle
+### Main lifecycle (lean workflow)
 
-Typical feature flow:
+Typical feature flow using the default `lean` workflow:
 
 1. New issue is created → `status:new` → PO task queued
-2. PO completes analysis → `status:ready-for-requirements-review` → Reviewer task queued
-3. Reviewer reviews requirements → `status:requirements-review-in-progress`
-4. Reviewer approves requirements → `status:awaiting-stakeholder-approval`
-5. Stakeholder posts `/approve` → `status:architect-analysis` → Architect task queued
-6. Architect completes architecture → `status:approved-for-dev` → Developer task queued
-7. Developer implements → `status:ready-for-review` → Reviewer task queued
-8. Reviewer accepts code → `status:ready-for-po-review` → PO task queued
-9. PO approves → `status:awaiting-final-stakeholder-approval`
-10. Stakeholder posts `/approve` → `status:done`
-
-If the reviewer sends requirements back to PO (`status:po-analysis`), the PO reworks and publishes again into the requirements review cycle.
+2. PO defines the story → `status:story-definition` → PO task queued; PO transitions to `status:dev-planning` when ready
+3. Developer creates a plan → `status:dev-planning` → Developer task queued; transitions to `status:plan-review`
+4. Reviewer approves the plan → `status:ready-for-development` → Developer task queued
+5. Developer implements → `status:in-development` → Developer task queued; transitions to `status:code-review`
+6. Reviewer accepts the code → `status:po-approval` → PO task queued
+7. PO approves rollout → `status:done`
 
 ### Review loop
 
-After developer refinements:
+The reviewer may send work back instead of accepting:
 
-- reviewer gets the issue again
-- reviewer may accept (→ PO) or reject (→ developer, `status:changes-requested`)
+- from `status:plan-review` → back to `status:dev-planning` (plan rework)
+- from `status:code-review` → back to `status:in-development` (code changes requested)
 
-This loop can repeat until accepted.
+Each loop repeats until the reviewer accepts.
+
+### Blocked state
+
+Any actor may block an issue (`status:blocked`). The `blocked_from` metadata records the originating status. When the block is resolved, the issue resumes from exactly the state it came from.
 
 ---
 
 ## Transition validation
 
-Transitions are validated against a strict rule matrix.
+Transitions are validated against the loaded YAML workflow definition.
 
 Validation checks include:
 
 - current status
 - actor role
-- current GitHub assignee
 - target status
-- stakeholder approval requirement
+- guard conditions (label-based gates, used in the full workflow)
+- dynamic target resolution (e.g. `$metadata.blocked_from` for resume-from-blocked)
 
 The orchestrator can:
 

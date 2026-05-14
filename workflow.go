@@ -346,7 +346,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		issue, _, err := s.loadIssueAndComments(ctx, args.IssueNumber, 100)
+		issue, err := s.gh.GetIssue(ctx, args.IssueNumber)
 		if err != nil {
 			return nil, err
 		}
@@ -450,8 +450,9 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 }
 
 // workflowDef returns the WorkflowDef for the given key from the server's registry.
-// An empty or unknown key falls back to the registry default (lean). Returns nil when
-// no registry is loaded (legacy hard-coded engine is used instead).
+// An empty or unknown key falls back to the registry default (lean). Returns nil only
+// when no registry is loaded — callers must treat nil as an error condition; main exits
+// on registry load failure so this should not occur in a correctly started server.
 func (s *Server) workflowDef(key string) *WorkflowDef {
 	if s.workflows == nil {
 		return nil
