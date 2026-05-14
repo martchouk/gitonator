@@ -21,16 +21,6 @@ type WorkflowState struct {
 	TypeLabels       []string `json:"typeLabels"`
 	CurrentAssignees []string `json:"currentAssignees"`
 	SuggestedRole    string   `json:"suggestedRole"`
-	Stakeholder      string   `json:"stakeholder"`
-	RecognizedApprove bool    `json:"recognizedApprove"`
-}
-
-type TransitionRule struct {
-	FromStatuses               []string `json:"fromStatuses"`
-	ToStatus                   string   `json:"toStatus"`
-	AllowedRoles               []string `json:"allowedRoles"`
-	RequiresStakeholderApprove bool     `json:"requiresStakeholderApprove"`
-	Description                string   `json:"description"`
 }
 
 type TransitionValidationResult struct {
@@ -56,140 +46,6 @@ type IssueTimelineResult struct {
 	Timeline []IssueTimelineEntry `json:"timeline"`
 }
 
-var (
-	statusLabels = []string{
-		"status:new",
-		"status:po-analysis",
-		"status:ready-for-requirements-review",
-		"status:requirements-review-in-progress",
-		"status:awaiting-stakeholder-approval",
-		"status:architect-analysis",
-		"status:approved-for-dev",
-		"status:in-progress",
-		"status:ready-for-review",
-		"status:review-in-progress",
-		"status:changes-requested",
-		"status:ready-for-po-review",
-		"status:po-review-in-progress",
-		"status:awaiting-final-stakeholder-approval",
-		"status:blocked",
-		"status:done",
-		"status:rejected",
-	}
-
-	transitionRules = []TransitionRule{
-		{
-			FromStatuses: []string{"status:new", "status:po-analysis"},
-			ToStatus:     "status:po-analysis",
-			AllowedRoles: []string{"po"},
-			Description:  "PO can move a new issue into PO analysis.",
-		},
-		{
-			FromStatuses: []string{"status:new", "status:po-analysis"},
-			ToStatus:     "status:ready-for-requirements-review",
-			AllowedRoles: []string{"po"},
-			Description:  "PO publishes analysis for reviewer requirements review.",
-		},
-		{
-			FromStatuses: []string{"status:ready-for-requirements-review", "status:requirements-review-in-progress"},
-			ToStatus:     "status:requirements-review-in-progress",
-			AllowedRoles: []string{"reviewer"},
-			Description:  "Reviewer can begin or continue requirements review.",
-		},
-		{
-			FromStatuses: []string{"status:ready-for-requirements-review", "status:requirements-review-in-progress"},
-			ToStatus:     "status:po-analysis",
-			AllowedRoles: []string{"reviewer"},
-			Description:  "Reviewer can send requirements back to PO for rework.",
-		},
-		{
-			FromStatuses: []string{"status:requirements-review-in-progress"},
-			ToStatus:     "status:awaiting-stakeholder-approval",
-			AllowedRoles: []string{"reviewer"},
-			Description:  "Reviewer can approve requirements and request stakeholder sign-off.",
-		},
-		{
-			FromStatuses:               []string{"status:awaiting-stakeholder-approval"},
-			ToStatus:                   "status:architect-analysis",
-			AllowedRoles:               []string{"stakeholder", "po"},
-			RequiresStakeholderApprove: true,
-			Description:                "Stakeholder-approved requirements move to architect for analysis.",
-		},
-		{
-			FromStatuses: []string{"status:architect-analysis"},
-			ToStatus:     "status:approved-for-dev",
-			AllowedRoles: []string{"architect"},
-			Description:  "Architect hands off to developer after architecture work is done.",
-		},
-		{
-			FromStatuses: []string{"status:approved-for-dev", "status:changes-requested", "status:in-progress"},
-			ToStatus:     "status:in-progress",
-			AllowedRoles: []string{"developer"},
-			Description:  "Developer can start or continue implementation.",
-		},
-		{
-			FromStatuses: []string{"status:in-progress", "status:changes-requested"},
-			ToStatus:     "status:ready-for-review",
-			AllowedRoles: []string{"developer"},
-			Description:  "Developer can hand work to reviewer.",
-		},
-		{
-			FromStatuses: []string{"status:ready-for-review", "status:review-in-progress"},
-			ToStatus:     "status:review-in-progress",
-			AllowedRoles: []string{"reviewer"},
-			Description:  "Reviewer can begin or continue review.",
-		},
-		{
-			FromStatuses: []string{"status:ready-for-review", "status:review-in-progress"},
-			ToStatus:     "status:changes-requested",
-			AllowedRoles: []string{"reviewer"},
-			Description:  "Reviewer can reject and send back to developer.",
-		},
-		{
-			FromStatuses: []string{"status:ready-for-review", "status:review-in-progress"},
-			ToStatus:     "status:ready-for-po-review",
-			AllowedRoles: []string{"reviewer"},
-			Description:  "Reviewer can accept and hand to PO.",
-		},
-		{
-			FromStatuses: []string{"status:ready-for-po-review", "status:po-review-in-progress"},
-			ToStatus:     "status:po-review-in-progress",
-			AllowedRoles: []string{"po"},
-			Description:  "PO can begin or continue PO review.",
-		},
-		{
-			FromStatuses: []string{"status:ready-for-po-review", "status:po-review-in-progress"},
-			ToStatus:     "status:changes-requested",
-			AllowedRoles: []string{"po"},
-			Description:  "PO can reject and send back to developer.",
-		},
-		{
-			FromStatuses: []string{"status:ready-for-po-review", "status:po-review-in-progress"},
-			ToStatus:     "status:awaiting-final-stakeholder-approval",
-			AllowedRoles: []string{"po"},
-			Description:  "PO can request final stakeholder approval.",
-		},
-		{
-			FromStatuses:               []string{"status:awaiting-final-stakeholder-approval"},
-			ToStatus:                   "status:done",
-			AllowedRoles:               []string{"stakeholder", "po"},
-			RequiresStakeholderApprove: true,
-			Description:                "Final stakeholder-approved delivery can be completed.",
-		},
-		{
-			FromStatuses: statusLabels,
-			ToStatus:     "status:blocked",
-			AllowedRoles: []string{"po", "developer", "reviewer", "stakeholder"},
-			Description:  "Any active actor may block the issue; PO unblocks.",
-		},
-		{
-			FromStatuses: statusLabels,
-			ToStatus:     "status:rejected",
-			AllowedRoles: []string{"po", "stakeholder"},
-			Description:  "PO or stakeholder may reject an issue.",
-		},
-	}
-)
 
 func (s *Server) tools() []Tool {
 	return []Tool{
@@ -253,6 +109,7 @@ func (s *Server) tools() []Tool {
 			"type": "object",
 			"properties": map[string]interface{}{
 				"issue_number": map[string]interface{}{"type": "integer"},
+				"workflow":     map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
 			},
 			"required": []string{"issue_number"},
 		}),
@@ -269,6 +126,7 @@ func (s *Server) tools() []Tool {
 				"issue_number": map[string]interface{}{"type": "integer"},
 				"to_status":    map[string]interface{}{"type": "string"},
 				"actor_role":   map[string]interface{}{"type": "string", "description": "Role name: po, developer, reviewer, architect, tester, designer, stakeholder"},
+				"workflow":     map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
 			},
 			"required": []string{"issue_number", "to_status", "actor_role"},
 		}),
@@ -280,17 +138,21 @@ func (s *Server) tools() []Tool {
 				"assignee":     map[string]interface{}{"type": "string", "description": "Optional GitHub username to assign after transition"},
 				"comment":      map[string]interface{}{"type": "string"},
 				"actor_role":   map[string]interface{}{"type": "string", "description": "Role name: po, developer, reviewer, architect, tester, designer, stakeholder"},
+				"workflow":     map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
 			},
 			"required": []string{"issue_number", "status", "actor_role"},
 		}),
 		newTool("get_transition_matrix", "Show allowed transition matrix", map[string]interface{}{
-			"type":       "object",
-			"properties": map[string]interface{}{},
+			"type": "object",
+			"properties": map[string]interface{}{
+				"workflow": map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
+			},
 		}),
 		newTool("process_issue_event", "Run webhook-style issue processing", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"issue_number": map[string]interface{}{"type": "integer"},
+				"workflow":     map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
 			},
 			"required": []string{"issue_number"},
 		}),
@@ -329,8 +191,9 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 	switch name {
 	case "get_issue_context":
 		var args struct {
-			IssueNumber  int `json:"issue_number"`
-			CommentLimit int `json:"comment_limit"`
+			IssueNumber  int    `json:"issue_number"`
+			CommentLimit int    `json:"comment_limit"`
+			Workflow     string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
@@ -342,10 +205,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err != nil {
 			return nil, err
 		}
+		ws := s.computeState(s.workflowDef(args.Workflow), issue, comments)
 		return map[string]interface{}{
 			"issue":    issue,
 			"comments": comments,
-			"workflow": computeWorkflowState(issue, comments),
+			"workflow": ws,
 		}, nil
 
 	case "list_issue_comments":
@@ -436,7 +300,8 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 
 	case "get_workflow_state":
 		var args struct {
-			IssueNumber int `json:"issue_number"`
+			IssueNumber int    `json:"issue_number"`
+			Workflow    string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
@@ -445,7 +310,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err != nil {
 			return nil, err
 		}
-		return computeWorkflowState(issue, comments), nil
+		return computeWorkflowStateFromDef(s.workflowDef(args.Workflow), issue, comments), nil
 
 	case "find_stakeholder_approvals":
 		var args struct {
@@ -476,15 +341,18 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			IssueNumber int    `json:"issue_number"`
 			ToStatus    string `json:"to_status"`
 			ActorRole   string `json:"actor_role"`
+			Workflow    string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		issue, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, 100)
+		issue, err := s.gh.GetIssue(ctx, args.IssueNumber)
 		if err != nil {
 			return nil, err
 		}
-		return validateTransition(issue, comments, args.ActorRole, args.ToStatus), nil
+		wd := s.workflowDef(args.Workflow)
+		meta, _ := s.store.GetIssueMetadataMap(args.IssueNumber)
+		return validateTransitionFromDef(wd, issue, meta, args.ActorRole, args.ToStatus), nil
 
 	case "transition_issue":
 		var args struct {
@@ -493,23 +361,30 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			Assignee    string `json:"assignee"`
 			Comment     string `json:"comment"`
 			ActorRole   string `json:"actor_role"`
+			Workflow    string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.ActorRole, "mcp_tool", nil, nil)
+		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.ActorRole, "mcp_tool", nil, nil, s.workflowDef(args.Workflow))
 
 	case "get_transition_matrix":
-		return map[string]interface{}{"rules": transitionRules}, nil
+		var args struct {
+			Workflow string `json:"workflow"`
+		}
+		_ = json.Unmarshal(raw, &args)
+		wd := s.workflowDef(args.Workflow)
+		return map[string]interface{}{"workflow": wd.Workflow.Key, "transitions": wd.Transitions}, nil
 
 	case "process_issue_event":
 		var args struct {
-			IssueNumber int `json:"issue_number"`
+			IssueNumber int    `json:"issue_number"`
+			Workflow    string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		return s.processIssue(ctx, args.IssueNumber)
+		return s.processIssueWith(ctx, args.IssueNumber, s.workflowDef(args.Workflow))
 
 	case "get_transition_audit":
 		var args struct {
@@ -540,7 +415,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err != nil {
 			return nil, err
 		}
-		workflow := computeWorkflowState(issue, comments)
+		workflow := computeWorkflowStateFromDef(s.workflowDef(""), issue, comments)
 		auditRows, err := s.store.ListTransitionAudit(args.IssueNumber, args.Limit)
 		if err != nil {
 			return nil, err
@@ -572,6 +447,17 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
+}
+
+// workflowDef returns the WorkflowDef for the given key from the server's registry.
+// An empty or unknown key falls back to the registry default (lean). Returns nil only
+// when no registry is loaded — callers must treat nil as an error condition; main exits
+// on registry load failure so this should not occur in a correctly started server.
+func (s *Server) workflowDef(key string) *WorkflowDef {
+	if s.workflows == nil {
+		return nil
+	}
+	return s.workflows.Get(key)
 }
 
 func (s *Server) loadIssueAndComments(ctx context.Context, issueNumber, limit int) (Issue, []IssueComment, error) {
@@ -606,8 +492,9 @@ func (s *Server) transitionIssue(
 	triggerType string,
 	triggerCommentID *int64,
 	triggerMetadata interface{},
+	wd *WorkflowDef,
 ) (interface{}, error) {
-	issue, comments, err := s.loadIssueAndComments(ctx, issueNumber, 100)
+	issue, _, err := s.loadIssueAndComments(ctx, issueNumber, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -616,10 +503,19 @@ func (s *Server) transitionIssue(
 		triggerType = "mcp_tool"
 	}
 
-	fromStatus := computeWorkflowState(issue, comments).StatusLabel
+	var fromStatus string
+	var validation TransitionValidationResult
+	var matchedDef *TransitionDef
+
+	meta, _ := s.store.GetIssueMetadataMap(issueNumber)
+	fromStatus = computeWorkflowStateFromDef(wd, issue, nil).StatusLabel
+	validation = validateTransitionFromDef(wd, issue, meta, actorRole, toStatus)
+	if validation.Allowed {
+		matchedDef = findMatchingTransitionDef(wd, fromStatus, toStatus, meta)
+	}
+
 	fromAssignee := currentAssigneeOfIssue(issue)
 
-	validation := validateTransition(issue, comments, actorRole, toStatus)
 	s.debugf("transitionIssue: issue=%d from=%s to=%s actor=%s allowed=%v",
 		issueNumber, fromStatus, toStatus, actorRole, validation.Allowed)
 	if !validation.Allowed {
@@ -681,6 +577,11 @@ func (s *Server) transitionIssue(
 		return nil, err
 	}
 
+	// Apply YAML-workflow metadata side-effects (set_metadata / clear_metadata).
+	if matchedDef != nil {
+		s.applyTransitionMetadata(issueNumber, fromStatus, matchedDef)
+	}
+
 	_ = s.store.RecordTransitionAudit(
 		issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
 		triggerType, triggerCommentID, "applied", "", validation,
@@ -699,125 +600,6 @@ func (s *Server) transitionIssue(
 	return result, nil
 }
 
-func computeWorkflowState(issue Issue, comments []IssueComment) WorkflowState {
-	status := ""
-	var types []string
-	for _, l := range issue.Labels {
-		if strings.HasPrefix(l.Name, "status:") {
-			status = l.Name
-		}
-		if strings.HasPrefix(l.Name, "type:") {
-			types = append(types, l.Name)
-		}
-	}
-
-	var assignees []string
-	for _, a := range issue.Assignees {
-		assignees = append(assignees, a.Login)
-	}
-
-	stakeholder := resolveStakeholder(issue)
-	approved := false
-	for _, c := range comments {
-		if c.User.Login == stakeholder && containsApprove(c.Body) {
-			approved = true
-		}
-	}
-
-	ws := WorkflowState{
-		StatusLabel:       status,
-		TypeLabels:        types,
-		CurrentAssignees:  assignees,
-		Stakeholder:       stakeholder,
-		RecognizedApprove: approved,
-	}
-
-	switch status {
-	case "status:new", "status:po-analysis":
-		ws.SuggestedRole = "po"
-	case "status:ready-for-requirements-review", "status:requirements-review-in-progress":
-		ws.SuggestedRole = "reviewer"
-	case "status:awaiting-stakeholder-approval":
-		ws.SuggestedRole = "stakeholder"
-	case "status:architect-analysis":
-		ws.SuggestedRole = "architect"
-	case "status:approved-for-dev", "status:in-progress", "status:changes-requested":
-		ws.SuggestedRole = "developer"
-	case "status:ready-for-review", "status:review-in-progress":
-		ws.SuggestedRole = "reviewer"
-	case "status:ready-for-po-review", "status:po-review-in-progress":
-		ws.SuggestedRole = "po"
-	case "status:awaiting-final-stakeholder-approval":
-		ws.SuggestedRole = "stakeholder"
-	case "status:blocked":
-		ws.SuggestedRole = "po"
-	case "status:done":
-		ws.SuggestedRole = "done"
-	case "status:rejected":
-		ws.SuggestedRole = "rejected"
-	default:
-		ws.SuggestedRole = "unknown"
-	}
-
-	return ws
-}
-
-func resolveStakeholder(issue Issue) string {
-	for _, l := range issue.Labels {
-		if strings.HasPrefix(strings.ToLower(l.Name), "stakeholder:") {
-			return strings.TrimSpace(strings.TrimPrefix(l.Name, "stakeholder:"))
-		}
-	}
-	return issue.User.Login
-}
-
-func validateTransition(issue Issue, comments []IssueComment, actorRole, toStatus string) TransitionValidationResult {
-	state := computeWorkflowState(issue, comments)
-	actorRole = strings.TrimSpace(actorRole)
-
-	res := TransitionValidationResult{
-		Allowed:    false,
-		ActorRole:  actorRole,
-		FromStatus: state.StatusLabel,
-		ToStatus:   toStatus,
-	}
-
-	if actorRole == "" {
-		res.Violations = append(res.Violations, "actor_role is required")
-		return res
-	}
-	if !isAllowedStatus(toStatus) {
-		res.Violations = append(res.Violations, "target status is not recognized")
-		return res
-	}
-
-	var matched *TransitionRule
-	for i := range transitionRules {
-		r := &transitionRules[i]
-		if r.ToStatus == toStatus && containsString(r.FromStatuses, state.StatusLabel) {
-			matched = r
-			break
-		}
-	}
-	if matched == nil {
-		res.Violations = append(res.Violations, fmt.Sprintf("no transition rule from %s to %s", state.StatusLabel, toStatus))
-		return res
-	}
-
-	res.MatchedRuleDescription = matched.Description
-
-	if !containsString(matched.AllowedRoles, actorRole) {
-		res.Violations = append(res.Violations, fmt.Sprintf("role %q is not allowed to perform this transition", actorRole))
-	}
-
-	if matched.RequiresStakeholderApprove && !state.RecognizedApprove {
-		res.Violations = append(res.Violations, "required stakeholder /approve comment not found")
-	}
-
-	res.Allowed = len(res.Violations) == 0
-	return res
-}
-
 func containsApprove(body string) bool {
 	for _, line := range strings.Split(body, "\n") {
 		if strings.TrimSpace(line) == "/approve" {
@@ -827,13 +609,13 @@ func containsApprove(body string) bool {
 	return false
 }
 
-func isAllowedStatus(status string) bool {
-	for _, s := range statusLabels {
-		if s == status {
-			return true
+func resolveStakeholder(issue Issue) string {
+	for _, l := range issue.Labels {
+		if strings.HasPrefix(strings.ToLower(l.Name), "stakeholder:") {
+			return strings.TrimSpace(strings.TrimPrefix(l.Name, "stakeholder:"))
 		}
 	}
-	return false
+	return issue.User.Login
 }
 
 func containsString(values []string, target string) bool {

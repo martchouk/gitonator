@@ -1,5 +1,6 @@
 workflow:
   id: simplified_3_role_issue_workflow
+  key: lean
   entity: issue
   version: 1
   purpose: >

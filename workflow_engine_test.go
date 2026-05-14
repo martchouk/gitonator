@@ -1,0 +1,512 @@
+package main
+
+import (
+	"bytes"
+	"log"
+	"testing"
+)
+
+// leanWorkflowForTest loads the lean workflow from the real YAML files.
+func leanWorkflowForTest(t *testing.T) *WorkflowDef {
+	t.Helper()
+	reg, err := LoadWorkflowRegistry("workflows", "lean")
+	if err != nil {
+		t.Fatalf("load lean workflow: %v", err)
+	}
+	return reg.Get("lean")
+}
+
+func fullWorkflowForTest(t *testing.T) *WorkflowDef {
+	t.Helper()
+	reg, err := LoadWorkflowRegistry("workflows", "lean")
+	if err != nil {
+		t.Fatalf("load full workflow: %v", err)
+	}
+	return reg.Get("full")
+}
+
+// ---------------------------------------------------------------------------
+// computeWorkflowStateFromDef
+// ---------------------------------------------------------------------------
+
+func TestComputeWorkflowStateFromDef_KnownStatus(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number: 1,
+		User:   GitHubUser{Login: "creator"},
+		Labels: []GitHubLabel{{Name: "status:in-development"}},
+	}
+	ws := computeWorkflowStateFromDef(wd, issue, nil)
+	if ws.StatusLabel != "status:in-development" {
+		t.Errorf("StatusLabel: got %q, want %q", ws.StatusLabel, "status:in-development")
+	}
+	if ws.SuggestedRole != "developer" {
+		t.Errorf("SuggestedRole: got %q, want %q", ws.SuggestedRole, "developer")
+	}
+}
+
+func TestComputeWorkflowStateFromDef_TerminalStatus(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:done"}}}
+	ws := computeWorkflowStateFromDef(wd, issue, nil)
+	if ws.SuggestedRole != "" {
+		t.Errorf("SuggestedRole for terminal: got %q, want empty", ws.SuggestedRole)
+	}
+}
+
+func TestComputeWorkflowStateFromDef_UnknownStatus(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:some-legacy-status"}}}
+	ws := computeWorkflowStateFromDef(wd, issue, nil)
+	if ws.SuggestedRole != "unknown" {
+		t.Errorf("SuggestedRole for unknown status: got %q, want %q", ws.SuggestedRole, "unknown")
+	}
+}
+
+func TestComputeWorkflowStateFromDef_NoStatus(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1}
+	ws := computeWorkflowStateFromDef(wd, issue, nil)
+	if ws.StatusLabel != "" {
+		t.Errorf("StatusLabel for no label: got %q, want empty", ws.StatusLabel)
+	}
+	if ws.SuggestedRole != "unknown" {
+		t.Errorf("SuggestedRole for empty status: got %q, want %q", ws.SuggestedRole, "unknown")
+	}
+}
+
+func TestComputeWorkflowStateFromDef_POStatusesUsePORole(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	for _, label := range []string{"status:new", "status:story-definition", "status:po-approval", "status:blocked"} {
+		issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: label}}}
+		ws := computeWorkflowStateFromDef(wd, issue, nil)
+		if ws.SuggestedRole != "po" {
+			t.Errorf("label=%s: SuggestedRole=%q, want %q", label, ws.SuggestedRole, "po")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// validateTransitionFromDef
+// ---------------------------------------------------------------------------
+
+func TestValidateTransitionFromDef_AllowedTransition(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:new"}}}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:story-definition")
+	if !res.Allowed {
+		t.Errorf("expected allowed, violations: %v", res.Violations)
+	}
+}
+
+func TestValidateTransitionFromDef_WrongRole(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:new"}}}
+	res := validateTransitionFromDef(wd, issue, nil, "developer", "status:story-definition")
+	if res.Allowed {
+		t.Error("expected not allowed: developer cannot drive story-definition from status:new")
+	}
+}
+
+func TestValidateTransitionFromDef_UnknownTargetStatus(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:new"}}}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:nonexistent")
+	if res.Allowed {
+		t.Error("expected not allowed for unknown target status")
+	}
+}
+
+func TestValidateTransitionFromDef_EmptyActorRole(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:new"}}}
+	res := validateTransitionFromDef(wd, issue, nil, "", "status:story-definition")
+	if res.Allowed {
+		t.Error("expected not allowed for empty actor_role")
+	}
+}
+
+func TestValidateTransitionFromDef_NoMatchingTransition(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	// story-definition → code-review is not a valid direct transition in lean workflow
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:story-definition"}}}
+	res := validateTransitionFromDef(wd, issue, nil, "developer", "status:code-review")
+	if res.Allowed {
+		t.Error("expected not allowed: no direct transition from story-definition to code-review")
+	}
+}
+
+func TestValidateTransitionFromDef_DeveloperCanStartImplementation(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:ready-for-development"}}}
+	res := validateTransitionFromDef(wd, issue, nil, "developer", "status:in-development")
+	if !res.Allowed {
+		t.Errorf("expected allowed, violations: %v", res.Violations)
+	}
+}
+
+func TestValidateTransitionFromDef_ReviewerCanApproveCode(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:code-review"}}}
+	res := validateTransitionFromDef(wd, issue, nil, "reviewer", "status:po-approval")
+	if !res.Allowed {
+		t.Errorf("expected allowed, violations: %v", res.Violations)
+	}
+}
+
+func TestValidateTransitionFromDef_BlockIssue(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	for _, from := range []string{"status:in-development", "status:code-review", "status:po-approval"} {
+		issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: from}}}
+		res := validateTransitionFromDef(wd, issue, nil, "developer", "status:blocked")
+		if !res.Allowed {
+			t.Errorf("label=%s: developer block should be allowed, violations: %v", from, res.Violations)
+		}
+	}
+}
+
+func TestValidateTransitionFromDef_ResumeFromBlockedWithMetadata(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:blocked"}}}
+	meta := map[string]string{"blocked_from": "status:in-development"}
+	res := validateTransitionFromDef(wd, issue, meta, "po", "status:in-development")
+	if !res.Allowed {
+		t.Errorf("expected resume_from_blocked to be allowed, violations: %v", res.Violations)
+	}
+}
+
+func TestValidateTransitionFromDef_ResumeFromBlockedMissingMetadata(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:blocked"}}}
+	// No meta — can still go to story-definition via blocked_back_to_definition
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:story-definition")
+	if !res.Allowed {
+		t.Errorf("expected blocked_back_to_definition to be allowed, violations: %v", res.Violations)
+	}
+}
+
+func TestValidateTransitionFromDef_TerminalCanBeReopened(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:done"}}}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:story-definition")
+	if !res.Allowed {
+		t.Errorf("expected po_reopen_done to be allowed, violations: %v", res.Violations)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// resolveTransitionTarget
+// ---------------------------------------------------------------------------
+
+func TestResolveTransitionTarget_Static(t *testing.T) {
+	val, err := resolveTransitionTarget("status:in-development", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if val != "status:in-development" {
+		t.Errorf("got %q, want %q", val, "status:in-development")
+	}
+}
+
+func TestResolveTransitionTarget_MetadataPresent(t *testing.T) {
+	meta := map[string]string{"blocked_from": "status:code-review"}
+	val, err := resolveTransitionTarget("$metadata.blocked_from", meta)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if val != "status:code-review" {
+		t.Errorf("got %q, want %q", val, "status:code-review")
+	}
+}
+
+func TestResolveTransitionTarget_MetadataMissing(t *testing.T) {
+	_, err := resolveTransitionTarget("$metadata.blocked_from", map[string]string{})
+	if err == nil {
+		t.Fatal("expected error for missing metadata key, got nil")
+	}
+}
+
+func TestResolveTransitionTarget_NilMeta(t *testing.T) {
+	_, err := resolveTransitionTarget("$metadata.blocked_from", nil)
+	if err == nil {
+		t.Fatal("expected error for nil meta, got nil")
+	}
+}
+
+func TestResolveTransitionTarget_UnrecognizedDynamic(t *testing.T) {
+	_, err := resolveTransitionTarget("$unknown.foo", nil)
+	if err == nil {
+		t.Fatal("expected error for unrecognized dynamic target, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// evaluateGuard
+// ---------------------------------------------------------------------------
+
+func TestEvaluateGuard_AnyLabelPresent(t *testing.T) {
+	gd := GuardDef{AnyLabel: []string{"area:ui", "needs:ui-design"}}
+	issue := Issue{Labels: []GitHubLabel{{Name: "area:ui"}, {Name: "type:feature"}}}
+	if !evaluateGuard(gd, issue) {
+		t.Error("expected guard to pass when any_label is present")
+	}
+}
+
+func TestEvaluateGuard_AnyLabelAbsent(t *testing.T) {
+	gd := GuardDef{AnyLabel: []string{"area:ui", "needs:ui-design"}}
+	issue := Issue{Labels: []GitHubLabel{{Name: "type:feature"}}}
+	if evaluateGuard(gd, issue) {
+		t.Error("expected guard to fail when none of any_label are present")
+	}
+}
+
+func TestEvaluateGuard_AllAbsentSatisfied(t *testing.T) {
+	gd := GuardDef{AllAbsent: []string{"needs:architecture", "risk:high"}}
+	issue := Issue{Labels: []GitHubLabel{{Name: "type:bug"}}}
+	if !evaluateGuard(gd, issue) {
+		t.Error("expected guard to pass when all_absent labels are absent")
+	}
+}
+
+func TestEvaluateGuard_AllAbsentViolated(t *testing.T) {
+	gd := GuardDef{AllAbsent: []string{"needs:architecture", "risk:high"}}
+	issue := Issue{Labels: []GitHubLabel{{Name: "risk:high"}}}
+	if evaluateGuard(gd, issue) {
+		t.Error("expected guard to fail when an all_absent label is present")
+	}
+}
+
+func TestEvaluateGuard_EmptyGuardAlwaysPasses(t *testing.T) {
+	gd := GuardDef{}
+	if !evaluateGuard(gd, Issue{}) {
+		t.Error("expected empty guard to always pass")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// decideNextActionFromDef
+// ---------------------------------------------------------------------------
+
+func TestDecideNextActionFromDef_QueuesWorkForPO(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	cfg := Config{Owner: "owner", Repo: "repo"}
+	issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: "status:story-definition"}}}
+	state := computeWorkflowStateFromDef(wd, issue, nil)
+	pkg, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+	if !ok {
+		t.Fatal("expected ok=true for queues_work status, got false")
+	}
+	if pkg.Role != "po" {
+		t.Errorf("role: got %q, want %q", pkg.Role, "po")
+	}
+	if pkg.CurrentStatus != "status:story-definition" {
+		t.Errorf("CurrentStatus: got %q, want %q", pkg.CurrentStatus, "status:story-definition")
+	}
+}
+
+func TestDecideNextActionFromDef_TerminalStatusNoWork(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	cfg := Config{Owner: "owner", Repo: "repo"}
+	for _, label := range []string{"status:done", "status:rejected"} {
+		issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: label}}}
+		state := computeWorkflowStateFromDef(wd, issue, nil)
+		_, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+		if ok {
+			t.Errorf("label=%s: expected ok=false for terminal status, got true", label)
+		}
+	}
+}
+
+func TestDecideNextActionFromDef_DeveloperRoleForImplStatuses(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	cfg := Config{Owner: "owner", Repo: "repo"}
+	for _, label := range []string{"status:dev-planning", "status:ready-for-development", "status:in-development"} {
+		issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: label}}}
+		state := computeWorkflowStateFromDef(wd, issue, nil)
+		pkg, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+		if !ok {
+			t.Errorf("label=%s: expected ok=true, got false", label)
+		}
+		if pkg.Role != "developer" {
+			t.Errorf("label=%s: role=%q, want %q", label, pkg.Role, "developer")
+		}
+	}
+}
+
+func TestDecideNextActionFromDef_ReviewerRoleForReviewStatuses(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	cfg := Config{Owner: "owner", Repo: "repo"}
+	for _, label := range []string{"status:plan-review", "status:code-review"} {
+		issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: label}}}
+		state := computeWorkflowStateFromDef(wd, issue, nil)
+		pkg, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+		if !ok {
+			t.Errorf("label=%s: expected ok=true, got false", label)
+		}
+		if pkg.Role != "reviewer" {
+			t.Errorf("label=%s: role=%q, want %q", label, pkg.Role, "reviewer")
+		}
+	}
+}
+
+func TestDecideNextActionFromDef_UnknownStatusNoWork(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	cfg := Config{Owner: "owner", Repo: "repo"}
+	issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: "status:some-legacy-status"}}}
+	state := computeWorkflowStateFromDef(wd, issue, nil)
+	_, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+	if ok {
+		t.Error("expected ok=false for status not in workflow, got true")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// full workflow guards
+// ---------------------------------------------------------------------------
+
+func TestFullWorkflow_GuardedTransitionPasses(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	// po_request_architecture requires needs_architecture guard
+	issue := Issue{
+		Number: 1,
+		Labels: []GitHubLabel{{Name: "status:triage"}, {Name: "needs:architecture"}},
+	}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:solution-design")
+	if !res.Allowed {
+		t.Errorf("expected guarded transition to pass, violations: %v", res.Violations)
+	}
+}
+
+func TestFullWorkflow_GuardedTransitionFails(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	// po_request_architecture requires needs_architecture guard; issue has no such label
+	issue := Issue{
+		Number: 1,
+		Labels: []GitHubLabel{{Name: "status:triage"}},
+	}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:solution-design")
+	if res.Allowed {
+		t.Error("expected guarded transition to fail when guard label is absent")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// applyTransitionMetadata
+// ---------------------------------------------------------------------------
+
+// TestApplyTransitionMetadata_Set verifies that set_metadata entries are written to the store,
+// and that the "$from" special value is resolved to the actual fromStatus.
+func TestApplyTransitionMetadata_Set(t *testing.T) {
+	store := tempStore(t)
+	s := &Server{store: store, logger: log.New(&bytes.Buffer{}, "", 0)}
+
+	td := &TransitionDef{
+		SetMetadata: map[string]string{
+			"blocked_from": "$from",
+			"reason":       "manual",
+		},
+	}
+	s.applyTransitionMetadata(42, "status:in-development", td)
+
+	val, ok, err := store.GetIssueMetadata(42, "blocked_from")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata blocked_from: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected blocked_from metadata to be set, got absent")
+	}
+	if val != "status:in-development" {
+		t.Errorf("blocked_from: got %q, want %q", val, "status:in-development")
+	}
+
+	val2, ok2, err := store.GetIssueMetadata(42, "reason")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata reason: %v", err)
+	}
+	if !ok2 {
+		t.Fatal("expected reason metadata to be set, got absent")
+	}
+	if val2 != "manual" {
+		t.Errorf("reason: got %q, want %q", val2, "manual")
+	}
+}
+
+// TestApplyTransitionMetadata_Clear verifies that clear_metadata removes the specified keys
+// from the store while leaving other keys intact.
+func TestApplyTransitionMetadata_Clear(t *testing.T) {
+	store := tempStore(t)
+	s := &Server{store: store, logger: log.New(&bytes.Buffer{}, "", 0)}
+
+	// Seed two metadata keys.
+	if err := store.SetIssueMetadata(7, "blocked_from", "status:in-development"); err != nil {
+		t.Fatalf("seed SetIssueMetadata: %v", err)
+	}
+	if err := store.SetIssueMetadata(7, "other", "keep"); err != nil {
+		t.Fatalf("seed SetIssueMetadata other: %v", err)
+	}
+
+	td := &TransitionDef{ClearMetadata: []string{"blocked_from"}}
+	s.applyTransitionMetadata(7, "status:blocked", td)
+
+	_, ok, err := store.GetIssueMetadata(7, "blocked_from")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata blocked_from: %v", err)
+	}
+	if ok {
+		t.Error("expected blocked_from to be cleared, but it is still present")
+	}
+
+	val, ok2, err := store.GetIssueMetadata(7, "other")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata other: %v", err)
+	}
+	if !ok2 || val != "keep" {
+		t.Errorf("expected 'other' key to be retained with value %q, got ok=%v val=%q", "keep", ok2, val)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// blocked round-trip (integration-style)
+// ---------------------------------------------------------------------------
+
+func TestBlockedRoundTrip_MetadataSetAndResolved(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	store := tempStore(t)
+
+	issueID := 42
+	fromStatus := "status:in-development"
+
+	// Find the block_issue transition to simulate what transitionIssue does.
+	meta := map[string]string{}
+	matched := findMatchingTransitionDef(wd, fromStatus, "status:blocked", meta)
+	if matched == nil {
+		t.Fatal("expected block_issue transition to be found")
+	}
+	if matched.SetMetadata["blocked_from"] != "$from" {
+		t.Fatalf("expected set_metadata.blocked_from=$from, got %q", matched.SetMetadata["blocked_from"])
+	}
+
+	// Simulate applying set_metadata (resolved $from → actual fromStatus).
+	if err := store.SetIssueMetadata(issueID, "blocked_from", fromStatus); err != nil {
+		t.Fatalf("SetIssueMetadata: %v", err)
+	}
+
+	// Now try to resume; the target should resolve to fromStatus.
+	meta2, _ := store.GetIssueMetadataMap(issueID)
+	resumeMatch := findMatchingTransitionDef(wd, "status:blocked", fromStatus, meta2)
+	if resumeMatch == nil {
+		t.Fatal("expected resume_from_blocked transition to be found after metadata is set")
+	}
+	if resumeMatch.ID != "resume_from_blocked" {
+		t.Errorf("matched transition: got %q, want %q", resumeMatch.ID, "resume_from_blocked")
+	}
+
+	// Simulate applying clear_metadata.
+	if err := store.ClearIssueMetadata(issueID, resumeMatch.ClearMetadata); err != nil {
+		t.Fatalf("ClearIssueMetadata: %v", err)
+	}
+	_, ok, _ := store.GetIssueMetadata(issueID, "blocked_from")
+	if ok {
+		t.Error("expected blocked_from metadata to be cleared after resume")
+	}
+}

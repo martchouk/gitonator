@@ -1,5 +1,6 @@
 workflow:
-  id: lean_github_issue_workflow
+  id: full_6_roles_issue_workflow
+  key: full
   entity: issue
   version: 1
   purpose: >

@@ -23,14 +23,16 @@ type Config struct {
 	AgentSharedToken    string
 	StaleAfterSeconds   int
 	RecoverEverySeconds int
+	WorkflowsDir        string
 }
 
 type Server struct {
-	cfg    Config
-	gh     GitHubAPI
-	store  *Store
-	logger *log.Logger
-	debug  bool
+	cfg       Config
+	gh        GitHubAPI
+	store     *Store
+	logger    *log.Logger
+	debug     bool
+	workflows *WorkflowRegistry
 }
 
 func (s *Server) debugf(format string, args ...interface{}) {
@@ -56,6 +58,13 @@ func main() {
 	}
 	defer store.Close()
 
+	workflows, err := LoadWorkflowRegistry(cfg.WorkflowsDir, "lean")
+	if err != nil {
+		logger.Println("fatal: load workflow registry:", err)
+		os.Exit(1)
+	}
+	logger.Printf("workflows loaded: keys=%s default=lean", strings.Join(workflows.Keys(), ","))
+
 	server := &Server{
 		cfg: cfg,
 		gh: &GitHubClient{
@@ -64,9 +73,10 @@ func main() {
 			owner:   cfg.Owner,
 			repo:    cfg.Repo,
 		},
-		store:  store,
-		logger: logger,
-		debug:  debug,
+		store:     store,
+		logger:    logger,
+		debug:     debug,
+		workflows: workflows,
 	}
 
 	logger.Printf("started: repo=%s/%s addr=%s sqlite=%s",
@@ -123,6 +133,7 @@ func loadConfig() (Config, error) {
 		AgentSharedToken:    strings.TrimSpace(os.Getenv("AGENT_SHARED_TOKEN")),
 		StaleAfterSeconds:   getEnvInt("STALE_AFTER_SECONDS", 900),
 		RecoverEverySeconds: getEnvInt("RECOVER_EVERY_SECONDS", 30),
+		WorkflowsDir:        defaultString(os.Getenv("WORKFLOWS_DIR"), "workflows"),
 	}
 	if cfg.GitHubToken == "" {
 		return cfg, fmt.Errorf("GITHUB_TOKEN is required")

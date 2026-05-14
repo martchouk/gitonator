@@ -156,6 +156,12 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Select workflow: ?workflow=lean (default) or ?workflow=full.
+	var wd *WorkflowDef
+	if s.workflows != nil {
+		wd = s.workflows.Get(r.URL.Query().Get("workflow"))
+	}
+
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to read body")
@@ -196,7 +202,7 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.processWebhookPayload(r.Context(), eventType, deliveryID, payload); err != nil {
+	if err := s.processWebhookPayload(r.Context(), eventType, deliveryID, payload, wd); err != nil {
 		_ = s.store.MarkDeliveryFailed(deliveryID, err.Error())
 		_ = s.store.RecordFailure(0, "webhook", err.Error(), map[string]string{
 			"delivery_id": deliveryID,
@@ -213,7 +219,7 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryID string, payload []byte) error {
+func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryID string, payload []byte, wd *WorkflowDef) error {
 	var env struct {
 		Action  string `json:"action"`
 		Issue   Issue  `json:"issue"`
@@ -236,92 +242,8 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		deliveryID, eventType, env.Action, env.Issue.Number,
 	)
 
-	// Handle /approve comments for stakeholder-wait states.
-	if eventType == "issue_comment" && (env.Action == "created" || env.Action == "edited") {
-		handled, err := s.processApproveComment(
-			ctx,
-			env.Issue.Number,
-			env.Comment.ID,
-			env.Comment.User.Login,
-			env.Comment.Body,
-		)
-		if err != nil {
-			return err
-		}
-		if handled {
-			// Approve transitions are applied inline; processIssue queues the next task.
-		}
-	}
-
-	_, err := s.processIssue(ctx, env.Issue.Number)
+	_, err := s.processIssueWith(ctx, env.Issue.Number, wd)
 	return err
-}
-
-// processApproveComment handles /approve comments in stakeholder-wait states.
-// Verification that the commenter is the stakeholder is done here, not in validateTransition,
-// to avoid GitHub API timing issues with RequiresStakeholderApprove.
-func (s *Server) processApproveComment(ctx context.Context, issueNumber int, commentID int64, actor, body string) (bool, error) {
-	if !containsApprove(body) {
-		return false, nil
-	}
-
-	issue, _, err := s.loadIssueAndComments(ctx, issueNumber, 0)
-	if err != nil {
-		return false, err
-	}
-
-	ws := computeWorkflowState(issue, nil)
-
-	toStatus, ok := approveTransitionTarget(ws.StatusLabel)
-	if !ok {
-		return false, nil
-	}
-
-	stakeholder := resolveStakeholder(issue)
-	if actor != stakeholder {
-		s.logger.Printf("approve comment ignored: actor=%s is not stakeholder=%s issue=%d", actor, stakeholder, issueNumber)
-		return false, nil
-	}
-
-	fromStatus := ws.StatusLabel
-	fromAssignee := currentAssigneeOfIssue(issue)
-
-	currentLabels := labelsToStrings(issue.Labels)
-	var nextLabels []string
-	for _, l := range currentLabels {
-		if !strings.HasPrefix(l, "status:") {
-			nextLabels = append(nextLabels, l)
-		}
-	}
-	nextLabels = append(nextLabels, toStatus)
-
-	if _, err := s.gh.SetIssueLabels(ctx, issueNumber, nextLabels); err != nil {
-		_ = s.store.RecordTransitionAudit(
-			issueNumber, fromStatus, toStatus, fromAssignee, "", actor,
-			"webhook_comment", &commentID, "failed", "set labels failed: "+err.Error(), nil, nil,
-		)
-		return true, err
-	}
-
-	_ = s.store.RecordTransitionAudit(
-		issueNumber, fromStatus, toStatus, fromAssignee, "", actor,
-		"webhook_comment", &commentID, "applied", "", nil, nil,
-	)
-	s.logger.Printf("approve transition applied: issue=%d from=%s to=%s actor=%s", issueNumber, fromStatus, toStatus, actor)
-	return true, nil
-}
-
-// approveTransitionTarget maps a stakeholder-wait status to the status it transitions to
-// when a valid /approve comment is received. Returns ("", false) for all other statuses.
-func approveTransitionTarget(fromStatus string) (string, bool) {
-	switch fromStatus {
-	case "status:awaiting-stakeholder-approval":
-		return "status:architect-analysis", true
-	case "status:awaiting-final-stakeholder-approval":
-		return "status:done", true
-	default:
-		return "", false
-	}
 }
 
 func validateWebhookSignature(secret string, payload []byte, provided string) bool {

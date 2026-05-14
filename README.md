@@ -33,7 +33,6 @@ Roles are defined externally in the Bridge's `agents.json` — the orchestrator 
 Core features:
 
 - receive GitHub webhook events on `/webhook/github`
-- recognise `/approve` comment directives for stakeholder-wait states
 - validate workflow transitions against a strict state machine
 - apply transitions by:
   - updating `status:*` labels
@@ -86,77 +85,136 @@ The orchestrator routes tasks to roles. The Bridge maps roles to agent processes
 
 The current GitHub assignee of the issue is passed to the Bridge in the work package as `assignee`. The Bridge uses this for priority-1 agent matching (see `bridge/README.md`).
 
-The stakeholder for `/approve` transitions is resolved from the issue labels or the issue creator.
+The stakeholder identity (used for manual approval lookups) is resolved from a `stakeholder:<username>` label on the issue, falling back to the issue creator. The `find_stakeholder_approvals` MCP tool uses this to locate `/approve` comments. The workflow engine itself does not act on `/approve` comments — approval is a manual MCP tool operation, not an automatic engine trigger.
+
+---
+
+## YAML-driven workflow engine
+
+Workflow definitions are loaded from `*.yaml` files in the `workflows/` directory at server startup. Any file that does not declare a `workflow.key` field is skipped (e.g. documentation or legacy extraction files).
+
+### Selecting a workflow per webhook call
+
+Append a `workflow` query parameter to the GitHub webhook URL to select the active workflow:
+
+```
+https://mcp.singularia.de/webhook/github?workflow=lean   # default
+https://mcp.singularia.de/webhook/github?workflow=full
+```
+
+If the parameter is absent or unknown, the server uses the **lean** workflow (the default).
+
+### Built-in workflows
+
+| Key | File | Roles | Description |
+|-----|------|-------|-------------|
+| `lean` | `workflow-lean-3-roles-issue.yaml` | po, developer, reviewer | Streamlined 3-role flow |
+| `full` | `workflow-full-6-roles-issue.yaml` | po, architect, uidesigner, developer, reviewer, tester | Full 6-role flow with guards |
+
+### Configuring the workflows directory
+
+```bash
+WORKFLOWS_DIR=workflows   # default; path relative to working directory
+```
+
+### Startup validation
+
+On startup the server reads every `*.yaml` file in `WORKFLOWS_DIR` that has a `workflow.key` field and validates it:
+
+- every transition `from`/`to` references a known status ID
+- every guard reference resolves to a declared guard
+- no non-terminal status is left without outgoing transitions (dead-end check)
+
+The server exits on any validation failure.
+
+### Issue metadata (blocked_from)
+
+Workflows that support a `status:blocked` state with a dynamic resume transition store the pre-block status as `blocked_from` metadata in the `issue_metadata` SQLite table. This enables the PO to resume an issue to exactly the state it came from.
+
+```sql
+CREATE TABLE issue_metadata (
+  issue_id   INTEGER NOT NULL,
+  key        TEXT    NOT NULL,
+  value      TEXT    NOT NULL,
+  updated_at TEXT    NOT NULL,
+  PRIMARY KEY (issue_id, key)
+);
+```
 
 ---
 
 ## Workflow states
 
-The orchestrator uses exactly one active `status:*` label per issue.
+The orchestrator uses exactly one active `status:*` label per issue. The supported labels depend on the active workflow.
 
-Supported status labels:
+**Lean workflow** (`?workflow=lean`) statuses:
 
 - `status:new`
-- `status:po-analysis`
-- `status:ready-for-requirements-review`
-- `status:requirements-review-in-progress`
-- `status:awaiting-stakeholder-approval`
-- `status:architect-analysis`
-- `status:approved-for-dev`
-- `status:in-progress`
-- `status:ready-for-review`
-- `status:review-in-progress`
-- `status:changes-requested`
-- `status:ready-for-po-review`
-- `status:po-review-in-progress`
-- `status:awaiting-final-stakeholder-approval`
+- `status:story-definition`
+- `status:dev-planning`
+- `status:plan-review`
+- `status:ready-for-development`
+- `status:in-development`
+- `status:code-review`
+- `status:po-approval`
 - `status:blocked`
 - `status:done`
 - `status:rejected`
+
+**Full workflow** (`?workflow=full`) statuses:
+
+- `status:new` / `status:triage`
+- `status:solution-design` / `status:ui-design`
+- `status:ready-for-dev` / `status:in-development`
+- `status:architecture-review` / `status:ui-review`
+- `status:code-review`
+- `status:testing`
+- `status:po-acceptance`
+- `status:blocked`
+- `status:done` / `status:rejected`
 
 ---
 
 ## Workflow model
 
-### Main lifecycle
+### Main lifecycle (lean workflow)
 
-Typical feature flow:
+Typical feature flow using the default `lean` workflow:
 
 1. New issue is created → `status:new` → PO task queued
-2. PO completes analysis → `status:ready-for-requirements-review` → Reviewer task queued
-3. Reviewer reviews requirements → `status:requirements-review-in-progress`
-4. Reviewer approves requirements → `status:awaiting-stakeholder-approval`
-5. Stakeholder posts `/approve` → `status:architect-analysis` → Architect task queued
-6. Architect completes architecture → `status:approved-for-dev` → Developer task queued
-7. Developer implements → `status:ready-for-review` → Reviewer task queued
-8. Reviewer accepts code → `status:ready-for-po-review` → PO task queued
-9. PO approves → `status:awaiting-final-stakeholder-approval`
-10. Stakeholder posts `/approve` → `status:done`
-
-If the reviewer sends requirements back to PO (`status:po-analysis`), the PO reworks and publishes again into the requirements review cycle.
+2. PO defines the story → `status:story-definition` → PO task queued; PO transitions to `status:dev-planning` when ready
+3. Developer creates a plan → `status:dev-planning` → Developer task queued; transitions to `status:plan-review`
+4. Reviewer approves the plan → `status:ready-for-development` → Developer task queued
+5. Developer implements → `status:in-development` → Developer task queued; transitions to `status:code-review`
+6. Reviewer accepts the code → `status:po-approval` → PO task queued
+7. PO approves rollout → `status:done`
 
 ### Review loop
 
-After developer refinements:
+The reviewer may send work back instead of accepting:
 
-- reviewer gets the issue again
-- reviewer may accept (→ PO) or reject (→ developer, `status:changes-requested`)
+- from `status:plan-review` → back to `status:dev-planning` (plan rework)
+- from `status:code-review` → back to `status:in-development` (code changes requested)
 
-This loop can repeat until accepted.
+Each loop repeats until the reviewer accepts.
+
+### Blocked state
+
+Any actor may block an issue (`status:blocked`). The `blocked_from` metadata records the originating status. When the block is resolved, the issue resumes from exactly the state it came from.
 
 ---
 
 ## Transition validation
 
-Transitions are validated against a strict rule matrix.
+Transitions are validated against the loaded YAML workflow definition.
 
 Validation checks include:
 
 - current status
 - actor role
-- current GitHub assignee
 - target status
-- stakeholder approval requirement
+- guard conditions (label-based gates, used in the full workflow)
+- dynamic target resolution (e.g. `$metadata.blocked_from` for resume-from-blocked)
 
 The orchestrator can:
 
@@ -336,6 +394,10 @@ Operational failures recorded for debugging.
 
 Every transition attempt — applied, rejected, failed, or ignored.
 
+#### `issue_metadata`
+
+Per-issue key/value metadata used by YAML workflow transitions (e.g., `blocked_from` for the blocked-resume feature).
+
 ---
 
 ## Transition audit trail
@@ -388,6 +450,12 @@ AGENT_SHARED_TOKEN=...
 ```bash
 STALE_AFTER_SECONDS=900     # default; dispatched tasks older than this are re-queued
 RECOVER_EVERY_SECONDS=30    # default; interval between recovery runs
+```
+
+### Workflow engine
+
+```bash
+WORKFLOWS_DIR=workflows   # default; path to YAML workflow definitions
 ```
 
 ### Optional

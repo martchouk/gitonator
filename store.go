@@ -123,6 +123,13 @@ func OpenStore(path string) (*Store, error) {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_transition_audit_issue_created
 			ON transition_audit(issue_number, created_at, id);`,
+		`CREATE TABLE IF NOT EXISTS issue_metadata (
+			issue_id   INTEGER NOT NULL,
+			key        TEXT    NOT NULL,
+			value      TEXT    NOT NULL,
+			updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+			PRIMARY KEY (issue_id, key)
+		);`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
@@ -488,6 +495,66 @@ func (s *Store) ListTasksByIssue(issueNumber int, limit int) ([]TaskRow, error) 
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// SetIssueMetadata inserts or replaces a single metadata key for the given issue.
+func (s *Store) SetIssueMetadata(issueID int, key, value string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO issue_metadata (issue_id, key, value, updated_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(issue_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
+		issueID, key, value, nowUTC(),
+	)
+	return err
+}
+
+// GetIssueMetadata retrieves a single metadata value. Returns ("", false, nil) when absent.
+func (s *Store) GetIssueMetadata(issueID int, key string) (string, bool, error) {
+	var value string
+	err := s.db.QueryRow(
+		`SELECT value FROM issue_metadata WHERE issue_id = ? AND key = ?`,
+		issueID, key,
+	).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return value, true, nil
+}
+
+// GetIssueMetadataMap returns all metadata entries for an issue as a key→value map.
+func (s *Store) GetIssueMetadataMap(issueID int) (map[string]string, error) {
+	rows, err := s.db.Query(
+		`SELECT key, value FROM issue_metadata WHERE issue_id = ?`, issueID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	m := make(map[string]string)
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		m[k] = v
+	}
+	return m, rows.Err()
+}
+
+// ClearIssueMetadata deletes the listed metadata keys for the given issue.
+func (s *Store) ClearIssueMetadata(issueID int, keys []string) error {
+	for _, k := range keys {
+		if _, err := s.db.Exec(
+			`DELETE FROM issue_metadata WHERE issue_id = ? AND key = ?`, issueID, k,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func marshalOrEmpty(v interface{}) string {

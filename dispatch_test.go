@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+// leanRegistry loads the lean WorkflowRegistry from the real YAML files.
+func leanRegistry(t *testing.T) *WorkflowRegistry {
+	t.Helper()
+	reg, err := LoadWorkflowRegistry("workflows", "lean")
+	if err != nil {
+		t.Fatalf("load workflow registry: %v", err)
+	}
+	return reg
+}
+
 // mockGitHub implements GitHubAPI for dispatch tests.
 type mockGitHub struct {
 	issues          []Issue // returned in sequence by GetIssue
@@ -68,10 +78,11 @@ func TestProcessIssueLabelBootstrap(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{unlabeled, labeled}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
-		store:  store,
-		logger: log.New(&bytes.Buffer{}, "", 0),
+		cfg:       Config{Owner: "owner", Repo: "repo"},
+		gh:        mock,
+		store:     store,
+		logger:    log.New(&bytes.Buffer{}, "", 0),
+		workflows: leanRegistry(t),
 	}
 
 	result, err := s.processIssue(context.Background(), 11)
@@ -122,10 +133,11 @@ func TestProcessIssueLabelBootstrapSetLabelsError(t *testing.T) {
 	}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
-		store:  store,
-		logger: log.New(&bytes.Buffer{}, "", 0),
+		cfg:       Config{Owner: "owner", Repo: "repo"},
+		gh:        mock,
+		store:     store,
+		logger:    log.New(&bytes.Buffer{}, "", 0),
+		workflows: leanRegistry(t),
 	}
 
 	_, err := s.processIssue(context.Background(), 11)
@@ -138,21 +150,22 @@ func TestProcessIssueLabelBootstrapSetLabelsError(t *testing.T) {
 // to a new status that requires a different role, any queued task for the old role must be
 // superseded so the new role's task can be dispatched.
 func TestProcessIssueRoleTransitionSupersedes(t *testing.T) {
-	// Issue is now in-progress (requires developer), but a stale PO task is queued.
+	// Issue is now in-development (requires developer), but a stale PO task is queued.
 	issue := Issue{
 		Number:    20,
 		User:      GitHubUser{Login: "creator"},
 		Assignees: []GitHubUser{{Login: "zed-arc"}},
-		Labels:    []GitHubLabel{{Name: "status:in-progress"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
 	}
 
 	mock := &mockGitHub{issues: []Issue{issue}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
-		store:  store,
-		logger: log.New(&bytes.Buffer{}, "", 0),
+		cfg:       Config{Owner: "owner", Repo: "repo"},
+		gh:        mock,
+		store:     store,
+		logger:    log.New(&bytes.Buffer{}, "", 0),
+		workflows: leanRegistry(t),
 	}
 
 	// Seed a stale queued PO task (as if a prior issue_comment event created it).
@@ -205,10 +218,11 @@ func TestProcessIssueSameRoleDeduplicates(t *testing.T) {
 
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     &mockGitHub{issues: []Issue{issue, issue}},
-		store:  store,
-		logger: log.New(&bytes.Buffer{}, "", 0),
+		cfg:       Config{Owner: "owner", Repo: "repo"},
+		gh:        &mockGitHub{issues: []Issue{issue, issue}},
+		store:     store,
+		logger:    log.New(&bytes.Buffer{}, "", 0),
+		workflows: leanRegistry(t),
 	}
 
 	if _, err := s.processIssue(context.Background(), 30); err != nil {
@@ -240,15 +254,16 @@ func TestProcessIssueSameRoleDifferentAssigneeSupersedes(t *testing.T) {
 		Number:    50,
 		User:      GitHubUser{Login: "creator"},
 		Assignees: []GitHubUser{{Login: "mud-rev"}},
-		Labels:    []GitHubLabel{{Name: "status:in-progress"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
 	}
 
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     &mockGitHub{issues: []Issue{issueWithNewAssignee}},
-		store:  store,
-		logger: log.New(&bytes.Buffer{}, "", 0),
+		cfg:       Config{Owner: "owner", Repo: "repo"},
+		gh:        &mockGitHub{issues: []Issue{issueWithNewAssignee}},
+		store:     store,
+		logger:    log.New(&bytes.Buffer{}, "", 0),
+		workflows: leanRegistry(t),
 	}
 
 	// Seed a stale developer task with the old assignee (e.g. assigned mid-flight).
@@ -257,7 +272,7 @@ func TestProcessIssueSameRoleDifferentAssigneeSupersedes(t *testing.T) {
 		IssueID:       50,
 		Role:          "developer",
 		Assignee:      "bud-dev",
-		CurrentStatus: "status:in-progress",
+		CurrentStatus: "status:in-development",
 	}); err != nil {
 		t.Fatalf("seed stale task: %v", err)
 	}
@@ -301,15 +316,16 @@ func TestProcessIssueSameRoleEmptyToNonEmptyAssigneeSupersedes(t *testing.T) {
 		Number:    51,
 		User:      GitHubUser{Login: "creator"},
 		Assignees: []GitHubUser{{Login: "bud-dev"}},
-		Labels:    []GitHubLabel{{Name: "status:in-progress"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
 	}
 
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     &mockGitHub{issues: []Issue{issueWithAssignee}},
-		store:  store,
-		logger: log.New(&bytes.Buffer{}, "", 0),
+		cfg:       Config{Owner: "owner", Repo: "repo"},
+		gh:        &mockGitHub{issues: []Issue{issueWithAssignee}},
+		store:     store,
+		logger:    log.New(&bytes.Buffer{}, "", 0),
+		workflows: leanRegistry(t),
 	}
 
 	// Seed a stale developer task with no assignee (queued before assignment).
@@ -318,7 +334,7 @@ func TestProcessIssueSameRoleEmptyToNonEmptyAssigneeSupersedes(t *testing.T) {
 		IssueID:       51,
 		Role:          "developer",
 		Assignee:      "",
-		CurrentStatus: "status:in-progress",
+		CurrentStatus: "status:in-development",
 	}); err != nil {
 		t.Fatalf("seed stale task: %v", err)
 	}
@@ -361,16 +377,17 @@ func TestProcessIssueAlreadyLabeledSkipsBootstrap(t *testing.T) {
 		Number:    42,
 		User:      GitHubUser{Login: "creator"},
 		Assignees: []GitHubUser{{Login: "ada-pow"}},
-		Labels:    []GitHubLabel{{Name: "status:po-analysis"}},
+		Labels:    []GitHubLabel{{Name: "status:story-definition"}},
 	}
 
 	mock := &mockGitHub{issues: []Issue{issue}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
-		store:  store,
-		logger: log.New(&bytes.Buffer{}, "", 0),
+		cfg:       Config{Owner: "owner", Repo: "repo"},
+		gh:        mock,
+		store:     store,
+		logger:    log.New(&bytes.Buffer{}, "", 0),
+		workflows: leanRegistry(t),
 	}
 
 	_, err := s.processIssue(context.Background(), 42)
@@ -380,5 +397,53 @@ func TestProcessIssueAlreadyLabeledSkipsBootstrap(t *testing.T) {
 
 	if mock.setLabelsCalled {
 		t.Errorf("SetIssueLabels must not be called for an already-labeled issue, but was called with %v", mock.setLabelsArgs)
+	}
+}
+
+// TestProcessIssueWith_YAMLWorkflow_QueuesDevTask verifies that processIssueWith with a
+// non-nil YAML WorkflowDef uses the YAML engine: an issue at status:in-development queues
+// a developer task rather than falling back to the legacy engine's role mapping.
+func TestProcessIssueWith_YAMLWorkflow_QueuesDevTask(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number:    55,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
+	}
+	mock := &mockGitHub{issues: []Issue{issue}}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 55, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Errorf("expected queued=true for status:in-development with YAML workflow")
+	}
+
+	task, err := store.FindActiveTaskByIssue(55)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected an active task in the store, got nil")
+	}
+	if task.Role != "developer" {
+		t.Errorf("task.Role=%q, want %q", task.Role, "developer")
+	}
+	if task.CurrentStatus != "status:in-development" {
+		t.Errorf("task.CurrentStatus=%q, want %q", task.CurrentStatus, "status:in-development")
 	}
 }
