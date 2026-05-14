@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"log"
 	"testing"
 )
 
@@ -385,6 +387,81 @@ func TestFullWorkflow_GuardedTransitionFails(t *testing.T) {
 	res := validateTransitionFromDef(wd, issue, nil, "po", "status:solution-design")
 	if res.Allowed {
 		t.Error("expected guarded transition to fail when guard label is absent")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// applyTransitionMetadata
+// ---------------------------------------------------------------------------
+
+// TestApplyTransitionMetadata_Set verifies that set_metadata entries are written to the store,
+// and that the "$from" special value is resolved to the actual fromStatus.
+func TestApplyTransitionMetadata_Set(t *testing.T) {
+	store := tempStore(t)
+	s := &Server{store: store, logger: log.New(&bytes.Buffer{}, "", 0)}
+
+	td := &TransitionDef{
+		SetMetadata: map[string]string{
+			"blocked_from": "$from",
+			"reason":       "manual",
+		},
+	}
+	s.applyTransitionMetadata(42, "status:in-development", td)
+
+	val, ok, err := store.GetIssueMetadata(42, "blocked_from")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata blocked_from: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected blocked_from metadata to be set, got absent")
+	}
+	if val != "status:in-development" {
+		t.Errorf("blocked_from: got %q, want %q", val, "status:in-development")
+	}
+
+	val2, ok2, err := store.GetIssueMetadata(42, "reason")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata reason: %v", err)
+	}
+	if !ok2 {
+		t.Fatal("expected reason metadata to be set, got absent")
+	}
+	if val2 != "manual" {
+		t.Errorf("reason: got %q, want %q", val2, "manual")
+	}
+}
+
+// TestApplyTransitionMetadata_Clear verifies that clear_metadata removes the specified keys
+// from the store while leaving other keys intact.
+func TestApplyTransitionMetadata_Clear(t *testing.T) {
+	store := tempStore(t)
+	s := &Server{store: store, logger: log.New(&bytes.Buffer{}, "", 0)}
+
+	// Seed two metadata keys.
+	if err := store.SetIssueMetadata(7, "blocked_from", "status:in-development"); err != nil {
+		t.Fatalf("seed SetIssueMetadata: %v", err)
+	}
+	if err := store.SetIssueMetadata(7, "other", "keep"); err != nil {
+		t.Fatalf("seed SetIssueMetadata other: %v", err)
+	}
+
+	td := &TransitionDef{ClearMetadata: []string{"blocked_from"}}
+	s.applyTransitionMetadata(7, "status:blocked", td)
+
+	_, ok, err := store.GetIssueMetadata(7, "blocked_from")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata blocked_from: %v", err)
+	}
+	if ok {
+		t.Error("expected blocked_from to be cleared, but it is still present")
+	}
+
+	val, ok2, err := store.GetIssueMetadata(7, "other")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata other: %v", err)
+	}
+	if !ok2 || val != "keep" {
+		t.Errorf("expected 'other' key to be retained with value %q, got ok=%v val=%q", "keep", ok2, val)
 	}
 }
 

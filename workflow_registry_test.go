@@ -193,6 +193,71 @@ transitions:
 	}
 }
 
+// TestLoadWorkflowRegistry_ValidationDuplicateStatusID verifies that two statuses sharing
+// the same id cause a validation error.
+func TestLoadWorkflowRegistry_ValidationDuplicateStatusID(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+workflow:
+  id: test
+  key: test
+statuses:
+  - id: status:new
+    role: po
+    queues_work: true
+  - id: status:new
+    role: developer
+    queues_work: true
+  - id: status:done
+    terminal: true
+transitions:
+  - id: finish
+    from: [status:new]
+    to: status:done
+    allowed_roles: [po]
+`
+	if err := os.WriteFile(filepath.Join(dir, "test.yaml"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadWorkflowRegistry(dir, "test")
+	if err == nil {
+		t.Fatal("expected validation error for duplicate status id, got nil")
+	}
+}
+
+// TestLoadWorkflowRegistry_ValidationDuplicateTransitionID verifies that two transitions
+// sharing the same id cause a validation error.
+func TestLoadWorkflowRegistry_ValidationDuplicateTransitionID(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+workflow:
+  id: test
+  key: test
+statuses:
+  - id: status:new
+    role: po
+    queues_work: true
+  - id: status:done
+    terminal: true
+transitions:
+  - id: finish
+    from: [status:new]
+    to: status:done
+    allowed_roles: [po]
+  - id: finish
+    from: [status:new]
+    to: status:done
+    allowed_roles: [developer]
+`
+	if err := os.WriteFile(filepath.Join(dir, "test.yaml"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadWorkflowRegistry(dir, "test")
+	if err == nil {
+		t.Fatal("expected validation error for duplicate transition id, got nil")
+	}
+}
+
 // TestLeanWorkflowStatuses verifies that the lean workflow contains the expected statuses.
 func TestLeanWorkflowStatuses(t *testing.T) {
 	reg, err := LoadWorkflowRegistry("workflows", "lean")

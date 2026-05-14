@@ -100,15 +100,23 @@ func validateWorkflowDef(wd *WorkflowDef, path string) error {
 		if s.ID == "" {
 			return fmt.Errorf("%s: status entry has empty id", path)
 		}
+		if statusSet[s.ID] {
+			return fmt.Errorf("%s: duplicate status id %q", path, s.ID)
+		}
 		statusSet[s.ID] = true
 	}
 
 	hasOutgoing := make(map[string]bool, len(wd.Statuses))
+	transitionSet := make(map[string]bool, len(wd.Transitions))
 
 	for _, t := range wd.Transitions {
 		if t.ID == "" {
 			return fmt.Errorf("%s: transition entry has empty id", path)
 		}
+		if transitionSet[t.ID] {
+			return fmt.Errorf("%s: duplicate transition id %q", path, t.ID)
+		}
+		transitionSet[t.ID] = true
 
 		// Validate to-status (dynamic targets are validated at runtime).
 		if !strings.HasPrefix(t.To, "$") {

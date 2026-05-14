@@ -382,3 +382,51 @@ func TestProcessIssueAlreadyLabeledSkipsBootstrap(t *testing.T) {
 		t.Errorf("SetIssueLabels must not be called for an already-labeled issue, but was called with %v", mock.setLabelsArgs)
 	}
 }
+
+// TestProcessIssueWith_YAMLWorkflow_QueuesDevTask verifies that processIssueWith with a
+// non-nil YAML WorkflowDef uses the YAML engine: an issue at status:in-development queues
+// a developer task rather than falling back to the legacy engine's role mapping.
+func TestProcessIssueWith_YAMLWorkflow_QueuesDevTask(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number:    55,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
+	}
+	mock := &mockGitHub{issues: []Issue{issue}}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 55, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Errorf("expected queued=true for status:in-development with YAML workflow")
+	}
+
+	task, err := store.FindActiveTaskByIssue(55)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected an active task in the store, got nil")
+	}
+	if task.Role != "developer" {
+		t.Errorf("task.Role=%q, want %q", task.Role, "developer")
+	}
+	if task.CurrentStatus != "status:in-development" {
+		t.Errorf("task.CurrentStatus=%q, want %q", task.CurrentStatus, "status:in-development")
+	}
+}

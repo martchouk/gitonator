@@ -244,19 +244,15 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 
 	// Handle /approve comments for stakeholder-wait states (legacy workflow only).
 	if eventType == "issue_comment" && (env.Action == "created" || env.Action == "edited") {
-		handled, err := s.processApproveComment(
+		if _, err := s.processApproveComment(
 			ctx,
 			env.Issue.Number,
 			env.Comment.ID,
 			env.Comment.User.Login,
 			env.Comment.Body,
 			wd,
-		)
-		if err != nil {
+		); err != nil {
 			return err
-		}
-		if handled {
-			// Approve transitions are applied inline; processIssue queues the next task.
 		}
 	}
 

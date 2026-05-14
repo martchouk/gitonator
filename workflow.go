@@ -600,13 +600,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 	}
 }
 
-// workflowDef returns the WorkflowDef for the given key from the server's registry,
-// or nil when no registry is loaded or the key is empty.
+// workflowDef returns the WorkflowDef for the given key from the server's registry.
+// An empty or unknown key falls back to the registry default (lean). Returns nil when
+// no registry is loaded (legacy hard-coded engine is used instead).
 func (s *Server) workflowDef(key string) *WorkflowDef {
 	if s.workflows == nil {
-		return nil
-	}
-	if strings.TrimSpace(key) == "" {
 		return nil
 	}
 	return s.workflows.Get(key)
