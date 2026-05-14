@@ -7,13 +7,15 @@ import (
 
 // WorkPackage is the canonical work unit exchanged between orchestrator and bridge.
 type WorkPackage struct {
-	ID            int64  `json:"id"`
-	Repo          string `json:"repo"`
-	IssueID       int    `json:"issue_id"`
-	Role          string `json:"role"`
-	Assignee      string `json:"assignee"`
-	LastCommentID int64  `json:"last_comment_id"`
-	CurrentStatus string `json:"current_status"`
+	ID               int64    `json:"id"`
+	Repo             string   `json:"repo"`
+	IssueID          int      `json:"issue_id"`
+	Role             string   `json:"role"`
+	Assignee         string   `json:"assignee"`
+	LastCommentID    int64    `json:"last_comment_id"`
+	CurrentStatus    string   `json:"current_status"`
+	WorkflowKey      string   `json:"workflow_key,omitempty"`
+	ValidTransitions []string `json:"valid_transitions,omitempty"`
 }
 
 // processIssue processes an issue using the default (lean) workflow.
@@ -50,6 +52,14 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 		state = s.computeState(wd, issue, comments)
 	}
 
+	// Warn when the issue carries a status label that is not recognised by the active
+	// workflow. decideNextActionFromDef will return ok=false for the same reason, so
+	// no task will be queued — but a silent no-op is hard to diagnose from logs alone.
+	if !wd.HasStatus(state.StatusLabel) {
+		s.logger.Printf("WARN processIssue: issue=%d unrecognized status label %q — not in workflow %q; no action will be queued",
+			issueNumber, state.StatusLabel, wd.Workflow.Key)
+	}
+
 	pkg, ok := decideNextActionFromDef(wd, s.cfg, issue, state, comments)
 	if !ok {
 		s.debugf("processIssue: issue=%d no action — terminal or wait state", issueNumber)
@@ -59,6 +69,9 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 			"queued":   false,
 		}, nil
 	}
+
+	pkg.WorkflowKey = wd.Workflow.Key
+	pkg.ValidTransitions = wd.ValidTransitionsFrom(state.StatusLabel)
 
 	// Close out any dispatched task for this issue before queuing a new one.
 	// This is a no-op if no dispatched task exists.

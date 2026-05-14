@@ -347,6 +347,67 @@ func TestIssueMetadataClear(t *testing.T) {
 	}
 }
 
+// TestGetNextWorkPackage_WorkflowContextRoundTrip verifies that WorkflowKey and
+// ValidTransitions stored in payload_json are returned by GetNextWorkPackage.
+func TestGetNextWorkPackage_WorkflowContextRoundTrip(t *testing.T) {
+	s := tempStore(t)
+	pkg := WorkPackage{
+		Repo:             "owner/repo",
+		IssueID:          88,
+		Role:             "developer",
+		CurrentStatus:    "status:in-development",
+		WorkflowKey:      "lean",
+		ValidTransitions: []string{"status:code-review", "status:blocked"},
+	}
+	if _, err := s.QueueTask(pkg); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+
+	got, err := s.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil || got == nil {
+		t.Fatalf("GetNextWorkPackage: %v %v", got, err)
+	}
+	if got.WorkflowKey != "lean" {
+		t.Errorf("WorkflowKey: got %q, want %q", got.WorkflowKey, "lean")
+	}
+	found := map[string]bool{}
+	for _, tgt := range got.ValidTransitions {
+		found[tgt] = true
+	}
+	if !found["status:code-review"] || !found["status:blocked"] {
+		t.Errorf("ValidTransitions: got %v, want [status:code-review status:blocked]", got.ValidTransitions)
+	}
+}
+
+// TestGetNextWorkPackage_OldPayloadMissingWorkflowFields verifies backward-compatibility:
+// a task row inserted before PR #33 (payload_json without workflow_key/valid_transitions)
+// is returned with zero values for those fields rather than an error.
+func TestGetNextWorkPackage_OldPayloadMissingWorkflowFields(t *testing.T) {
+	s := tempStore(t)
+
+	// Insert a task using the legacy (pre-PR-33) payload_json that has no workflow fields.
+	legacyPayload := `{"id":0,"repo":"owner/repo","issue_id":89,"role":"po","assignee":"","last_comment_id":0,"current_status":"status:new"}`
+	_, err := s.db.Exec(
+		`INSERT INTO tasks (issue_number, repo, role, assignee, last_comment_id, current_status, status, dedup_key, payload_json, created_at)
+		 VALUES (89, 'owner/repo', 'po', '', 0, 'status:new', 'queued', 'issue:89', ?, datetime('now'))`,
+		legacyPayload,
+	)
+	if err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+
+	got, err := s.GetNextWorkPackage("bridge-1", []string{"po"})
+	if err != nil || got == nil {
+		t.Fatalf("GetNextWorkPackage: %v %v", got, err)
+	}
+	if got.WorkflowKey != "" {
+		t.Errorf("WorkflowKey: got %q, want empty for legacy row", got.WorkflowKey)
+	}
+	if len(got.ValidTransitions) != 0 {
+		t.Errorf("ValidTransitions: got %v, want nil/empty for legacy row", got.ValidTransitions)
+	}
+}
+
 func TestBridgeIDStoredOnDispatch(t *testing.T) {
 	s := tempStore(t)
 	if _, err := s.QueueTask(testPkg(7, "po")); err != nil {
