@@ -156,6 +156,12 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Select workflow: ?workflow=lean (default) or ?workflow=full.
+	var wd *WorkflowDef
+	if s.workflows != nil {
+		wd = s.workflows.Get(r.URL.Query().Get("workflow"))
+	}
+
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to read body")
@@ -196,7 +202,7 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.processWebhookPayload(r.Context(), eventType, deliveryID, payload); err != nil {
+	if err := s.processWebhookPayload(r.Context(), eventType, deliveryID, payload, wd); err != nil {
 		_ = s.store.MarkDeliveryFailed(deliveryID, err.Error())
 		_ = s.store.RecordFailure(0, "webhook", err.Error(), map[string]string{
 			"delivery_id": deliveryID,
@@ -213,7 +219,7 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryID string, payload []byte) error {
+func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryID string, payload []byte, wd *WorkflowDef) error {
 	var env struct {
 		Action  string `json:"action"`
 		Issue   Issue  `json:"issue"`
@@ -236,7 +242,7 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		deliveryID, eventType, env.Action, env.Issue.Number,
 	)
 
-	// Handle /approve comments for stakeholder-wait states.
+	// Handle /approve comments for stakeholder-wait states (legacy workflow only).
 	if eventType == "issue_comment" && (env.Action == "created" || env.Action == "edited") {
 		handled, err := s.processApproveComment(
 			ctx,
@@ -244,6 +250,7 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 			env.Comment.ID,
 			env.Comment.User.Login,
 			env.Comment.Body,
+			wd,
 		)
 		if err != nil {
 			return err
@@ -253,15 +260,22 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		}
 	}
 
-	_, err := s.processIssue(ctx, env.Issue.Number)
+	_, err := s.processIssueWith(ctx, env.Issue.Number, wd)
 	return err
 }
 
 // processApproveComment handles /approve comments in stakeholder-wait states.
+// The new YAML-driven workflows (lean, full) have no stakeholder-wait states, so this
+// is effectively a no-op for them. Legacy workflow uses the hard-coded approveTransitionTarget.
 // Verification that the commenter is the stakeholder is done here, not in validateTransition,
 // to avoid GitHub API timing issues with RequiresStakeholderApprove.
-func (s *Server) processApproveComment(ctx context.Context, issueNumber int, commentID int64, actor, body string) (bool, error) {
+func (s *Server) processApproveComment(ctx context.Context, issueNumber int, commentID int64, actor, body string, wd *WorkflowDef) (bool, error) {
 	if !containsApprove(body) {
+		return false, nil
+	}
+
+	// YAML-driven workflows have no stakeholder-approval states; skip.
+	if wd != nil {
 		return false, nil
 	}
 

@@ -36,7 +36,7 @@ func TestApproveTransitionTarget(t *testing.T) {
 
 func TestProcessApproveCommentNonApproveBodyReturnsFalse(t *testing.T) {
 	s := &Server{logger: log.New(&bytes.Buffer{}, "", 0)}
-	handled, err := s.processApproveComment(context.Background(), 1, 0, "bud-dev", "just a regular comment")
+	handled, err := s.processApproveComment(context.Background(), 1, 0, "bud-dev", "just a regular comment", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

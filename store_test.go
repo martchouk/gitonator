@@ -252,6 +252,101 @@ func TestCompleteDispatchedTaskIsNoopWhenNone(t *testing.T) {
 	}
 }
 
+func TestIssueMetadataSetAndGet(t *testing.T) {
+	s := tempStore(t)
+
+	if err := s.SetIssueMetadata(10, "blocked_from", "status:in-development"); err != nil {
+		t.Fatalf("SetIssueMetadata: %v", err)
+	}
+
+	val, ok, err := s.GetIssueMetadata(10, "blocked_from")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected key to be found, got ok=false")
+	}
+	if val != "status:in-development" {
+		t.Errorf("value: got %q, want %q", val, "status:in-development")
+	}
+}
+
+func TestIssueMetadataAbsentKey(t *testing.T) {
+	s := tempStore(t)
+	_, ok, err := s.GetIssueMetadata(99, "missing")
+	if err != nil {
+		t.Fatalf("GetIssueMetadata: %v", err)
+	}
+	if ok {
+		t.Error("expected ok=false for absent key, got true")
+	}
+}
+
+func TestIssueMetadataUpsert(t *testing.T) {
+	s := tempStore(t)
+
+	if err := s.SetIssueMetadata(5, "k", "v1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetIssueMetadata(5, "k", "v2"); err != nil {
+		t.Fatal(err)
+	}
+
+	val, ok, err := s.GetIssueMetadata(5, "k")
+	if err != nil || !ok {
+		t.Fatalf("GetIssueMetadata: ok=%v err=%v", ok, err)
+	}
+	if val != "v2" {
+		t.Errorf("value after upsert: got %q, want %q", val, "v2")
+	}
+}
+
+func TestIssueMetadataMap(t *testing.T) {
+	s := tempStore(t)
+
+	_ = s.SetIssueMetadata(7, "a", "1")
+	_ = s.SetIssueMetadata(7, "b", "2")
+	_ = s.SetIssueMetadata(8, "a", "other-issue") // different issue, must not appear
+
+	m, err := s.GetIssueMetadataMap(7)
+	if err != nil {
+		t.Fatalf("GetIssueMetadataMap: %v", err)
+	}
+	if m["a"] != "1" {
+		t.Errorf("a: got %q, want %q", m["a"], "1")
+	}
+	if m["b"] != "2" {
+		t.Errorf("b: got %q, want %q", m["b"], "2")
+	}
+	if _, ok := m["a"]; len(m) != 2 || !ok {
+		t.Errorf("expected 2 keys for issue 7, got %v", m)
+	}
+}
+
+func TestIssueMetadataClear(t *testing.T) {
+	s := tempStore(t)
+
+	_ = s.SetIssueMetadata(3, "blocked_from", "status:in-development")
+	_ = s.SetIssueMetadata(3, "other", "keep")
+
+	if err := s.ClearIssueMetadata(3, []string{"blocked_from"}); err != nil {
+		t.Fatalf("ClearIssueMetadata: %v", err)
+	}
+
+	_, ok, err := s.GetIssueMetadata(3, "blocked_from")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("expected blocked_from to be deleted, but it was found")
+	}
+
+	val, ok, err := s.GetIssueMetadata(3, "other")
+	if err != nil || !ok || val != "keep" {
+		t.Errorf("expected 'other' key to remain: ok=%v val=%q err=%v", ok, val, err)
+	}
+}
+
 func TestBridgeIDStoredOnDispatch(t *testing.T) {
 	s := tempStore(t)
 	if _, err := s.QueueTask(testPkg(7, "po")); err != nil {

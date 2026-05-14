@@ -16,13 +16,20 @@ type WorkPackage struct {
 	CurrentStatus string `json:"current_status"`
 }
 
+// processIssue processes an issue using the legacy hard-coded workflow engine.
 func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}, error) {
+	return s.processIssueWith(ctx, issueNumber, nil)
+}
+
+// processIssueWith processes an issue. When wd is non-nil the YAML-driven engine is
+// used; when nil the legacy hard-coded engine is used.
+func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *WorkflowDef) (interface{}, error) {
 	issue, comments, err := s.loadIssueAndComments(ctx, issueNumber, 100)
 	if err != nil {
 		return nil, err
 	}
 
-	state := computeWorkflowState(issue, comments)
+	state := s.computeState(wd, issue, comments)
 	s.debugf("processIssue: issue=%d status=%s suggested_role=%s assignees=%v",
 		issueNumber, state.StatusLabel, state.SuggestedRole, state.CurrentAssignees)
 
@@ -37,10 +44,16 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 		if err != nil {
 			return nil, err
 		}
-		state = computeWorkflowState(issue, comments)
+		state = s.computeState(wd, issue, comments)
 	}
 
-	pkg, ok := decideNextAction(s.cfg, issue, state, comments)
+	var pkg WorkPackage
+	var ok bool
+	if wd != nil {
+		pkg, ok = decideNextActionFromDef(wd, s.cfg, issue, state, comments)
+	} else {
+		pkg, ok = decideNextAction(s.cfg, issue, state, comments)
+	}
 	if !ok {
 		s.debugf("processIssue: issue=%d no action — terminal or wait state", issueNumber)
 		return map[string]interface{}{
@@ -102,6 +115,15 @@ func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}
 		"task_id":  taskID,
 		"task":     pkg,
 	}, nil
+}
+
+// computeState computes the WorkflowState using either the YAML engine (when wd != nil)
+// or the legacy hard-coded engine.
+func (s *Server) computeState(wd *WorkflowDef, issue Issue, comments []IssueComment) WorkflowState {
+	if wd != nil {
+		return computeWorkflowStateFromDef(wd, issue, comments)
+	}
+	return computeWorkflowState(issue, comments)
 }
 
 // decideNextAction derives the next work package from the current workflow state.

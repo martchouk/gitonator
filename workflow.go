@@ -253,6 +253,7 @@ func (s *Server) tools() []Tool {
 			"type": "object",
 			"properties": map[string]interface{}{
 				"issue_number": map[string]interface{}{"type": "integer"},
+				"workflow":     map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
 			},
 			"required": []string{"issue_number"},
 		}),
@@ -269,6 +270,7 @@ func (s *Server) tools() []Tool {
 				"issue_number": map[string]interface{}{"type": "integer"},
 				"to_status":    map[string]interface{}{"type": "string"},
 				"actor_role":   map[string]interface{}{"type": "string", "description": "Role name: po, developer, reviewer, architect, tester, designer, stakeholder"},
+				"workflow":     map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
 			},
 			"required": []string{"issue_number", "to_status", "actor_role"},
 		}),
@@ -280,17 +282,21 @@ func (s *Server) tools() []Tool {
 				"assignee":     map[string]interface{}{"type": "string", "description": "Optional GitHub username to assign after transition"},
 				"comment":      map[string]interface{}{"type": "string"},
 				"actor_role":   map[string]interface{}{"type": "string", "description": "Role name: po, developer, reviewer, architect, tester, designer, stakeholder"},
+				"workflow":     map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
 			},
 			"required": []string{"issue_number", "status", "actor_role"},
 		}),
 		newTool("get_transition_matrix", "Show allowed transition matrix", map[string]interface{}{
-			"type":       "object",
-			"properties": map[string]interface{}{},
+			"type": "object",
+			"properties": map[string]interface{}{
+				"workflow": map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
+			},
 		}),
 		newTool("process_issue_event", "Run webhook-style issue processing", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"issue_number": map[string]interface{}{"type": "integer"},
+				"workflow":     map[string]interface{}{"type": "string", "description": "Workflow key: lean (default) or full"},
 			},
 			"required": []string{"issue_number"},
 		}),
@@ -329,8 +335,9 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 	switch name {
 	case "get_issue_context":
 		var args struct {
-			IssueNumber  int `json:"issue_number"`
-			CommentLimit int `json:"comment_limit"`
+			IssueNumber  int    `json:"issue_number"`
+			CommentLimit int    `json:"comment_limit"`
+			Workflow     string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
@@ -342,10 +349,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err != nil {
 			return nil, err
 		}
+		ws := s.computeState(s.workflowDef(args.Workflow), issue, comments)
 		return map[string]interface{}{
 			"issue":    issue,
 			"comments": comments,
-			"workflow": computeWorkflowState(issue, comments),
+			"workflow": ws,
 		}, nil
 
 	case "list_issue_comments":
@@ -436,7 +444,8 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 
 	case "get_workflow_state":
 		var args struct {
-			IssueNumber int `json:"issue_number"`
+			IssueNumber int    `json:"issue_number"`
+			Workflow    string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
@@ -444,6 +453,9 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		issue, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, 100)
 		if err != nil {
 			return nil, err
+		}
+		if wd := s.workflowDef(args.Workflow); wd != nil {
+			return computeWorkflowStateFromDef(wd, issue, comments), nil
 		}
 		return computeWorkflowState(issue, comments), nil
 
@@ -476,6 +488,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			IssueNumber int    `json:"issue_number"`
 			ToStatus    string `json:"to_status"`
 			ActorRole   string `json:"actor_role"`
+			Workflow    string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
@@ -483,6 +496,10 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		issue, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, 100)
 		if err != nil {
 			return nil, err
+		}
+		if wd := s.workflowDef(args.Workflow); wd != nil {
+			meta, _ := s.store.GetIssueMetadataMap(args.IssueNumber)
+			return validateTransitionFromDef(wd, issue, meta, args.ActorRole, args.ToStatus), nil
 		}
 		return validateTransition(issue, comments, args.ActorRole, args.ToStatus), nil
 
@@ -493,23 +510,32 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			Assignee    string `json:"assignee"`
 			Comment     string `json:"comment"`
 			ActorRole   string `json:"actor_role"`
+			Workflow    string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.ActorRole, "mcp_tool", nil, nil)
+		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.ActorRole, "mcp_tool", nil, nil, s.workflowDef(args.Workflow))
 
 	case "get_transition_matrix":
+		var args struct {
+			Workflow string `json:"workflow"`
+		}
+		_ = json.Unmarshal(raw, &args)
+		if wd := s.workflowDef(args.Workflow); wd != nil {
+			return map[string]interface{}{"workflow": wd.Workflow.Key, "transitions": wd.Transitions}, nil
+		}
 		return map[string]interface{}{"rules": transitionRules}, nil
 
 	case "process_issue_event":
 		var args struct {
-			IssueNumber int `json:"issue_number"`
+			IssueNumber int    `json:"issue_number"`
+			Workflow    string `json:"workflow"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		return s.processIssue(ctx, args.IssueNumber)
+		return s.processIssueWith(ctx, args.IssueNumber, s.workflowDef(args.Workflow))
 
 	case "get_transition_audit":
 		var args struct {
@@ -574,6 +600,18 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 	}
 }
 
+// workflowDef returns the WorkflowDef for the given key from the server's registry,
+// or nil when no registry is loaded or the key is empty.
+func (s *Server) workflowDef(key string) *WorkflowDef {
+	if s.workflows == nil {
+		return nil
+	}
+	if strings.TrimSpace(key) == "" {
+		return nil
+	}
+	return s.workflows.Get(key)
+}
+
 func (s *Server) loadIssueAndComments(ctx context.Context, issueNumber, limit int) (Issue, []IssueComment, error) {
 	issue, err := s.gh.GetIssue(ctx, issueNumber)
 	if err != nil {
@@ -606,6 +644,7 @@ func (s *Server) transitionIssue(
 	triggerType string,
 	triggerCommentID *int64,
 	triggerMetadata interface{},
+	wd *WorkflowDef,
 ) (interface{}, error) {
 	issue, comments, err := s.loadIssueAndComments(ctx, issueNumber, 100)
 	if err != nil {
@@ -616,10 +655,24 @@ func (s *Server) transitionIssue(
 		triggerType = "mcp_tool"
 	}
 
-	fromStatus := computeWorkflowState(issue, comments).StatusLabel
+	var fromStatus string
+	var validation TransitionValidationResult
+	var matchedDef *TransitionDef
+
+	if wd != nil {
+		meta, _ := s.store.GetIssueMetadataMap(issueNumber)
+		fromStatus = computeWorkflowStateFromDef(wd, issue, nil).StatusLabel
+		validation = validateTransitionFromDef(wd, issue, meta, actorRole, toStatus)
+		if validation.Allowed {
+			matchedDef = findMatchingTransitionDef(wd, fromStatus, toStatus, meta)
+		}
+	} else {
+		fromStatus = computeWorkflowState(issue, comments).StatusLabel
+		validation = validateTransition(issue, comments, actorRole, toStatus)
+	}
+
 	fromAssignee := currentAssigneeOfIssue(issue)
 
-	validation := validateTransition(issue, comments, actorRole, toStatus)
 	s.debugf("transitionIssue: issue=%d from=%s to=%s actor=%s allowed=%v",
 		issueNumber, fromStatus, toStatus, actorRole, validation.Allowed)
 	if !validation.Allowed {
@@ -679,6 +732,11 @@ func (s *Server) transitionIssue(
 			triggerType, triggerCommentID, "failed", "reload issue failed: "+err.Error(), validation, triggerMetadata,
 		)
 		return nil, err
+	}
+
+	// Apply YAML-workflow metadata side-effects (set_metadata / clear_metadata).
+	if matchedDef != nil {
+		s.applyTransitionMetadata(issueNumber, fromStatus, matchedDef)
 	}
 
 	_ = s.store.RecordTransitionAudit(

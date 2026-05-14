@@ -90,29 +90,89 @@ The stakeholder for `/approve` transitions is resolved from the issue labels or 
 
 ---
 
+## YAML-driven workflow engine
+
+Workflow definitions are loaded from `*.yaml` files in the `workflows/` directory at server startup. Any file that does not declare a `workflow.key` field is skipped (e.g. documentation or legacy extraction files).
+
+### Selecting a workflow per webhook call
+
+Append a `workflow` query parameter to the GitHub webhook URL to select the active workflow:
+
+```
+https://mcp.singularia.de/webhook/github?workflow=lean   # default
+https://mcp.singularia.de/webhook/github?workflow=full
+```
+
+If the parameter is absent or unknown, the server uses the **lean** workflow (the default).
+
+### Built-in workflows
+
+| Key | File | Roles | Description |
+|-----|------|-------|-------------|
+| `lean` | `workflow-lean-3-roles-issue.yaml` | po, developer, reviewer | Streamlined 3-role flow |
+| `full` | `workflow-full-6-roles-issue.yaml` | po, architect, uidesigner, developer, reviewer, tester | Full 6-role flow with guards |
+
+### Configuring the workflows directory
+
+```bash
+WORKFLOWS_DIR=workflows   # default; path relative to working directory
+```
+
+### Startup validation
+
+On startup the server reads every `*.yaml` file in `WORKFLOWS_DIR` that has a `workflow.key` field and validates it:
+
+- every transition `from`/`to` references a known status ID
+- every guard reference resolves to a declared guard
+- no non-terminal status is left without outgoing transitions (dead-end check)
+
+The server exits on any validation failure.
+
+### Issue metadata (blocked_from)
+
+Workflows that support a `status:blocked` state with a dynamic resume transition store the pre-block status as `blocked_from` metadata in the `issue_metadata` SQLite table. This enables the PO to resume an issue to exactly the state it came from.
+
+```sql
+CREATE TABLE issue_metadata (
+  issue_id   INTEGER NOT NULL,
+  key        TEXT    NOT NULL,
+  value      TEXT    NOT NULL,
+  updated_at TEXT    NOT NULL,
+  PRIMARY KEY (issue_id, key)
+);
+```
+
+---
+
 ## Workflow states
 
-The orchestrator uses exactly one active `status:*` label per issue.
+The orchestrator uses exactly one active `status:*` label per issue. The supported labels depend on the active workflow.
 
-Supported status labels:
+**Lean workflow** (`?workflow=lean`) statuses:
 
 - `status:new`
-- `status:po-analysis`
-- `status:ready-for-requirements-review`
-- `status:requirements-review-in-progress`
-- `status:awaiting-stakeholder-approval`
-- `status:architect-analysis`
-- `status:approved-for-dev`
-- `status:in-progress`
-- `status:ready-for-review`
-- `status:review-in-progress`
-- `status:changes-requested`
-- `status:ready-for-po-review`
-- `status:po-review-in-progress`
-- `status:awaiting-final-stakeholder-approval`
+- `status:story-definition`
+- `status:dev-planning`
+- `status:plan-review`
+- `status:ready-for-development`
+- `status:in-development`
+- `status:code-review`
+- `status:po-approval`
 - `status:blocked`
 - `status:done`
 - `status:rejected`
+
+**Full workflow** (`?workflow=full`) statuses:
+
+- `status:new` / `status:triage`
+- `status:solution-design` / `status:ui-design`
+- `status:ready-for-dev` / `status:in-development`
+- `status:architecture-review` / `status:ui-review`
+- `status:code-review`
+- `status:testing`
+- `status:po-acceptance`
+- `status:blocked`
+- `status:done` / `status:rejected`
 
 ---
 
@@ -336,6 +396,10 @@ Operational failures recorded for debugging.
 
 Every transition attempt — applied, rejected, failed, or ignored.
 
+#### `issue_metadata`
+
+Per-issue key/value metadata used by YAML workflow transitions (e.g., `blocked_from` for the blocked-resume feature).
+
 ---
 
 ## Transition audit trail
@@ -388,6 +452,12 @@ AGENT_SHARED_TOKEN=...
 ```bash
 STALE_AFTER_SECONDS=900     # default; dispatched tasks older than this are re-queued
 RECOVER_EVERY_SECONDS=30    # default; interval between recovery runs
+```
+
+### Workflow engine
+
+```bash
+WORKFLOWS_DIR=workflows   # default; path to YAML workflow definitions
 ```
 
 ### Optional
