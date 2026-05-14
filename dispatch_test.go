@@ -21,11 +21,13 @@ func leanRegistry(t *testing.T) *WorkflowRegistry {
 
 // mockGitHub implements GitHubAPI for dispatch tests.
 type mockGitHub struct {
-	issues          []Issue // returned in sequence by GetIssue
-	getIssueIdx     int
-	setLabelsCalled bool
-	setLabelsArgs   []string
-	setLabelsErr    error // if non-nil, returned by SetIssueLabels
+	issues           []Issue // returned in sequence by GetIssue
+	getIssueIdx      int
+	setLabelsCalled  bool
+	setLabelsArgs    []string
+	setLabelsErr     error // if non-nil, returned by SetIssueLabels
+	postedComments   []string
+	postCommentErr   error // if non-nil, returned by PostIssueComment
 }
 
 func (m *mockGitHub) GetIssue(_ context.Context, _ int) (Issue, error) {
@@ -40,7 +42,11 @@ func (m *mockGitHub) GetIssue(_ context.Context, _ int) (Issue, error) {
 func (m *mockGitHub) ListIssueComments(_ context.Context, _ int, _ int) ([]IssueComment, error) {
 	return nil, nil
 }
-func (m *mockGitHub) PostIssueComment(_ context.Context, _ int, _ string) (IssueComment, error) {
+func (m *mockGitHub) PostIssueComment(_ context.Context, _ int, body string) (IssueComment, error) {
+	m.postedComments = append(m.postedComments, body)
+	if m.postCommentErr != nil {
+		return IssueComment{}, m.postCommentErr
+	}
 	return IssueComment{}, nil
 }
 func (m *mockGitHub) AssignIssue(_ context.Context, _ int, _ []string) (Issue, error) {
@@ -451,7 +457,7 @@ func TestProcessIssueWith_YAMLWorkflow_QueuesDevTask(t *testing.T) {
 
 // TestProcessIssueWith_UnknownStatusLabel_LogsWarning verifies that processIssueWith emits a
 // WARN log when an issue carries a status label that is not defined in the active workflow,
-// and does not queue any task for it (reproduces the silent no-op from issue #32).
+// does not queue any task, and posts a correction comment on the issue (closes #37).
 func TestProcessIssueWith_UnknownStatusLabel_LogsWarning(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	issue := Issue{
@@ -491,6 +497,47 @@ func TestProcessIssueWith_UnknownStatusLabel_LogsWarning(t *testing.T) {
 	}
 	if !strings.Contains(logOutput, "status:approved-for-dev") {
 		t.Errorf("expected log to mention the unknown label, got: %s", logOutput)
+	}
+
+	// A correction comment must have been posted to the issue.
+	if len(mock.postedComments) == 0 {
+		t.Fatal("expected a correction comment to be posted, but none was")
+	}
+	comment := mock.postedComments[0]
+	if !strings.Contains(comment, "status:approved-for-dev") {
+		t.Errorf("expected comment to mention the unknown label; got: %s", comment)
+	}
+	if !strings.Contains(comment, "transition_issue") {
+		t.Errorf("expected comment to instruct use of transition_issue; got: %s", comment)
+	}
+	if !strings.Contains(comment, "status:story-definition") {
+		t.Errorf("expected comment to list valid lean statuses; got: %s", comment)
+	}
+}
+
+// TestProcessIssueWith_UnknownStatusLabel_CommentFailureDoesNotError verifies that a failure
+// to post the correction comment does not cause processIssueWith to return an error —
+// the warning is best-effort and must not block webhook processing.
+func TestProcessIssueWith_UnknownStatusLabel_CommentFailureDoesNotError(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number: 100,
+		Labels: []GitHubLabel{{Name: "status:po-analysis"}},
+	}
+	mock := &mockGitHub{
+		issues:         []Issue{issue},
+		postCommentErr: fmt.Errorf("github: 403 forbidden"),
+	}
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  tempStore(t),
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	_, err := s.processIssueWith(context.Background(), 100, wd)
+	if err != nil {
+		t.Errorf("processIssueWith must not return error when comment posting fails, got: %v", err)
 	}
 }
 
