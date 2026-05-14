@@ -1,0 +1,423 @@
+workflow:
+  id: simplified_3_role_issue_workflow
+  entity: issue
+  version: 1
+  purpose: >
+    Lean GitHub issue workflow for feature ideas, bugs, and change requests
+    using only three worker roles: po, developer, and reviewer.
+  roles:
+    - po
+    - developer
+    - reviewer
+  supported_issue_types:
+    - feature_request
+    - bug
+    - change_request
+
+state_storage:
+  type: github_label
+  status_label_prefix: "status:"
+  type_label_prefix: "type:"
+  required_status_cardinality: exactly_one
+  on_transition:
+    - remove_labels_matching: "status:*"
+    - add_target_status_label: true
+    - preserve_non_status_labels: true
+  metadata:
+    blocked_from:
+      type: previous_status
+      required_when_entering: status:blocked
+      used_by_transition: resume_from_blocked
+
+issue_types:
+  - id: type:feature
+    name: feature_request
+    po_definition_output: user_story
+  - id: type:bug
+    name: bug
+    po_definition_output: requirement_from_bug_report
+  - id: type:change-request
+    name: change_request
+    po_definition_output: user_story_or_change_requirement
+
+statuses:
+  - id: status:new
+    role: po
+    queues_work: true
+    category: intake
+    description: "Issue has been created and needs PO classification."
+
+  - id: status:story-definition
+    role: po
+    queues_work: true
+    category: requirements
+    description: >
+      PO converts a feature idea or change request into a user story, or
+      converts a bug report into a requirement suitable for development.
+
+  - id: status:dev-planning
+    role: developer
+    queues_work: true
+    category: planning
+    description: "Developer creates or revises the development plan."
+
+  - id: status:plan-review
+    role: reviewer
+    queues_work: true
+    category: review
+    description: "Reviewer reviews the developer's plan."
+
+  - id: status:ready-for-development
+    role: developer
+    queues_work: true
+    category: implementation
+    description: "Reviewed plan is accepted and work can begin."
+
+  - id: status:in-development
+    role: developer
+    queues_work: true
+    category: implementation
+    description: "Developer writes code and makes all needed changes."
+
+  - id: status:code-review
+    role: reviewer
+    queues_work: true
+    category: review
+    description: "Reviewer reviews the implementation."
+
+  - id: status:po-approval
+    role: po
+    queues_work: true
+    category: acceptance
+    description: "PO approves rollout and closure."
+
+  - id: status:blocked
+    role: po
+    queues_work: true
+    category: exception
+    requires_metadata:
+      - blocked_from
+    description: "Issue is blocked and PO owns coordination."
+
+  - id: status:done
+    role: null
+    queues_work: false
+    category: terminal
+    terminal: true
+    description: "Issue is approved for rollout and closed."
+
+  - id: status:rejected
+    role: null
+    queues_work: false
+    category: terminal
+    terminal: true
+    description: "Issue is intentionally rejected or closed without implementation."
+
+transition_defaults:
+  validation:
+    - actor_role_must_be_allowed
+    - from_status_must_match
+    - target_status_must_exist
+  actions:
+    - replace_status_label
+    - preserve_non_status_labels
+    - optionally_assign_issue
+    - optionally_post_comment
+
+transitions:
+  - id: bootstrap_new_issue
+    from: null
+    to: status:new
+    allowed_roles:
+      - system
+    queues_next_role: po
+    description: "Apply initial workflow status to an issue without a status label."
+
+  - id: po_start_definition
+    from:
+      - status:new
+      - status:story-definition
+    to: status:story-definition
+    allowed_roles:
+      - po
+    queues_next_role: po
+    description: "PO starts or continues user story / requirement definition."
+
+  - id: po_reject_before_planning
+    from:
+      - status:new
+      - status:story-definition
+    to: status:rejected
+    allowed_roles:
+      - po
+    queues_next_role: null
+    description: "PO rejects a duplicate, invalid, or out-of-scope issue."
+
+  - id: po_publish_requirement_to_developer
+    from:
+      - status:story-definition
+    to: status:dev-planning
+    allowed_roles:
+      - po
+    queues_next_role: developer
+    required_outputs:
+      feature_request:
+        - user_story
+        - acceptance_criteria
+      bug:
+        - requirement_from_bug_report
+        - expected_behavior
+        - reproduction_or_observed_behavior
+      change_request:
+        - change_requirement
+        - acceptance_criteria
+    description: "PO publishes the issue requirement and asks developer for a development plan."
+
+  - id: developer_publish_plan
+    from:
+      - status:dev-planning
+    to: status:plan-review
+    allowed_roles:
+      - developer
+    queues_next_role: reviewer
+    required_outputs:
+      - development_plan
+      - files_or_components_expected_to_change
+      - verification_plan
+    description: "Developer creates and publishes a development plan for review."
+
+  - id: reviewer_reject_plan
+    from:
+      - status:plan-review
+    to: status:dev-planning
+    allowed_roles:
+      - reviewer
+    queues_next_role: developer
+    required_outputs:
+      - plan_review_feedback
+    description: "Reviewer rejects the plan and sends it back to developer."
+
+  - id: reviewer_approve_plan
+    from:
+      - status:plan-review
+    to: status:ready-for-development
+    allowed_roles:
+      - reviewer
+    queues_next_role: developer
+    description: "Reviewer approves the development plan."
+
+  - id: developer_start_or_continue_implementation
+    from:
+      - status:ready-for-development
+      - status:in-development
+    to: status:in-development
+    allowed_roles:
+      - developer
+    queues_next_role: developer
+    description: "Developer starts or continues implementation."
+
+  - id: developer_submit_code_review
+    from:
+      - status:in-development
+    to: status:code-review
+    allowed_roles:
+      - developer
+    queues_next_role: reviewer
+    required_outputs:
+      - implementation_summary
+      - verification_evidence
+    description: "Developer finishes changes and submits the implementation for review."
+
+  - id: reviewer_reject_code
+    from:
+      - status:code-review
+    to: status:in-development
+    allowed_roles:
+      - reviewer
+    queues_next_role: developer
+    required_outputs:
+      - code_review_feedback
+    description: "Reviewer rejects implementation and sends it back to developer."
+
+  - id: reviewer_approve_code
+    from:
+      - status:code-review
+    to: status:po-approval
+    allowed_roles:
+      - reviewer
+    queues_next_role: po
+    description: "Reviewer approves code and sends issue to PO for rollout approval."
+
+  - id: po_request_final_changes
+    from:
+      - status:po-approval
+    to: status:in-development
+    allowed_roles:
+      - po
+    queues_next_role: developer
+    required_outputs:
+      - po_acceptance_feedback
+    description: "PO requests final changes before rollout approval."
+
+  - id: po_return_to_definition
+    from:
+      - status:po-approval
+    to: status:story-definition
+    allowed_roles:
+      - po
+    queues_next_role: po
+    description: "PO sends issue back to requirement definition when acceptance reveals a scope or requirement problem."
+
+  - id: po_approve_rollout_and_close
+    from:
+      - status:po-approval
+    to: status:done
+    allowed_roles:
+      - po
+    queues_next_role: null
+    terminal_after_transition: true
+    close_issue: true
+    description: "PO approves rollout and closes the issue."
+
+  - id: block_issue
+    from:
+      - status:new
+      - status:story-definition
+      - status:dev-planning
+      - status:plan-review
+      - status:ready-for-development
+      - status:in-development
+      - status:code-review
+      - status:po-approval
+    to: status:blocked
+    allowed_roles:
+      - po
+      - developer
+      - reviewer
+    queues_next_role: po
+    set_metadata:
+      blocked_from: "$from"
+    description: "Any active role may block an issue; PO coordinates resolution."
+
+  - id: resume_from_blocked
+    from:
+      - status:blocked
+    to: "$metadata.blocked_from"
+    allowed_roles:
+      - po
+    queues_next_role: "$target.role"
+    clear_metadata:
+      - blocked_from
+    description: "PO resolves the blocker and returns the issue to the previous active status."
+
+  - id: blocked_back_to_definition
+    from:
+      - status:blocked
+    to: status:story-definition
+    allowed_roles:
+      - po
+    queues_next_role: po
+    clear_metadata:
+      - blocked_from
+    description: "PO restarts requirement definition when the original blocked state is no longer useful."
+
+  - id: po_reject_active_issue
+    from:
+      - status:dev-planning
+      - status:plan-review
+      - status:ready-for-development
+      - status:in-development
+      - status:code-review
+      - status:po-approval
+      - status:blocked
+    to: status:rejected
+    allowed_roles:
+      - po
+    queues_next_role: null
+    terminal_after_transition: true
+    description: "PO rejects an active issue because priorities, scope, or facts changed."
+
+  - id: po_reopen_done
+    from:
+      - status:done
+    to: status:story-definition
+    allowed_roles:
+      - po
+    queues_next_role: po
+    reopen_issue: true
+    description: "PO reopens completed work for follow-up definition."
+
+  - id: po_reopen_rejected
+    from:
+      - status:rejected
+    to: status:story-definition
+    allowed_roles:
+      - po
+    queues_next_role: po
+    reopen_issue: true
+    description: "PO reopens a rejected issue when circumstances change."
+
+canonical_paths:
+  feature_request:
+    - status:new
+    - status:story-definition
+    - status:dev-planning
+    - status:plan-review
+    - status:ready-for-development
+    - status:in-development
+    - status:code-review
+    - status:po-approval
+    - status:done
+  bug:
+    - status:new
+    - status:story-definition
+    - status:dev-planning
+    - status:plan-review
+    - status:ready-for-development
+    - status:in-development
+    - status:code-review
+    - status:po-approval
+    - status:done
+  change_request:
+    - status:new
+    - status:story-definition
+    - status:dev-planning
+    - status:plan-review
+    - status:ready-for-development
+    - status:in-development
+    - status:code-review
+    - status:po-approval
+    - status:done
+
+feedback_loops:
+  plan_review_loop:
+    - status:dev-planning
+    - status:plan-review
+    - status:dev-planning
+  code_review_loop:
+    - status:in-development
+    - status:code-review
+    - status:in-development
+  po_final_changes_loop:
+    - status:in-development
+    - status:code-review
+    - status:po-approval
+    - status:in-development
+  requirement_reset_loop:
+    - status:po-approval
+    - status:story-definition
+    - status:dev-planning
+  blocked_resume_loop:
+    - "$any_active_status"
+    - status:blocked
+    - "$metadata.blocked_from"
+
+dead_end_policy:
+  non_terminal_states_must_have_outgoing_transition: true
+  blocked_must_have_resume_path: true
+  terminal_states:
+    - status:done
+    - status:rejected
+  terminal_states_can_be_reopened_by:
+    - po
+  block_transitions_exclude_terminal_states: true

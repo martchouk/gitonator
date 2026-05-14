@@ -1,0 +1,552 @@
+workflow:
+  id: lean_github_issue_workflow
+  entity: issue
+  version: 1
+  purpose: >
+    Proposed dead-end-free issue workflow configuration for lean GitHub issue
+    processing across feature requests, bugs, and change requests.
+  supported_issue_types:
+    - feature_request
+    - bug
+    - change_request
+  roles:
+    - po
+    - architect
+    - uidesigner
+    - developer
+    - reviewer
+    - tester
+
+state_storage:
+  type: github_label
+  status_label_prefix: "status:"
+  type_label_prefix: "type:"
+  cardinality:
+    status: exactly_one
+    type: exactly_one_or_more
+  on_transition:
+    - remove_labels_matching: "status:*"
+    - add_target_status_label: true
+    - preserve_non_status_labels: true
+  metadata:
+    blocked_from:
+      type: previous_status
+      required_when_entering: status:blocked
+      used_by_transition: resume_from_blocked
+
+issue_types:
+  - id: type:feature
+    name: feature_request
+    default_path:
+      - status:triage
+      - status:solution-design
+      - status:ready-for-dev
+      - status:in-development
+      - status:code-review
+      - status:testing
+      - status:po-acceptance
+      - status:done
+  - id: type:bug
+    name: bug
+    default_path:
+      - status:triage
+      - status:ready-for-dev
+      - status:in-development
+      - status:code-review
+      - status:testing
+      - status:po-acceptance
+      - status:done
+  - id: type:change-request
+    name: change_request
+    default_path:
+      - status:triage
+      - status:solution-design
+      - status:ready-for-dev
+      - status:in-development
+      - status:code-review
+      - status:testing
+      - status:po-acceptance
+      - status:done
+
+statuses:
+  - id: status:new
+    role: po
+    queues_work: true
+    category: intake
+  - id: status:triage
+    role: po
+    queues_work: true
+    category: intake
+  - id: status:solution-design
+    role: architect
+    queues_work: true
+    category: design
+  - id: status:ui-design
+    role: uidesigner
+    queues_work: true
+    category: design
+  - id: status:ready-for-dev
+    role: developer
+    queues_work: true
+    category: implementation
+  - id: status:in-development
+    role: developer
+    queues_work: true
+    category: implementation
+  - id: status:architecture-review
+    role: architect
+    queues_work: true
+    category: review
+  - id: status:ui-review
+    role: uidesigner
+    queues_work: true
+    category: review
+  - id: status:code-review
+    role: reviewer
+    queues_work: true
+    category: review
+  - id: status:testing
+    role: tester
+    queues_work: true
+    category: verification
+  - id: status:po-acceptance
+    role: po
+    queues_work: true
+    category: acceptance
+  - id: status:blocked
+    role: po
+    queues_work: true
+    category: exception
+    requires_metadata:
+      - blocked_from
+  - id: status:done
+    role: null
+    queues_work: false
+    category: terminal
+    terminal: true
+  - id: status:rejected
+    role: null
+    queues_work: false
+    category: terminal
+    terminal: true
+
+guards:
+  has_ui_impact:
+    description: "Issue needs UI/UX design or visual acceptance."
+    any_label:
+      - area:ui
+      - area:ux
+      - needs:ui-design
+  needs_architecture:
+    description: "Issue needs architectural design or architecture review."
+    any_label:
+      - needs:architecture
+      - risk:high
+      - type:feature
+      - type:change-request
+  small_safe_change:
+    description: "Issue can skip architecture and UI gates."
+    all_absent:
+      - needs:architecture
+      - needs:ui-design
+      - area:ui
+      - area:ux
+      - risk:high
+
+transition_defaults:
+  validation:
+    - actor_role_must_be_allowed
+    - from_status_must_match
+    - target_status_must_exist
+  actions:
+    - replace_status_label
+    - preserve_non_status_labels
+    - optionally_assign_issue
+    - optionally_post_comment
+
+transitions:
+  - id: bootstrap_new_issue
+    from: null
+    to: status:new
+    allowed_roles:
+      - system
+    queues_next_role: po
+    description: "Apply initial status to an issue without a status label."
+
+  - id: po_start_triage
+    from:
+      - status:new
+      - status:triage
+    to: status:triage
+    allowed_roles:
+      - po
+    queues_next_role: po
+    description: "PO starts or continues triage."
+
+  - id: po_reject_at_triage
+    from:
+      - status:new
+      - status:triage
+    to: status:rejected
+    allowed_roles:
+      - po
+    queues_next_role: null
+    description: "PO rejects invalid, duplicate, or out-of-scope issue."
+
+  - id: po_request_architecture
+    from:
+      - status:triage
+    to: status:solution-design
+    allowed_roles:
+      - po
+    guard: needs_architecture
+    queues_next_role: architect
+    description: "PO sends issue to architect for solution design."
+
+  - id: po_request_ui_design
+    from:
+      - status:triage
+      - status:solution-design
+    to: status:ui-design
+    allowed_roles:
+      - po
+      - architect
+    guard: has_ui_impact
+    queues_next_role: uidesigner
+    description: "PO or architect sends issue to UI designer."
+
+  - id: po_mark_ready_for_dev
+    from:
+      - status:triage
+    to: status:ready-for-dev
+    allowed_roles:
+      - po
+    guard: small_safe_change
+    queues_next_role: developer
+    description: "PO sends a small or clear issue directly to development."
+
+  - id: architect_complete_solution_design
+    from:
+      - status:solution-design
+    to: status:ready-for-dev
+    allowed_roles:
+      - architect
+    queues_next_role: developer
+    description: "Architect completes solution design and releases issue for development."
+
+  - id: architect_return_to_po
+    from:
+      - status:solution-design
+    to: status:triage
+    allowed_roles:
+      - architect
+    queues_next_role: po
+    description: "Architect needs PO clarification or scope decision."
+
+  - id: ui_complete_design
+    from:
+      - status:ui-design
+    to: status:ready-for-dev
+    allowed_roles:
+      - uidesigner
+    queues_next_role: developer
+    description: "UI designer completes design and releases issue for development."
+
+  - id: ui_return_to_po
+    from:
+      - status:ui-design
+    to: status:triage
+    allowed_roles:
+      - uidesigner
+    queues_next_role: po
+    description: "UI designer needs PO clarification or scope decision."
+
+  - id: developer_start_work
+    from:
+      - status:ready-for-dev
+      - status:in-development
+    to: status:in-development
+    allowed_roles:
+      - developer
+    queues_next_role: developer
+    description: "Developer starts or continues implementation."
+
+  - id: developer_request_architecture_review
+    from:
+      - status:in-development
+    to: status:architecture-review
+    allowed_roles:
+      - developer
+    guard: needs_architecture
+    queues_next_role: architect
+    description: "Developer asks architect to review implementation or design-sensitive changes."
+
+  - id: developer_request_ui_review
+    from:
+      - status:in-development
+    to: status:ui-review
+    allowed_roles:
+      - developer
+    guard: has_ui_impact
+    queues_next_role: uidesigner
+    description: "Developer asks UI designer to review implemented UI."
+
+  - id: developer_submit_code_review
+    from:
+      - status:in-development
+      - status:architecture-review
+      - status:ui-review
+    to: status:code-review
+    allowed_roles:
+      - developer
+      - architect
+      - uidesigner
+    queues_next_role: reviewer
+    description: "Implementation is ready for code review."
+
+  - id: architect_approve_implementation
+    from:
+      - status:architecture-review
+    to: status:code-review
+    allowed_roles:
+      - architect
+    queues_next_role: reviewer
+    description: "Architect accepts implementation and passes it to code review."
+
+  - id: architect_reject_implementation
+    from:
+      - status:architecture-review
+    to: status:in-development
+    allowed_roles:
+      - architect
+    queues_next_role: developer
+    description: "Architect requests implementation changes."
+
+  - id: ui_approve_implementation
+    from:
+      - status:ui-review
+    to: status:code-review
+    allowed_roles:
+      - uidesigner
+    queues_next_role: reviewer
+    description: "UI designer accepts implementation and passes it to code review."
+
+  - id: ui_reject_implementation
+    from:
+      - status:ui-review
+    to: status:in-development
+    allowed_roles:
+      - uidesigner
+    queues_next_role: developer
+    description: "UI designer requests implementation changes."
+
+  - id: reviewer_approve_code
+    from:
+      - status:code-review
+    to: status:testing
+    allowed_roles:
+      - reviewer
+    queues_next_role: tester
+    description: "Reviewer accepts code and sends issue to testing."
+
+  - id: reviewer_request_changes
+    from:
+      - status:code-review
+    to: status:in-development
+    allowed_roles:
+      - reviewer
+    queues_next_role: developer
+    description: "Reviewer requests code changes."
+
+  - id: tester_pass
+    from:
+      - status:testing
+    to: status:po-acceptance
+    allowed_roles:
+      - tester
+    queues_next_role: po
+    description: "Tester verifies the issue and sends it to PO acceptance."
+
+  - id: tester_fail
+    from:
+      - status:testing
+    to: status:in-development
+    allowed_roles:
+      - tester
+    queues_next_role: developer
+    description: "Tester finds defects and sends issue back to development."
+
+  - id: po_accept
+    from:
+      - status:po-acceptance
+    to: status:done
+    allowed_roles:
+      - po
+    queues_next_role: null
+    description: "PO accepts the delivered issue."
+
+  - id: po_reject_acceptance
+    from:
+      - status:po-acceptance
+    to: status:in-development
+    allowed_roles:
+      - po
+    queues_next_role: developer
+    description: "PO requests final changes."
+
+  - id: block_issue
+    from:
+      - status:new
+      - status:triage
+      - status:solution-design
+      - status:ui-design
+      - status:ready-for-dev
+      - status:in-development
+      - status:architecture-review
+      - status:ui-review
+      - status:code-review
+      - status:testing
+      - status:po-acceptance
+    to: status:blocked
+    allowed_roles:
+      - po
+      - architect
+      - uidesigner
+      - developer
+      - reviewer
+      - tester
+    queues_next_role: po
+    set_metadata:
+      blocked_from: "$from"
+    description: "Any active worker can mark an issue blocked; PO owns unblocking coordination."
+
+  - id: resume_from_blocked
+    from:
+      - status:blocked
+    to: "$metadata.blocked_from"
+    allowed_roles:
+      - po
+    queues_next_role: "$target.role"
+    clear_metadata:
+      - blocked_from
+    description: "PO resolves the blocker and returns the issue to the state it came from."
+
+  - id: send_blocked_to_triage
+    from:
+      - status:blocked
+    to: status:triage
+    allowed_roles:
+      - po
+    queues_next_role: po
+    clear_metadata:
+      - blocked_from
+    description: "PO re-triages a blocked issue when the previous state is no longer appropriate."
+
+  - id: reject_active_issue
+    from:
+      - status:solution-design
+      - status:ui-design
+      - status:ready-for-dev
+      - status:in-development
+      - status:architecture-review
+      - status:ui-review
+      - status:code-review
+      - status:testing
+      - status:po-acceptance
+      - status:blocked
+    to: status:rejected
+    allowed_roles:
+      - po
+    queues_next_role: null
+    description: "PO rejects an active issue after new information or changed priorities."
+
+  - id: reopen_done
+    from:
+      - status:done
+    to: status:triage
+    allowed_roles:
+      - po
+    queues_next_role: po
+    description: "PO reopens completed work for follow-up triage."
+
+  - id: reopen_rejected
+    from:
+      - status:rejected
+    to: status:triage
+    allowed_roles:
+      - po
+    queues_next_role: po
+    description: "PO reopens a rejected issue when circumstances change."
+
+canonical_paths:
+  feature_with_architecture_and_ui:
+    - status:new
+    - status:triage
+    - status:solution-design
+    - status:ui-design
+    - status:ready-for-dev
+    - status:in-development
+    - status:architecture-review
+    - status:code-review
+    - status:testing
+    - status:po-acceptance
+    - status:done
+  simple_bug:
+    - status:new
+    - status:triage
+    - status:ready-for-dev
+    - status:in-development
+    - status:code-review
+    - status:testing
+    - status:po-acceptance
+    - status:done
+  ui_change:
+    - status:new
+    - status:triage
+    - status:ui-design
+    - status:ready-for-dev
+    - status:in-development
+    - status:ui-review
+    - status:code-review
+    - status:testing
+    - status:po-acceptance
+    - status:done
+
+loops:
+  architecture_rework:
+    - status:in-development
+    - status:architecture-review
+    - status:in-development
+  ui_rework:
+    - status:in-development
+    - status:ui-review
+    - status:in-development
+  code_review_rework:
+    - status:in-development
+    - status:code-review
+    - status:in-development
+  testing_rework:
+    - status:in-development
+    - status:code-review
+    - status:testing
+    - status:in-development
+  po_acceptance_rework:
+    - status:in-development
+    - status:code-review
+    - status:testing
+    - status:po-acceptance
+    - status:in-development
+  blocked_resume:
+    - "$any_active_status"
+    - status:blocked
+    - "$metadata.blocked_from"
+
+dead_end_policy:
+  non_terminal_states_must_have_outgoing_transition: true
+  blocked_must_have_resume_path: true
+  terminal_states:
+    - status:done
+    - status:rejected
+  terminal_states_can_be_reopened_by:
+    - po
+  wildcard_transitions_exclude_terminal_states: true
