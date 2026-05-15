@@ -249,11 +249,13 @@ func (s *Store) GetNextWorkPackage(bridgeID string, roles []string) (*WorkPackag
 		return nil, err
 	}
 	// Enrich the package with fields stored only in the JSON payload (e.g., WorkflowKey,
-	// ValidTransitions). If payload_json is absent or malformed, the extra fields stay zero.
+	// ValidTransitions, NextAssigneeRoles). If payload_json is absent or malformed,
+	// the extra fields stay zero.
 	var enriched WorkPackage
 	if json.Unmarshal([]byte(payloadJSON), &enriched) == nil {
 		pkg.WorkflowKey = enriched.WorkflowKey
 		pkg.ValidTransitions = enriched.ValidTransitions
+		pkg.NextAssigneeRoles = enriched.NextAssigneeRoles
 	}
 
 	_, err = tx.Exec(
@@ -564,6 +566,18 @@ func (s *Store) ClearIssueMetadata(issueID int, keys []string) error {
 		}
 	}
 	return nil
+}
+
+// SetIssueWorkflowKey persists the workflow key for an issue so subsequent
+// webhook deliveries without an explicit ?workflow= param can reuse it.
+func (s *Store) SetIssueWorkflowKey(issueNumber int, key string) error {
+	return s.SetIssueMetadata(issueNumber, "_workflow_key", key)
+}
+
+// GetIssueWorkflowKey retrieves the persisted workflow key for an issue.
+// Returns ("", false, nil) when no key has been stored.
+func (s *Store) GetIssueWorkflowKey(issueNumber int) (string, bool, error) {
+	return s.GetIssueMetadata(issueNumber, "_workflow_key")
 }
 
 func marshalOrEmpty(v interface{}) string {

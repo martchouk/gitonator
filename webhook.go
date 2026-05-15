@@ -157,9 +157,12 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Select workflow: ?workflow=lean (default) or ?workflow=full.
+	// An explicit param is persisted per issue so later webhooks without the
+	// param continue to use the same workflow instead of falling back to lean.
+	wfKey := r.URL.Query().Get("workflow")
 	var wd *WorkflowDef
 	if s.workflows != nil {
-		wd = s.workflows.Get(r.URL.Query().Get("workflow"))
+		wd = s.workflows.Get(wfKey)
 	}
 
 	payload, err := io.ReadAll(r.Body)
@@ -205,7 +208,7 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.processWebhookPayload(r.Context(), eventType, deliveryID, payload, wd); err != nil {
+	if err := s.processWebhookPayload(r.Context(), eventType, deliveryID, payload, wd, wfKey); err != nil {
 		_ = s.store.MarkDeliveryFailed(deliveryID, err.Error())
 		_ = s.store.RecordFailure(0, "webhook", err.Error(), map[string]string{
 			"delivery_id": deliveryID,
@@ -222,7 +225,7 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryID string, payload []byte, wd *WorkflowDef) error {
+func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryID string, payload []byte, wd *WorkflowDef, wfKey string) error {
 	var env struct {
 		Action  string `json:"action"`
 		Issue   Issue  `json:"issue"`
@@ -244,6 +247,18 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		"webhook delivery=%s event=%s action=%s issue=%d",
 		deliveryID, eventType, env.Action, env.Issue.Number,
 	)
+
+	// Persist an explicit workflow key so future webhooks without ?workflow= reuse it.
+	// If no explicit key was given, look up the stored one and override wd.
+	if s.store != nil && s.workflows != nil {
+		if wfKey != "" {
+			_ = s.store.SetIssueWorkflowKey(env.Issue.Number, wfKey)
+		} else {
+			if stored, ok, _ := s.store.GetIssueWorkflowKey(env.Issue.Number); ok && stored != "" {
+				wd = s.workflows.Get(stored)
+			}
+		}
+	}
 
 	_, err := s.processIssueWith(ctx, env.Issue.Number, wd)
 	return err

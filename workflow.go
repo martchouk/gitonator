@@ -580,6 +580,16 @@ func (s *Server) transitionIssue(
 	// Apply YAML-workflow metadata side-effects (set_metadata / clear_metadata).
 	if matchedDef != nil {
 		s.applyTransitionMetadata(issueNumber, fromStatus, matchedDef)
+		if matchedDef.CloseIssue {
+			if err := s.gh.CloseIssue(ctx, issueNumber); err != nil {
+				s.logger.Printf("WARN transitionIssue: issue=%d close_issue failed: %v", issueNumber, err)
+			}
+		}
+		if matchedDef.ReopenIssue {
+			if err := s.gh.ReopenIssue(ctx, issueNumber); err != nil {
+				s.logger.Printf("WARN transitionIssue: issue=%d reopen_issue failed: %v", issueNumber, err)
+			}
+		}
 	}
 
 	_ = s.store.RecordTransitionAudit(

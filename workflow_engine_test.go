@@ -635,16 +635,23 @@ func TestHasRole_UnknownRole(t *testing.T) {
 
 func TestNextRolesFrom_InDevelopment(t *testing.T) {
 	wd := leanWorkflowForTest(t)
-	// status:in-development → status:code-review (reviewer), status:blocked (po), etc.
+	// Normal forward path from status:in-development is to reviewer via code-review.
+	// Self-loop (continue implementation) and exception paths (block, reject) must be excluded.
 	roles := wd.NextRolesFrom("status:in-development")
 	if !containsString(roles, "reviewer") {
 		t.Errorf("expected NextRolesFrom(status:in-development) to include %q, got %v", "reviewer", roles)
+	}
+	if containsString(roles, "developer") {
+		t.Errorf("expected NextRolesFrom(status:in-development) NOT to include %q (self-loop), got %v", "developer", roles)
+	}
+	if containsString(roles, "po") {
+		t.Errorf("expected NextRolesFrom(status:in-development) NOT to include %q (exception path), got %v", "po", roles)
 	}
 }
 
 func TestNextRolesFrom_New(t *testing.T) {
 	wd := leanWorkflowForTest(t)
-	// status:new → po_start_definition (po), block_issue (po/developer/reviewer), po_reject (po)
+	// status:new → po_start_definition (po); block/reject paths excluded.
 	roles := wd.NextRolesFrom("status:new")
 	if !containsString(roles, "po") {
 		t.Errorf("expected NextRolesFrom(status:new) to include %q, got %v", "po", roles)
