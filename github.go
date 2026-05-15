@@ -23,6 +23,8 @@ type GitHubAPI interface {
 	SetIssueLabels(ctx context.Context, issueNumber int, labels []string) ([]GitHubLabel, error)
 	AddIssueLabels(ctx context.Context, issueNumber int, labels []string) ([]GitHubLabel, error)
 	RemoveIssueLabel(ctx context.Context, issueNumber int, label string) error
+	CloseIssue(ctx context.Context, issueNumber int) error
+	ReopenIssue(ctx context.Context, issueNumber int) error
 }
 
 type GitHubClient struct {
@@ -117,6 +119,14 @@ func (gh *GitHubClient) AddIssueLabels(ctx context.Context, issueNumber int, lab
 
 func (gh *GitHubClient) RemoveIssueLabel(ctx context.Context, issueNumber int, label string) error {
 	return gh.doJSON(ctx, http.MethodDelete, gh.issueLabelsURL(issueNumber)+"/"+url.PathEscape(label), nil, nil)
+}
+
+func (gh *GitHubClient) CloseIssue(ctx context.Context, issueNumber int) error {
+	return gh.doJSON(ctx, http.MethodPatch, gh.issueURL(issueNumber), map[string]string{"state": "closed"}, nil)
+}
+
+func (gh *GitHubClient) ReopenIssue(ctx context.Context, issueNumber int) error {
+	return gh.doJSON(ctx, http.MethodPatch, gh.issueURL(issueNumber), map[string]string{"state": "open"}, nil)
 }
 
 func (gh *GitHubClient) doJSON(ctx context.Context, method, u string, payload interface{}, out interface{}) error {

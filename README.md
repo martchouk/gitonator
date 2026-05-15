@@ -285,7 +285,7 @@ Response when work is available:
     "role": "developer",
     "assignee": "bud-dev",
     "last_comment_id": 123,
-    "current_status": "status:approved-for-dev"
+    "current_status": "status:in-development"
   }
 }
 ```
@@ -479,9 +479,9 @@ Example lines:
 2026/05/12 15:04:05 [github-mcp] DEBUG config: stale_after=900s agent_auth=true webhook_secret=true
 2026/05/12 15:04:10 [bridge/home-bridge] DEBUG poll: bridge=home-bridge roles=developer,reviewer
 2026/05/12 15:04:10 [bridge/home-bridge] DEBUG no work available
-2026/05/12 15:04:12 [github-mcp] task queued: issue=8 role=developer assignee=bud-dev task_id=42 status=status:approved-for-dev
+2026/05/12 15:04:12 [github-mcp] task queued: issue=8 role=developer assignee=bud-dev task_id=42 status=status:in-development
 2026/05/12 15:04:15 [bridge/home-bridge] work claimed: bridge=home-bridge roles=developer task=42 issue=8 role=developer assignee=bud-dev
-2026/05/12 15:04:15 [bridge/home-bridge] DEBUG work received: task=42 issue=8 role=developer assignee=bud-dev status=status:approved-for-dev
+2026/05/12 15:04:15 [bridge/home-bridge] DEBUG work received: task=42 issue=8 role=developer assignee=bud-dev status=status:in-development
 ```
 
 **Server** — additional debug output includes:

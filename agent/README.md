@@ -9,7 +9,7 @@ The tool reads one work package JSON file and lets you:
 - inspect the package
 - open the linked GitHub issue in a browser
 - post a GitHub comment directly via the GitHub API
-- post `/approve` directly via the GitHub API
+- post comments directly via the GitHub API
 
 Comments go directly to GitHub using the agent's own `GITHUB_TOKEN` — the orchestrator is not involved.
 
@@ -20,7 +20,7 @@ Comments go directly to GitHub using the agent's own `GITHUB_TOKEN` — the orch
 ```
 orchestrator → (webhook transition) → queues task
 bridge       → (polls /api/v1/work/next) → writes work package JSON to temp file → spawns agent
-agent        → reads work package JSON → uses agent-task to inspect / comment / approve
+agent        → reads work package JSON → uses agent-task to inspect / comment
 ```
 
 Division of responsibility:
@@ -64,7 +64,6 @@ Or:
 agent-task show    <package-file>
 agent-task open    <package-file>
 agent-task comment <package-file> --message "..." [--field key=value]...
-agent-task approve <package-file>
 ```
 
 ---
@@ -100,7 +99,7 @@ Issue URL:      https://github.com/martchouk/github.mcp/issues/8
 Role:           developer
 Assignee:       bud-dev
 Last comment:   123
-Current status: status:approved-for-dev
+Current status: status:in-development
 ```
 
 ### `open`
@@ -147,16 +146,6 @@ Implementation finished, opening PR.
 - pr: https://github.com/martchouk/github.mcp/pull/5
 ```
 
-### `approve`
-
-Posts exactly `/approve` as a GitHub issue comment. The orchestrator processes this on the next webhook event and advances the workflow state.
-
-Example:
-
-```bash
-agent-task approve /tmp/work-42-issue-8.json
-```
-
 ---
 
 ## Work package format
@@ -171,7 +160,7 @@ agent-task approve /tmp/work-42-issue-8.json
   "role": "developer",
   "assignee": "bud-dev",
   "last_comment_id": 123,
-  "current_status": "status:approved-for-dev"
+  "current_status": "status:in-development"
 }
 ```
 
@@ -189,7 +178,7 @@ agent-task approve /tmp/work-42-issue-8.json
 
 ## Environment variables
 
-`agent-task` uses these environment variables for `comment` and `approve`:
+`agent-task` uses these environment variables for `comment`:
 
 | Variable | Required | Purpose |
 |---|---|---|
@@ -244,13 +233,6 @@ export GITHUB_TOKEN="ghp_yourtoken"
 agent-task comment /tmp/work-42-issue-8.json \
   --message "Review completed. See findings in the issue thread." \
   --field outcome=changes-requested
-```
-
-### Stakeholder approval
-
-```bash
-export GITHUB_TOKEN="ghp_yourtoken"
-agent-task approve /tmp/work-42-issue-8.json
 ```
 
 ---

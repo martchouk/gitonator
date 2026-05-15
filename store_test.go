@@ -408,6 +408,83 @@ func TestGetNextWorkPackage_OldPayloadMissingWorkflowFields(t *testing.T) {
 	}
 }
 
+// TestGetNextWorkPackage_NextAssigneeRolesRoundTrip verifies that NextAssigneeRoles
+// stored in payload_json is restored by GetNextWorkPackage (fixes Finding 1 from issue #46).
+func TestGetNextWorkPackage_NextAssigneeRolesRoundTrip(t *testing.T) {
+	s := tempStore(t)
+	pkg := WorkPackage{
+		Repo:              "owner/repo",
+		IssueID:           90,
+		Role:              "developer",
+		CurrentStatus:     "status:in-development",
+		WorkflowKey:       "lean",
+		ValidTransitions:  []string{"status:code-review"},
+		NextAssigneeRoles: []string{"reviewer"},
+	}
+	if _, err := s.QueueTask(pkg); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+
+	got, err := s.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil || got == nil {
+		t.Fatalf("GetNextWorkPackage: %v %v", got, err)
+	}
+	if len(got.NextAssigneeRoles) != 1 || got.NextAssigneeRoles[0] != "reviewer" {
+		t.Errorf("NextAssigneeRoles: got %v, want [reviewer]", got.NextAssigneeRoles)
+	}
+}
+
+// TestIssueWorkflowKeyPersistAndLookup verifies SetIssueWorkflowKey and
+// GetIssueWorkflowKey round-trip (Finding 3 from issue #46).
+func TestIssueWorkflowKeyPersistAndLookup(t *testing.T) {
+	s := tempStore(t)
+
+	if err := s.SetIssueWorkflowKey(42, "full"); err != nil {
+		t.Fatalf("SetIssueWorkflowKey: %v", err)
+	}
+
+	key, ok, err := s.GetIssueWorkflowKey(42)
+	if err != nil {
+		t.Fatalf("GetIssueWorkflowKey: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true, got false")
+	}
+	if key != "full" {
+		t.Errorf("key: got %q, want %q", key, "full")
+	}
+}
+
+func TestIssueWorkflowKeyAbsent(t *testing.T) {
+	s := tempStore(t)
+	_, ok, err := s.GetIssueWorkflowKey(999)
+	if err != nil {
+		t.Fatalf("GetIssueWorkflowKey: %v", err)
+	}
+	if ok {
+		t.Error("expected ok=false for unknown issue, got true")
+	}
+}
+
+func TestIssueWorkflowKeyUpsert(t *testing.T) {
+	s := tempStore(t)
+
+	if err := s.SetIssueWorkflowKey(5, "lean"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetIssueWorkflowKey(5, "full"); err != nil {
+		t.Fatal(err)
+	}
+
+	key, ok, err := s.GetIssueWorkflowKey(5)
+	if err != nil || !ok {
+		t.Fatalf("GetIssueWorkflowKey: ok=%v err=%v", ok, err)
+	}
+	if key != "full" {
+		t.Errorf("key after upsert: got %q, want %q", key, "full")
+	}
+}
+
 func TestBridgeIDStoredOnDispatch(t *testing.T) {
 	s := tempStore(t)
 	if _, err := s.QueueTask(testPkg(7, "po")); err != nil {

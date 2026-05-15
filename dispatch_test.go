@@ -29,6 +29,9 @@ type mockGitHub struct {
 	postedComments  []string
 	postCommentErr  error          // if non-nil, returned by PostIssueComment
 	comments        []IssueComment // returned by ListIssueComments
+	closedIssues    []int
+	reopenedIssues  []int
+	closeIssueErr   error // if non-nil, returned by CloseIssue
 }
 
 func (m *mockGitHub) GetIssue(_ context.Context, _ int) (Issue, error) {
@@ -69,6 +72,14 @@ func (m *mockGitHub) AddIssueLabels(_ context.Context, _ int, _ []string) ([]Git
 	return nil, nil
 }
 func (m *mockGitHub) RemoveIssueLabel(_ context.Context, _ int, _ string) error {
+	return nil
+}
+func (m *mockGitHub) CloseIssue(_ context.Context, issueNumber int) error {
+	m.closedIssues = append(m.closedIssues, issueNumber)
+	return m.closeIssueErr
+}
+func (m *mockGitHub) ReopenIssue(_ context.Context, issueNumber int) error {
+	m.reopenedIssues = append(m.reopenedIssues, issueNumber)
 	return nil
 }
 
@@ -786,6 +797,13 @@ func TestProcessIssueWith_NextAssigneeRolesPopulated(t *testing.T) {
 	}
 	if !containsString(pkg.NextAssigneeRoles, "reviewer") {
 		t.Errorf("expected NextAssigneeRoles to contain %q, got %v", "reviewer", pkg.NextAssigneeRoles)
+	}
+	// Self-loop (developer) and exception paths (po via block/reject) must be absent.
+	if containsString(pkg.NextAssigneeRoles, "developer") {
+		t.Errorf("expected NextAssigneeRoles NOT to contain %q (self-loop), got %v", "developer", pkg.NextAssigneeRoles)
+	}
+	if containsString(pkg.NextAssigneeRoles, "po") {
+		t.Errorf("expected NextAssigneeRoles NOT to contain %q (exception path), got %v", "po", pkg.NextAssigneeRoles)
 	}
 }
 
