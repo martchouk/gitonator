@@ -165,13 +165,14 @@ func TestProcessIssueLabelBootstrapSetLabelsError(t *testing.T) {
 	}
 }
 
-// TestProcessIssueBootstrap_SkipsWhenAuditHistoryExists verifies that a transient
+// TestProcessIssueBootstrap_SkipsWhenTaskHistoryExists verifies that a transient
 // no-status-label webhook event for a mid-workflow issue does not reset it back to
-// status:new. If audit history exists, bootstrap is skipped and queued=false is returned.
-func TestProcessIssueBootstrap_SkipsWhenAuditHistoryExists(t *testing.T) {
+// status:new. The guard uses HasAnyTask, which covers direct-label workflows where
+// transition_audit may be empty but the orchestrator has already queued at least one task.
+func TestProcessIssueBootstrap_SkipsWhenTaskHistoryExists(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	// Issue arrives with no status label — as if GitHub emitted a transient event
-	// during a label replacement.
+	// during a label replacement mid-workflow.
 	unlabeled := Issue{
 		Number:    12,
 		User:      GitHubUser{Login: "martchouk"},
@@ -179,10 +180,14 @@ func TestProcessIssueBootstrap_SkipsWhenAuditHistoryExists(t *testing.T) {
 	}
 	mock := &mockGitHub{issues: []Issue{unlabeled}}
 	store := tempStore(t)
-	// Inject an audit record so the store knows this issue has been processed before.
-	if err := store.RecordTransitionAudit(12, "status:new", "status:story-definition",
-		"", "ada-pow", "po", "mcp_tool", nil, "applied", "", nil, nil); err != nil {
-		t.Fatalf("RecordTransitionAudit: %v", err)
+	// Simulate prior orchestrator processing by queuing a task for the issue.
+	// This mirrors the real path: the issue was opened, processIssueWith bootstrapped it
+	// to status:new, and QueueTask wrote the initial PO task. No transitionIssue calls
+	// are needed — direct label edits leave audit empty but tasks are always written.
+	if _, err := store.QueueTask(WorkPackage{
+		Repo: "owner/repo", IssueID: 12, Role: "po", CurrentStatus: "status:new",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
 	}
 	s := &Server{
 		cfg:    Config{Owner: "owner", Repo: "repo"},
@@ -201,7 +206,7 @@ func TestProcessIssueBootstrap_SkipsWhenAuditHistoryExists(t *testing.T) {
 		t.Fatalf("unexpected result type %T", result)
 	}
 	if queued, _ := m["queued"].(bool); queued {
-		t.Error("expected queued=false when bootstrap skipped due to audit history, got true")
+		t.Error("expected queued=false when bootstrap skipped due to task history, got true")
 	}
 	if mock.setLabelsCalled {
 		t.Error("expected SetIssueLabels NOT to be called when bootstrap is skipped, but it was")

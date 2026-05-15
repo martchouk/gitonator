@@ -41,10 +41,12 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 
 	// Bootstrap: a freshly created issue with no status label enters the workflow as status:new.
 	// Guard: a transient webhook during label replacement can arrive with no status label;
-	// skip bootstrap if this issue already has transition history to avoid resetting mid-workflow issues.
+	// skip bootstrap if this issue already has task history to avoid resetting mid-workflow issues.
+	// HasAnyTask covers all workflow paths (direct label edits, webhook-only) because the
+	// orchestrator always calls QueueTask when first processing an issue.
 	if state.StatusLabel == "" {
-		if audits, _ := s.store.ListTransitionAudit(issueNumber, 1); len(audits) > 0 {
-			s.debugf("processIssue: issue=%d no status label but has audit history — skipping bootstrap", issueNumber)
+		if seen, _ := s.store.HasAnyTask(issueNumber); seen {
+			s.debugf("processIssue: issue=%d no status label but has task history — skipping bootstrap", issueNumber)
 			return map[string]interface{}{"issue": issue, "workflow": state, "queued": false}, nil
 		}
 		s.debugf("processIssue: issue=%d no status label — bootstrapping to status:new", issueNumber)
