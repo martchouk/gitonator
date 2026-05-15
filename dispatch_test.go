@@ -610,8 +610,62 @@ func TestProcessIssueWith_CommentFooter_UnknownLabel_Routes(t *testing.T) {
 	}
 }
 
+// TestProcessIssueWith_CommentFooter_UnknownLabelOutOfWorkflowRole_Routes verifies that
+// when the status label is unknown AND the footer role is not defined in the workflow
+// (e.g. "architect" in the 3-role lean workflow), the footer still routes the task.
+// This covers the rescue scenario from roundtrip test #42 where mud-rev applied a
+// foreign status label and bud-dev handed off to architect via footer.
+func TestProcessIssueWith_CommentFooter_UnknownLabelOutOfWorkflowRole_Routes(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number:    106,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "zed-arc"}},
+		Labels:    []GitHubLabel{{Name: "status:changes-requested"}}, // foreign label
+	}
+	mock := &mockGitHub{
+		issues: []Issue{issue},
+		comments: []IssueComment{
+			{ID: 99, Body: "Plan posted.\n[next assignee role -> architect]"},
+		},
+	}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 106, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Fatal("expected queued=true: unknown status + out-of-workflow footer role should still route via footer")
+	}
+	task, err := store.FindActiveTaskByIssue(106)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected an active task, got nil")
+	}
+	if task.Role != "architect" {
+		t.Errorf("task.Role=%q, want %q", task.Role, "architect")
+	}
+	if task.Assignee != "zed-arc" {
+		t.Errorf("task.Assignee=%q, want %q", task.Assignee, "zed-arc")
+	}
+}
+
 // TestProcessIssueWith_CommentFooter_InvalidRole_FallsBackToLabel verifies that a footer
-// containing an unrecognised role is silently ignored and routing falls back to the label.
+// containing an unrecognised role is silently ignored when the status IS known, and
+// routing falls back to the label.
 func TestProcessIssueWith_CommentFooter_InvalidRole_FallsBackToLabel(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	issue := Issue{

@@ -55,11 +55,15 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 
 	// Determine the role for this work package.
 	// Priority 1: [next assignee role -> <role>] footer in last comment.
+	//   When the current status is unrecognised (not in the workflow), the wd.HasRole
+	//   guard is relaxed: any footer role is accepted so that agents can rescue an issue
+	//   that ended up with a foreign status label.
 	// Priority 2: status label → workflow role (via decideNextActionFromDef).
 	var pkg WorkPackage
 	var routed bool
 
-	if footerRole, ok := parseNextAssigneeRole(comments); ok && wd.HasRole(footerRole) {
+	statusKnown := state.StatusLabel == "" || wd.HasStatus(state.StatusLabel)
+	if footerRole, ok := parseNextAssigneeRole(comments); ok && (wd.HasRole(footerRole) || !statusKnown) {
 		// Do not route via footer into a known terminal/wait state.
 		if sd := wd.StatusByID(state.StatusLabel); sd == nil || sd.QueuesWork {
 			var lastCommentID int64
