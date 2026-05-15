@@ -75,7 +75,12 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 				CurrentStatus: state.StatusLabel,
 			}
 			routed = true
-			s.debugf("processIssue: issue=%d routing via comment footer role=%s", issueNumber, footerRole)
+			if state.StatusLabel != "" && !wd.HasStatus(state.StatusLabel) {
+				s.logger.Printf("WARN processIssue: issue=%d unrecognized status label %q — rescued by comment footer, routing to role=%s",
+					issueNumber, state.StatusLabel, footerRole)
+			} else {
+				s.debugf("processIssue: issue=%d routing via comment footer role=%s", issueNumber, footerRole)
+			}
 		}
 	}
 

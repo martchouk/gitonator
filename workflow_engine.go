@@ -179,7 +179,7 @@ func decideNextActionFromDef(wd *WorkflowDef, cfg Config, issue Issue, state Wor
 	}, true
 }
 
-// nextAssigneeFooterRe matches lines of the form "[next assignee role -> <role>]".
+// nextAssigneeFooterRe matches lines of the form "[next assignee role -> <role>]" with optional whitespace around the arrow.
 var nextAssigneeFooterRe = regexp.MustCompile(`^\[next assignee role\s*->\s*([^\]]+)\]$`)
 
 // parseNextAssigneeRole scans the last comment body for a structured footer

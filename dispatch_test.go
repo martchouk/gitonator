@@ -605,6 +605,9 @@ func TestProcessIssueWith_CommentFooter_UnknownLabel_Routes(t *testing.T) {
 	if task.Role != "reviewer" {
 		t.Errorf("task.Role=%q, want %q", task.Role, "reviewer")
 	}
+	if task.Assignee != "bud-dev" {
+		t.Errorf("task.Assignee=%q, want %q", task.Assignee, "bud-dev")
+	}
 }
 
 // TestProcessIssueWith_CommentFooter_InvalidRole_FallsBackToLabel verifies that a footer

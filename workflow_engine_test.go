@@ -659,6 +659,16 @@ func TestNextRolesFrom_UnknownStatus(t *testing.T) {
 	}
 }
 
+func TestNextRolesFrom_Terminal(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	// status:done has po_reopen_done → status:story-definition (role: po),
+	// so the reachable role is "po", not empty.
+	roles := wd.NextRolesFrom("status:done")
+	if !containsString(roles, "po") {
+		t.Errorf("expected NextRolesFrom(status:done) to include %q via reopen transition, got %v", "po", roles)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // blocked round-trip (integration-style)
 // ---------------------------------------------------------------------------

@@ -72,6 +72,12 @@ go build -o agent-bridge .
 
 ```json
 {
+  "agent_instructions": [
+    "Before finishing your work on this issue you MUST:",
+    "1. Remove ALL current GitHub assignees from the issue.",
+    "2. Set exactly ONE assignee for the next step — choose the appropriate agent from next_assignee_roles.",
+    "3. End your final issue comment with this exact footer on its own line: [next assignee role -> <role>]"
+  ],
   "agents": [
     {
       "name": "bud-dev",
@@ -107,6 +113,7 @@ go build -o agent-bridge .
 
 | Field | Description |
 |---|---|
+| `agent_instructions` | _(optional)_ Array of instruction strings injected into every agent's work package JSON at spawn time. Use this to mandate the handoff footer protocol without modifying per-agent prompts. |
 | `name` | GitHub username of the agent — used for priority matching against `assignee` in the work package |
 | `role` | Role this agent handles (e.g. `developer`, `reviewer`, `po`) |
 | `llm_provider` | Informational; not used by the Bridge itself |
@@ -154,7 +161,7 @@ Both values are single-quoted before shell injection, so paths with spaces and o
 
 ## Work package format
 
-The work package written to `{package_file}` is the JSON body returned by `GET /api/v1/work/next`:
+The work package written to `{package_file}` is the JSON body returned by `GET /api/v1/work/next`, extended by the Bridge with `agent_instructions` before the agent is spawned:
 
 ```json
 {
@@ -164,7 +171,16 @@ The work package written to `{package_file}` is the JSON body returned by `GET /
   "role": "developer",
   "assignee": "bud-dev",
   "last_comment_id": 123,
-  "current_status": "status:approved-for-dev"
+  "current_status": "status:in-development",
+  "workflow_key": "lean",
+  "valid_transitions": ["status:code-review", "status:blocked", "status:rejected"],
+  "next_assignee_roles": ["reviewer"],
+  "agent_instructions": [
+    "Before finishing your work on this issue you MUST:",
+    "1. Remove ALL current GitHub assignees from the issue.",
+    "2. Set exactly ONE assignee for the next step — choose the appropriate agent from next_assignee_roles.",
+    "3. End your final issue comment with this exact footer on its own line: [next assignee role -> <role>]"
+  ]
 }
 ```
 
@@ -177,6 +193,10 @@ The work package written to `{package_file}` is the JSON body returned by `GET /
 | `assignee` | Current GitHub assignee at queue time — used for priority agent selection |
 | `last_comment_id` | Most recent comment ID at queue time — helps the agent know where to start reading |
 | `current_status` | Workflow status label at queue time |
+| `workflow_key` | Active workflow key (e.g. `lean`) |
+| `valid_transitions` | Statically-reachable target status IDs from the current status |
+| `next_assignee_roles` | Roles eligible to handle the next step, derived from outbound workflow transitions — use this to choose the correct value for the `[next assignee role -> <role>]` footer |
+| `agent_instructions` | Injected by the Bridge from `agents.json` at spawn time (not returned by the server API) — mandatory steps the agent must follow at the end of every work session |
 
 ---
 
@@ -232,10 +252,15 @@ Response when a task is available (task is now marked `dispatched`):
     "role": "developer",
     "assignee": "bud-dev",
     "last_comment_id": 123,
-    "current_status": "status:approved-for-dev"
+    "current_status": "status:in-development",
+    "workflow_key": "lean",
+    "valid_transitions": ["status:code-review", "status:blocked", "status:rejected"],
+    "next_assignee_roles": ["reviewer"]
   }
 }
 ```
+
+Note: `agent_instructions` is not included in the API response — it is injected by the Bridge into the `{package_file}` at spawn time.
 
 Response when no work is available:
 
