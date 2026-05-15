@@ -45,7 +45,11 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 	// HasAnyTask covers all workflow paths (direct label edits, webhook-only) because the
 	// orchestrator always calls QueueTask when first processing an issue.
 	if state.StatusLabel == "" {
-		if seen, _ := s.store.HasAnyTask(issueNumber); seen {
+		seen, err := s.store.HasAnyTask(issueNumber)
+		if err != nil {
+			return nil, fmt.Errorf("check task history before bootstrap: %w", err)
+		}
+		if seen {
 			s.debugf("processIssue: issue=%d no status label but has task history — skipping bootstrap", issueNumber)
 			return map[string]interface{}{"issue": issue, "workflow": state, "queued": false}, nil
 		}
