@@ -237,6 +237,9 @@ A task (work package) contains:
 - `assignee` — current GitHub assignee (used for priority Bridge routing)
 - `last_comment_id` — ID of the most recent issue comment at queue time
 - `current_status` — current workflow status label at queue time
+- `workflow_key` — active workflow key (e.g. `lean`)
+- `valid_transitions` — statically-reachable target status IDs from the current status
+- `next_assignee_roles` — roles eligible to handle the next step, derived from outbound workflow transitions
 
 ### Task lifecycle
 

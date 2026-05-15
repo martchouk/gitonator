@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -131,6 +133,80 @@ func TestBuildEnvEmptyAgentEnvReturnsHostEnv(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected host env to be present when agent env is nil")
+	}
+}
+
+func TestBuildAgentPackageJSON_WithInstructions(t *testing.T) {
+	pkg := WorkPackage{IssueID: 42, Role: "developer"}
+	instructions := []string{"Step 1: do X", "Step 2: do Y"}
+	data, err := buildAgentPackageJSON(pkg, instructions)
+	if err != nil {
+		t.Fatalf("buildAgentPackageJSON: %v", err)
+	}
+
+	var out WorkPackage
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if len(out.AgentInstructions) != 2 {
+		t.Fatalf("expected 2 instructions, got %d: %v", len(out.AgentInstructions), out.AgentInstructions)
+	}
+	if out.AgentInstructions[0] != "Step 1: do X" {
+		t.Errorf("instruction[0]=%q, want %q", out.AgentInstructions[0], "Step 1: do X")
+	}
+	if out.AgentInstructions[1] != "Step 2: do Y" {
+		t.Errorf("instruction[1]=%q, want %q", out.AgentInstructions[1], "Step 2: do Y")
+	}
+}
+
+func TestBuildAgentPackageJSON_NoInstructions(t *testing.T) {
+	pkg := WorkPackage{IssueID: 7, Role: "reviewer"}
+	data, err := buildAgentPackageJSON(pkg, nil)
+	if err != nil {
+		t.Fatalf("buildAgentPackageJSON: %v", err)
+	}
+	// agent_instructions must be absent from the JSON (omitempty).
+	if strings.Contains(string(data), "agent_instructions") {
+		t.Errorf("expected agent_instructions to be absent from JSON when empty, got: %s", string(data))
+	}
+}
+
+func TestBuildAgentPackageJSON_DoesNotMutateOriginal(t *testing.T) {
+	pkg := WorkPackage{IssueID: 99, Role: "po"}
+	instructions := []string{"do something"}
+	_, err := buildAgentPackageJSON(pkg, instructions)
+	if err != nil {
+		t.Fatalf("buildAgentPackageJSON: %v", err)
+	}
+	if len(pkg.AgentInstructions) != 0 {
+		t.Errorf("expected original pkg.AgentInstructions to be unmodified, got %v", pkg.AgentInstructions)
+	}
+}
+
+func TestLoadRosterParsesAgentInstructions(t *testing.T) {
+	const cfg = `{
+		"agent_instructions": ["Step A", "Step B"],
+		"agents": [{"name": "bud-dev", "role": "developer", "launch_template": "echo", "worktrees": {}}]
+	}`
+	f, err := os.CreateTemp("", "roster-*.json")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(cfg); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	f.Close()
+
+	roster, err := loadRoster(f.Name())
+	if err != nil {
+		t.Fatalf("loadRoster: %v", err)
+	}
+	if len(roster.AgentInstructions) != 2 {
+		t.Fatalf("expected 2 agent_instructions, got %d", len(roster.AgentInstructions))
+	}
+	if roster.AgentInstructions[0] != "Step A" {
+		t.Errorf("instruction[0]=%q, want %q", roster.AgentInstructions[0], "Step A")
 	}
 }
 
