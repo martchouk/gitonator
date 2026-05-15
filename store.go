@@ -16,17 +16,17 @@ type Store struct {
 // TaskRow is used for the timeline and task inspection tools.
 // Nullable legacy columns are retained for backward compatibility with old task data.
 type TaskRow struct {
-	ID            int64           `json:"id"`
-	IssueNumber   int             `json:"issue_number"`
-	Repo          string          `json:"repo"`
-	Role          string          `json:"role"`
-	Assignee      string          `json:"assignee"`
-	LastCommentID int64           `json:"last_comment_id"`
-	CurrentStatus string          `json:"current_status"`
-	Status        string          `json:"status"`
-	DedupKey      string          `json:"dedup_key"`
-	BridgeID      sql.NullString  `json:"bridge_id"`
-	CreatedAt     string          `json:"created_at"`
+	ID            int64          `json:"id"`
+	IssueNumber   int            `json:"issue_number"`
+	Repo          string         `json:"repo"`
+	Role          string         `json:"role"`
+	Assignee      string         `json:"assignee"`
+	LastCommentID int64          `json:"last_comment_id"`
+	CurrentStatus string         `json:"current_status"`
+	Status        string         `json:"status"`
+	DedupKey      string         `json:"dedup_key"`
+	BridgeID      sql.NullString `json:"bridge_id"`
+	CreatedAt     string         `json:"created_at"`
 	// Legacy columns — populated from old data only.
 	ClaimedAt   sql.NullString  `json:"claimed_at,omitempty"`
 	FinishedAt  sql.NullString  `json:"finished_at,omitempty"`

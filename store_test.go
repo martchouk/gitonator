@@ -414,11 +414,11 @@ func TestGetNextWorkPackage_NextAssigneeRolesRoundTrip(t *testing.T) {
 	s := tempStore(t)
 	pkg := WorkPackage{
 		Repo:              "owner/repo",
-		IssueID:          90,
+		IssueID:           90,
 		Role:              "developer",
-		CurrentStatus:    "status:in-development",
-		WorkflowKey:      "lean",
-		ValidTransitions: []string{"status:code-review"},
+		CurrentStatus:     "status:in-development",
+		WorkflowKey:       "lean",
+		ValidTransitions:  []string{"status:code-review"},
 		NextAssigneeRoles: []string{"reviewer"},
 	}
 	if _, err := s.QueueTask(pkg); err != nil {

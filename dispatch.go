@@ -167,4 +167,3 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 func (s *Server) computeState(wd *WorkflowDef, issue Issue, comments []IssueComment) WorkflowState {
 	return computeWorkflowStateFromDef(wd, issue, comments)
 }
-
