@@ -64,6 +64,9 @@ func run(args []string) error {
 		return postGitHubComment(pkg, buildCommentBody(message, fields))
 
 	case "approve":
+		// Legacy low-level helper: posts "/approve" as a raw GitHub comment.
+		// The workflow engine does NOT act on this comment automatically;
+		// approval is driven by MCP tool calls, not by comment content.
 		return postGitHubComment(pkg, "/approve")
 
 	default:
@@ -269,9 +272,8 @@ Usage:
   agent-task show    <package-file>
   agent-task open    <package-file>
   agent-task comment <package-file> --message "..." [--field key=value]...
-  agent-task approve <package-file>
 
-Environment variables for comment/approve:
+Environment variables for comment:
   GITHUB_TOKEN   — required; agent's own GitHub token
   GITHUB_OWNER   — fallback if pkg.Repo is empty
   GITHUB_REPO    — fallback if pkg.Repo is empty
@@ -283,7 +285,5 @@ Examples:
 
   agent-task comment ./work-17.json \
     --message "Implementation finished, opening PR." \
-    --field pr=https://github.com/org/repo/pull/42
-
-  agent-task approve ./work-17.json`)
+    --field pr=https://github.com/org/repo/pull/42`)
 }

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"strings"
 	"testing"
 )
 
@@ -179,6 +181,106 @@ func TestTransitionIssue_ReopenIssue(t *testing.T) {
 	}
 	if len(mock.reopenedIssues) > 0 && mock.reopenedIssues[0] != 301 {
 		t.Errorf("ReopenIssue called for issue %d, want 301", mock.reopenedIssues[0])
+	}
+}
+
+// TestTransitionIssue_CloseIssueFailureReturnsPartialError verifies that when
+// CloseIssue fails the transition returns a partial-failure error and records
+// "partially_applied" in the audit (Finding 2, issue #46).
+func TestTransitionIssue_CloseIssueFailureReturnsPartialError(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+
+	issue := Issue{
+		Number:    305,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "ada-pow"}},
+		Labels:    []GitHubLabel{{Name: "status:po-approval"}},
+	}
+	afterTransition := Issue{
+		Number: 305,
+		Labels: []GitHubLabel{{Name: "status:done"}},
+	}
+
+	mock := &mockGitHub{
+		issues:        []Issue{issue, afterTransition},
+		closeIssueErr: fmt.Errorf("github: 503 service unavailable"),
+	}
+	store := tempStore(t)
+	var logBuf bytes.Buffer
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&logBuf, "", 0),
+	}
+
+	_, err := s.transitionIssue(
+		context.Background(), 305, "status:done", "", "", "po",
+		"mcp_tool", nil, nil, wd,
+	)
+	if err == nil {
+		t.Fatal("expected partial-failure error when CloseIssue fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "partially applied") {
+		t.Errorf("expected error to mention %q, got %q", "partially applied", err.Error())
+	}
+
+	// Audit must record "partially_applied".
+	audits, auditErr := store.ListTransitionAudit(305, 10)
+	if auditErr != nil {
+		t.Fatalf("ListTransitionAudit: %v", auditErr)
+	}
+	if len(audits) == 0 {
+		t.Fatal("expected an audit entry, got none")
+	}
+	if audits[0].Result != "partially_applied" {
+		t.Errorf("audit result: got %q, want %q", audits[0].Result, "partially_applied")
+	}
+}
+
+// TestCallTool_TransitionIssue_PersistsWorkflowKey verifies that an explicit
+// workflow arg on the transition_issue MCP tool persists the workflow key for
+// the issue (Finding 1, issue #46).
+func TestCallTool_TransitionIssue_PersistsWorkflowKey(t *testing.T) {
+	reg := leanRegistry(t)
+	store := tempStore(t)
+
+	issue := Issue{
+		Number:    400,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
+	}
+	afterTransition := Issue{
+		Number: 400,
+		Labels: []GitHubLabel{{Name: "status:code-review"}},
+	}
+
+	mock := &mockGitHub{issues: []Issue{issue, afterTransition}}
+	s := &Server{
+		cfg:       Config{Owner: "owner", Repo: "repo"},
+		gh:        mock,
+		store:     store,
+		logger:    log.New(&bytes.Buffer{}, "", 0),
+		workflows: reg,
+	}
+
+	args, _ := json.Marshal(map[string]interface{}{
+		"issue_number": 400,
+		"status":       "status:code-review",
+		"actor_role":   "developer",
+		"workflow":     "lean",
+	})
+	if _, err := s.callTool(context.Background(), "transition_issue", args); err != nil {
+		t.Fatalf("callTool transition_issue: %v", err)
+	}
+
+	key, ok, err := store.GetIssueWorkflowKey(400)
+	if err != nil {
+		t.Fatalf("GetIssueWorkflowKey: %v", err)
+	}
+	if !ok || key != "lean" {
+		t.Errorf("expected stored workflow key %q, got ok=%v key=%q", "lean", ok, key)
 	}
 }
 

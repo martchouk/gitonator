@@ -151,7 +151,7 @@ transitions:
     to: status:rejected
     allowed_roles:
       - po
-    queues_next_role: null
+    queues_next_role: ""
     description: "PO rejects a duplicate, invalid, or out-of-scope issue."
 
   - id: po_publish_requirement_to_developer
@@ -275,7 +275,7 @@ transitions:
     to: status:done
     allowed_roles:
       - po
-    queues_next_role: null
+    queues_next_role: ""
     terminal_after_transition: true
     close_issue: true
     description: "PO approves rollout and closes the issue."
@@ -334,7 +334,7 @@ transitions:
     to: status:rejected
     allowed_roles:
       - po
-    queues_next_role: null
+    queues_next_role: ""
     terminal_after_transition: true
     description: "PO rejects an active issue because priorities, scope, or facts changed."
 

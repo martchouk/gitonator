@@ -31,6 +31,7 @@ type mockGitHub struct {
 	comments        []IssueComment // returned by ListIssueComments
 	closedIssues    []int
 	reopenedIssues  []int
+	closeIssueErr   error // if non-nil, returned by CloseIssue
 }
 
 func (m *mockGitHub) GetIssue(_ context.Context, _ int) (Issue, error) {
@@ -75,7 +76,7 @@ func (m *mockGitHub) RemoveIssueLabel(_ context.Context, _ int, _ string) error 
 }
 func (m *mockGitHub) CloseIssue(_ context.Context, issueNumber int) error {
 	m.closedIssues = append(m.closedIssues, issueNumber)
-	return nil
+	return m.closeIssueErr
 }
 func (m *mockGitHub) ReopenIssue(_ context.Context, issueNumber int) error {
 	m.reopenedIssues = append(m.reopenedIssues, issueNumber)

@@ -41,11 +41,10 @@ type IssueTimelineEntry struct {
 }
 
 type IssueTimelineResult struct {
-	Issue    Issue               `json:"issue"`
-	Workflow WorkflowState       `json:"workflow"`
+	Issue    Issue                `json:"issue"`
+	Workflow WorkflowState        `json:"workflow"`
 	Timeline []IssueTimelineEntry `json:"timeline"`
 }
-
 
 func (s *Server) tools() []Tool {
 	return []Tool{
@@ -366,7 +365,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.ActorRole, "mcp_tool", nil, nil, s.workflowDef(args.Workflow))
+		wd := s.workflowDef(args.Workflow)
+		if args.Workflow != "" && s.store != nil {
+			_ = s.store.SetIssueWorkflowKey(args.IssueNumber, wd.Workflow.Key)
+		}
+		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.ActorRole, "mcp_tool", nil, nil, wd)
 
 	case "get_transition_matrix":
 		var args struct {
@@ -384,7 +387,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		return s.processIssueWith(ctx, args.IssueNumber, s.workflowDef(args.Workflow))
+		wd := s.workflowDef(args.Workflow)
+		if args.Workflow != "" && s.store != nil {
+			_ = s.store.SetIssueWorkflowKey(args.IssueNumber, wd.Workflow.Key)
+		}
+		return s.processIssueWith(ctx, args.IssueNumber, wd)
 
 	case "get_transition_audit":
 		var args struct {
@@ -578,27 +585,38 @@ func (s *Server) transitionIssue(
 	}
 
 	// Apply YAML-workflow metadata side-effects (set_metadata / clear_metadata).
+	var sideEffectErr error
 	if matchedDef != nil {
 		s.applyTransitionMetadata(issueNumber, fromStatus, matchedDef)
 		if matchedDef.CloseIssue {
 			if err := s.gh.CloseIssue(ctx, issueNumber); err != nil {
-				s.logger.Printf("WARN transitionIssue: issue=%d close_issue failed: %v", issueNumber, err)
+				sideEffectErr = fmt.Errorf("close_issue failed: %w", err)
 			}
 		}
-		if matchedDef.ReopenIssue {
+		if matchedDef.ReopenIssue && sideEffectErr == nil {
 			if err := s.gh.ReopenIssue(ctx, issueNumber); err != nil {
-				s.logger.Printf("WARN transitionIssue: issue=%d reopen_issue failed: %v", issueNumber, err)
+				sideEffectErr = fmt.Errorf("reopen_issue failed: %w", err)
 			}
 		}
 	}
 
+	auditResult := "applied"
+	auditReason := ""
+	if sideEffectErr != nil {
+		auditResult = "partially_applied"
+		auditReason = sideEffectErr.Error()
+		s.logger.Printf("WARN transitionIssue: issue=%d %s (label already updated)", issueNumber, sideEffectErr)
+	}
 	_ = s.store.RecordTransitionAudit(
 		issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
-		triggerType, triggerCommentID, "applied", "", validation,
+		triggerType, triggerCommentID, auditResult, auditReason, validation,
 		mergeAuditMetadata(triggerMetadata, map[string]interface{}{"comment_posted": posted != nil}),
 	)
-	s.debugf("transitionIssue: issue=%d applied from=%s to=%s assignee=%q comment_posted=%v",
-		issueNumber, fromStatus, toStatus, assignee, posted != nil)
+	s.debugf("transitionIssue: issue=%d %s from=%s to=%s assignee=%q comment_posted=%v",
+		issueNumber, auditResult, fromStatus, toStatus, assignee, posted != nil)
+	if sideEffectErr != nil {
+		return nil, fmt.Errorf("transition partially applied (label updated, %s)", sideEffectErr)
+	}
 
 	result := map[string]interface{}{
 		"issue":      updated,
@@ -703,4 +721,3 @@ func buildIssueTimeline(
 	})
 	return out
 }
-

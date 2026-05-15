@@ -64,7 +64,6 @@ Or:
 agent-task show    <package-file>
 agent-task open    <package-file>
 agent-task comment <package-file> --message "..." [--field key=value]...
-agent-task approve <package-file>
 ```
 
 ---
@@ -234,13 +233,6 @@ export GITHUB_TOKEN="ghp_yourtoken"
 agent-task comment /tmp/work-42-issue-8.json \
   --message "Review completed. See findings in the issue thread." \
   --field outcome=changes-requested
-```
-
-### Stakeholder approval
-
-```bash
-export GITHUB_TOKEN="ghp_yourtoken"
-agent-task approve /tmp/work-42-issue-8.json
 ```
 
 ---

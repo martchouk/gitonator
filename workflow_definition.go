@@ -35,19 +35,23 @@ type GuardDef struct {
 // To may be "$metadata.<key>" to resolve the target dynamically from stored metadata.
 // SetMetadata entries may use "$from" to capture the current status at transition time.
 type TransitionDef struct {
-	ID                    string            `yaml:"id"`
-	From                  []string          `yaml:"from"`
-	To                    string            `yaml:"to"`
-	AllowedRoles          []string          `yaml:"allowed_roles"`
-	Guard                 string            `yaml:"guard"`
-	SetMetadata           map[string]string `yaml:"set_metadata"`
-	ClearMetadata         []string          `yaml:"clear_metadata"`
-	Description           string            `yaml:"description"`
-	CloseIssue              bool        `yaml:"close_issue"`
-	ReopenIssue             bool        `yaml:"reopen_issue"`
-	TerminalAfterTransition bool        `yaml:"terminal_after_transition"`
-	QueuesNextRole          string      `yaml:"queues_next_role"`
-	RequiredOutputs         interface{} `yaml:"required_outputs"` // list or map depending on transition type
+	ID                      string            `yaml:"id"`
+	From                    []string          `yaml:"from"`
+	To                      string            `yaml:"to"`
+	AllowedRoles            []string          `yaml:"allowed_roles"`
+	Guard                   string            `yaml:"guard"`
+	SetMetadata             map[string]string `yaml:"set_metadata"`
+	ClearMetadata           []string          `yaml:"clear_metadata"`
+	Description             string            `yaml:"description"`
+	CloseIssue              bool              `yaml:"close_issue"`
+	ReopenIssue             bool              `yaml:"reopen_issue"`
+	TerminalAfterTransition bool              `yaml:"terminal_after_transition"`
+	// QueuesNextRole controls next_assignee_roles in the work package:
+	//   nil       — field absent from YAML; fall back to role of the target status
+	//   &""       — explicit empty (YAML ""); skip: this transition queues no agent role
+	//   &"role"   — use this role
+	QueuesNextRole  *string     `yaml:"queues_next_role"`
+	RequiredOutputs interface{} `yaml:"required_outputs"` // list or map depending on transition type
 }
 
 // StatusByID returns the StatusDef for the given status ID, or nil if not found.
@@ -125,9 +129,11 @@ func (wd *WorkflowDef) NextRolesFrom(fromStatus string) []string {
 				if sd != nil && (sd.Terminal || sd.Category == "exception") {
 					break // skip terminal and exception target statuses
 				}
-				role := t.QueuesNextRole
-				if role == "" && sd != nil {
-					role = sd.Role
+				var role string
+				if t.QueuesNextRole != nil {
+					role = *t.QueuesNextRole // explicit value: "" means skip, non-empty means use it
+				} else if sd != nil {
+					role = sd.Role // absent: fall back to target status role
 				}
 				if role != "" && !seen[role] {
 					seen[role] = true
