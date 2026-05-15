@@ -147,6 +147,20 @@ CREATE TABLE issue_metadata (
 
 The orchestrator uses exactly one active `status:*` label per issue. The supported labels depend on the active workflow.
 
+Initialize labels in a target GitHub repository before running a workflow:
+
+```bash
+# Uses the current gh repo context.
+./deploy/init_repo_lean.sh
+./deploy/init_repo_full.sh
+
+# Or pass an explicit target repository.
+./deploy/init_repo_lean.sh OWNER/REPO
+./deploy/init_repo_full.sh OWNER/REPO
+```
+
+The scripts are idempotent: existing labels are updated with the expected color and description, and missing labels are created. The lean script creates the labels required by `workflows/workflow-lean-3-roles-issue.yaml`; the full script creates the labels required by `workflows/workflow-full-6-roles-issue.yaml`, including guard labels such as `needs:architecture`, `needs:ui-design`, `area:ui`, `area:ux`, and `risk:high`.
+
 **Lean workflow** (`?workflow=lean`) statuses:
 
 - `status:new`
