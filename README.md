@@ -497,6 +497,7 @@ Example lines:
 | Tools list served | `DEBUG tools/list: serving N tools` |
 | Issue state computed | `DEBUG processIssue: issue=… status=… suggested_role=…` |
 | Issue bootstrapped to status:new | `DEBUG processIssue: issue=… no status label — bootstrapping to status:new` |
+| Bootstrap skipped (transient event) | `DEBUG processIssue: issue=… no status label but has task history — skipping bootstrap` |
 | Task deduplication | `DEBUG processIssue: issue=… task deduplicated existing_task_id=…` |
 | No-action decision | `DEBUG processIssue: issue=… no action — terminal or wait state` |
 | Transition validation | `DEBUG transitionIssue: issue=… from=… to=… actor=… allowed=…` |

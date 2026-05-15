@@ -286,6 +286,17 @@ func (s *Store) SupersedeQueuedTask(issueNumber int) error {
 	return err
 }
 
+// HasAnyTask reports whether any task (in any status) has ever been queued for
+// the given issue. Used by the bootstrap guard to distinguish a genuinely new issue
+// from a transient no-status webhook event mid-workflow.
+func (s *Store) HasAnyTask(issueNumber int) (bool, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM tasks WHERE issue_number = ?`, issueNumber,
+	).Scan(&n)
+	return n > 0, err
+}
+
 // CompleteDispatchedTask marks any dispatched task for the given issue as completed.
 // This is called by processIssue before queuing a new task; it is a no-op if none exist.
 func (s *Store) CompleteDispatchedTask(issueNumber int) error {

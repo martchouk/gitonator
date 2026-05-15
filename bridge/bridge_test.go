@@ -7,20 +7,40 @@ import (
 	"testing"
 )
 
-func TestSelectAgentPriorityAssignee(t *testing.T) {
+// TestSelectAgentRoleAndAssigneeMatch verifies that when an agent matches both role and
+// assignee name it is preferred over an agent that matches only role.
+func TestSelectAgentRoleAndAssigneeMatch(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev", Role: "developer"},
+		{Name: "bud-dev-2", Role: "developer"},
+	}}
+
+	pkg := &WorkPackage{Role: "developer", Assignee: "bud-dev-2"}
+	agent := selectAgent(roster, pkg)
+	if agent == nil {
+		t.Fatal("expected agent, got nil")
+	}
+	if agent.Name != "bud-dev-2" {
+		t.Errorf("expected bud-dev-2 (role+assignee match), got %s", agent.Name)
+	}
+}
+
+// TestSelectAgentCrossRoleAssigneeIgnored verifies that a stale assignee whose role differs
+// from the work package role does not cause the wrong agent to be selected.
+func TestSelectAgentCrossRoleAssigneeIgnored(t *testing.T) {
 	roster := Roster{Agents: []Agent{
 		{Name: "bud-dev", Role: "developer"},
 		{Name: "ada-pow", Role: "po"},
 	}}
 
-	// Priority 1: assignee match overrides role.
+	// ada-pow is in the roster but as "po", not "developer" — must not be selected.
 	pkg := &WorkPackage{Role: "developer", Assignee: "ada-pow"}
 	agent := selectAgent(roster, pkg)
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
-	if agent.Name != "ada-pow" {
-		t.Errorf("expected ada-pow (assignee match), got %s", agent.Name)
+	if agent.Name != "bud-dev" {
+		t.Errorf("expected bud-dev (role match), got %s (cross-role assignee should be ignored)", agent.Name)
 	}
 }
 

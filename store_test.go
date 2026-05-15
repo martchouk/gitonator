@@ -252,6 +252,49 @@ func TestCompleteDispatchedTaskIsNoopWhenNone(t *testing.T) {
 	}
 }
 
+func TestHasAnyTask_FalseWhenNone(t *testing.T) {
+	s := tempStore(t)
+	seen, err := s.HasAnyTask(999)
+	if err != nil {
+		t.Fatalf("HasAnyTask: %v", err)
+	}
+	if seen {
+		t.Error("expected false for issue with no tasks, got true")
+	}
+}
+
+func TestHasAnyTask_TrueAfterQueue(t *testing.T) {
+	s := tempStore(t)
+	if _, err := s.QueueTask(WorkPackage{Repo: "o/r", IssueID: 50, Role: "po", CurrentStatus: "status:new"}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	seen, err := s.HasAnyTask(50)
+	if err != nil {
+		t.Fatalf("HasAnyTask: %v", err)
+	}
+	if !seen {
+		t.Error("expected true after QueueTask, got false")
+	}
+}
+
+func TestHasAnyTask_TrueAfterTaskSuperseded(t *testing.T) {
+	s := tempStore(t)
+	if _, err := s.QueueTask(WorkPackage{Repo: "o/r", IssueID: 51, Role: "po", CurrentStatus: "status:new"}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	if err := s.SupersedeQueuedTask(51); err != nil {
+		t.Fatalf("SupersedeQueuedTask: %v", err)
+	}
+	// Task is superseded, not active — HasAnyTask must still return true.
+	seen, err := s.HasAnyTask(51)
+	if err != nil {
+		t.Fatalf("HasAnyTask: %v", err)
+	}
+	if !seen {
+		t.Error("expected true for superseded task (issue was previously processed), got false")
+	}
+}
+
 func TestIssueMetadataSetAndGet(t *testing.T) {
 	s := tempStore(t)
 

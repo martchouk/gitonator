@@ -40,7 +40,19 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 		issueNumber, state.StatusLabel, state.SuggestedRole, state.CurrentAssignees)
 
 	// Bootstrap: a freshly created issue with no status label enters the workflow as status:new.
+	// Guard: a transient webhook during label replacement can arrive with no status label;
+	// skip bootstrap if this issue already has task history to avoid resetting mid-workflow issues.
+	// HasAnyTask covers all workflow paths (direct label edits, webhook-only) because the
+	// orchestrator always calls QueueTask when first processing an issue.
 	if state.StatusLabel == "" {
+		seen, err := s.store.HasAnyTask(issueNumber)
+		if err != nil {
+			return nil, fmt.Errorf("check task history before bootstrap: %w", err)
+		}
+		if seen {
+			s.debugf("processIssue: issue=%d no status label but has task history — skipping bootstrap", issueNumber)
+			return map[string]interface{}{"issue": issue, "workflow": state, "queued": false}, nil
+		}
 		s.debugf("processIssue: issue=%d no status label — bootstrapping to status:new", issueNumber)
 		bootstrapLabels := append(labelsToStrings(issue.Labels), "status:new")
 		if _, err := s.gh.SetIssueLabels(ctx, issueNumber, bootstrapLabels); err != nil {
@@ -54,38 +66,32 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 	}
 
 	// Determine the role for this work package.
-	// Priority 1: [next assignee role -> <role>] footer in last comment.
-	//   When the current status is unrecognised (not in the workflow), the wd.HasRole
-	//   guard is relaxed: any footer role is accepted so that agents can rescue an issue
-	//   that ended up with a foreign status label.
-	// Priority 2: status label → workflow role (via decideNextActionFromDef).
+	// Comment footer [next assignee role -> <role>] is a rescue mechanism only:
+	// it fires exclusively when the current status label is absent from the workflow YAML.
+	// For recognised statuses the YAML state machine is authoritative (Priority 1 below).
+	// Priority 1: status label → workflow role (via decideNextActionFromDef).
+	// Priority 2 (rescue): unrecognised status label + footer → route via footer role.
 	var pkg WorkPackage
 	var routed bool
 
-	statusKnown := state.StatusLabel == "" || wd.HasStatus(state.StatusLabel)
-	if footerRole, ok := parseNextAssigneeRole(comments); ok && (wd.HasRole(footerRole) || !statusKnown) {
-		// Do not route via footer into a known terminal/wait state.
-		if sd := wd.StatusByID(state.StatusLabel); sd == nil || sd.QueuesWork {
-			var lastCommentID int64
-			if len(comments) > 0 {
-				lastCommentID = comments[len(comments)-1].ID
-			}
-			pkg = WorkPackage{
-				Repo:          fmt.Sprintf("%s/%s", s.cfg.Owner, s.cfg.Repo),
-				IssueID:       issue.Number,
-				Role:          footerRole,
-				Assignee:      currentAssigneeOfIssue(issue),
-				LastCommentID: lastCommentID,
-				CurrentStatus: state.StatusLabel,
-			}
-			routed = true
-			if state.StatusLabel != "" && !wd.HasStatus(state.StatusLabel) {
-				s.logger.Printf("WARN processIssue: issue=%d unrecognized status label %q — rescued by comment footer, routing to role=%s",
-					issueNumber, state.StatusLabel, footerRole)
-			} else {
-				s.debugf("processIssue: issue=%d routing via comment footer role=%s", issueNumber, footerRole)
-			}
+	if footerRole, ok := parseNextAssigneeRole(comments); ok && !wd.HasStatus(state.StatusLabel) && footerRole != "" {
+		// Rescue: status label is not in the YAML workflow. Route via footer regardless of
+		// whether footerRole itself is a defined workflow role (supports cross-workflow handoffs).
+		var lastCommentID int64
+		if len(comments) > 0 {
+			lastCommentID = comments[len(comments)-1].ID
 		}
+		pkg = WorkPackage{
+			Repo:          fmt.Sprintf("%s/%s", s.cfg.Owner, s.cfg.Repo),
+			IssueID:       issue.Number,
+			Role:          footerRole,
+			Assignee:      currentAssigneeOfIssue(issue),
+			LastCommentID: lastCommentID,
+			CurrentStatus: state.StatusLabel,
+		}
+		routed = true
+		s.logger.Printf("WARN processIssue: issue=%d unrecognized status label %q — rescued by comment footer, routing to role=%s",
+			issueNumber, state.StatusLabel, footerRole)
 	}
 
 	if !routed {

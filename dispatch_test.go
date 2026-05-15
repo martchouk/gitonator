@@ -165,6 +165,54 @@ func TestProcessIssueLabelBootstrapSetLabelsError(t *testing.T) {
 	}
 }
 
+// TestProcessIssueBootstrap_SkipsWhenTaskHistoryExists verifies that a transient
+// no-status-label webhook event for a mid-workflow issue does not reset it back to
+// status:new. The guard uses HasAnyTask, which covers direct-label workflows where
+// transition_audit may be empty but the orchestrator has already queued at least one task.
+func TestProcessIssueBootstrap_SkipsWhenTaskHistoryExists(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	// Issue arrives with no status label — as if GitHub emitted a transient event
+	// during a label replacement mid-workflow.
+	unlabeled := Issue{
+		Number:    12,
+		User:      GitHubUser{Login: "martchouk"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+	}
+	mock := &mockGitHub{issues: []Issue{unlabeled}}
+	store := tempStore(t)
+	// Simulate prior orchestrator processing by queuing a task for the issue.
+	// This mirrors the real path: the issue was opened, processIssueWith bootstrapped it
+	// to status:new, and QueueTask wrote the initial PO task. No transitionIssue calls
+	// are needed — direct label edits leave audit empty but tasks are always written.
+	if _, err := store.QueueTask(WorkPackage{
+		Repo: "owner/repo", IssueID: 12, Role: "po", CurrentStatus: "status:new",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 12, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); queued {
+		t.Error("expected queued=false when bootstrap skipped due to task history, got true")
+	}
+	if mock.setLabelsCalled {
+		t.Error("expected SetIssueLabels NOT to be called when bootstrap is skipped, but it was")
+	}
+}
+
 // TestProcessIssueRoleTransitionSupersedes reproduces issue #21: when an issue transitions
 // to a new status that requires a different role, any queued task for the old role must be
 // superseded so the new role's task can be dispatched.
@@ -518,16 +566,16 @@ func TestProcessIssueWith_UnknownStatusLabel_LogsWarning(t *testing.T) {
 	}
 }
 
-// TestProcessIssueWith_CommentFooter_OverridesLabel verifies that a valid
-// "[next assignee role -> <role>]" footer in the last comment takes priority over
-// the status label when determining the role for the work package.
-func TestProcessIssueWith_CommentFooter_OverridesLabel(t *testing.T) {
+// TestProcessIssueWith_CommentFooter_KnownStatus_IgnoresFooter verifies that for a
+// recognised workflow status the YAML state machine takes precedence and the comment
+// footer is ignored. Footer routing is a rescue mechanism for unrecognised statuses only.
+func TestProcessIssueWith_CommentFooter_KnownStatus_IgnoresFooter(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	issue := Issue{
 		Number:    101,
 		User:      GitHubUser{Login: "creator"},
-		Assignees: []GitHubUser{{Login: "mud-rev"}},
-		Labels:    []GitHubLabel{{Name: "status:in-development"}}, // label says developer
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}}, // known status → role=developer
 	}
 	mock := &mockGitHub{
 		issues: []Issue{issue},
@@ -553,7 +601,7 @@ func TestProcessIssueWith_CommentFooter_OverridesLabel(t *testing.T) {
 		t.Fatalf("unexpected result type %T", result)
 	}
 	if queued, _ := m["queued"].(bool); !queued {
-		t.Fatal("expected queued=true when footer overrides label, got false")
+		t.Fatal("expected queued=true via YAML routing, got false")
 	}
 
 	task, err := store.FindActiveTaskByIssue(101)
@@ -563,8 +611,9 @@ func TestProcessIssueWith_CommentFooter_OverridesLabel(t *testing.T) {
 	if task == nil {
 		t.Fatal("expected an active task, got nil")
 	}
-	if task.Role != "reviewer" {
-		t.Errorf("task.Role=%q, want %q (footer should override label)", task.Role, "reviewer")
+	// YAML says status:in-development → role developer; footer must not override this.
+	if task.Role != "developer" {
+		t.Errorf("task.Role=%q, want %q — YAML routing must win over comment footer for known status", task.Role, "developer")
 	}
 }
 

@@ -162,12 +162,14 @@ func main() {
 }
 
 // selectAgent finds the agent to use for the work package.
-// Priority 1: match by assignee name.
-// Priority 2: match by role.
+// Priority 1: match by role AND assignee name (preferred agent within the correct role).
+// Priority 2: match by role only (any agent capable of the required role).
+// Assignee-only matches across roles are intentionally ignored to prevent a stale
+// assignee from routing work to the wrong agent type.
 func selectAgent(roster Roster, pkg *WorkPackage) *Agent {
 	if pkg.Assignee != "" {
 		for i := range roster.Agents {
-			if roster.Agents[i].Name == pkg.Assignee {
+			if roster.Agents[i].Role == pkg.Role && roster.Agents[i].Name == pkg.Assignee {
 				return &roster.Agents[i]
 			}
 		}
