@@ -32,19 +32,22 @@ type Agent struct {
 }
 
 type Roster struct {
-	Agents []Agent `json:"agents"`
+	Agents            []Agent  `json:"agents"`
+	AgentInstructions []string `json:"agent_instructions,omitempty"`
 }
 
 type WorkPackage struct {
-	ID               int64    `json:"id"`
-	Repo             string   `json:"repo"`
-	IssueID          int      `json:"issue_id"`
-	Role             string   `json:"role"`
-	Assignee         string   `json:"assignee"`
-	LastCommentID    int64    `json:"last_comment_id"`
-	CurrentStatus    string   `json:"current_status"`
-	WorkflowKey      string   `json:"workflow_key,omitempty"`
-	ValidTransitions []string `json:"valid_transitions,omitempty"`
+	ID                int64    `json:"id"`
+	Repo              string   `json:"repo"`
+	IssueID           int      `json:"issue_id"`
+	Role              string   `json:"role"`
+	Assignee          string   `json:"assignee"`
+	LastCommentID     int64    `json:"last_comment_id"`
+	CurrentStatus     string   `json:"current_status"`
+	WorkflowKey       string   `json:"workflow_key,omitempty"`
+	ValidTransitions  []string `json:"valid_transitions,omitempty"`
+	NextAssigneeRoles []string `json:"next_assignee_roles,omitempty"`
+	AgentInstructions []string `json:"agent_instructions,omitempty"`
 }
 
 type workNextResp struct {
@@ -151,7 +154,7 @@ func main() {
 			continue
 		}
 
-		if err := runAgent(logger, agent, worktree, pkg); err != nil {
+		if err := runAgent(logger, agent, worktree, *pkg, roster.AgentInstructions); err != nil {
 			logger.Printf("agent run error: agent=%s issue=%d err=%v", agent.Name, pkg.IssueID, err)
 		}
 		// No sleep — poll immediately after agent exits.
@@ -177,8 +180,17 @@ func selectAgent(roster Roster, pkg *WorkPackage) *Agent {
 	return nil
 }
 
-func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg *WorkPackage) error {
-	pkgData, err := json.MarshalIndent(pkg, "", "  ")
+// buildAgentPackageJSON injects instructions into a copy of pkg and returns the JSON
+// to be written to the agent's package file.
+func buildAgentPackageJSON(pkg WorkPackage, instructions []string) ([]byte, error) {
+	if len(instructions) > 0 {
+		pkg.AgentInstructions = instructions
+	}
+	return json.MarshalIndent(pkg, "", "  ")
+}
+
+func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage, instructions []string) error {
+	pkgData, err := buildAgentPackageJSON(pkg, instructions)
 	if err != nil {
 		return fmt.Errorf("marshal work package: %w", err)
 	}

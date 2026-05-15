@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -176,6 +177,28 @@ func decideNextActionFromDef(wd *WorkflowDef, cfg Config, issue Issue, state Wor
 		LastCommentID: lastCommentID,
 		CurrentStatus: state.StatusLabel,
 	}, true
+}
+
+// nextAssigneeFooterRe matches lines of the form "[next assignee role -> <role>]".
+var nextAssigneeFooterRe = regexp.MustCompile(`^\[next assignee role\s*->\s*([^\]]+)\]$`)
+
+// parseNextAssigneeRole scans the last comment body for a structured footer
+// "[next assignee role -> <role>]". Returns ("", false) when absent or empty.
+func parseNextAssigneeRole(comments []IssueComment) (string, bool) {
+	if len(comments) == 0 {
+		return "", false
+	}
+	last := comments[len(comments)-1]
+	for _, line := range strings.Split(last.Body, "\n") {
+		line = strings.TrimSpace(line)
+		if m := nextAssigneeFooterRe.FindStringSubmatch(line); m != nil {
+			role := strings.TrimSpace(m[1])
+			if role != "" {
+				return role, true
+			}
+		}
+	}
+	return "", false
 }
 
 // applyTransitionMetadata writes set_metadata values and clears clear_metadata keys

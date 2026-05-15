@@ -1,4 +1,10 @@
 {
+  "agent_instructions": [
+    "Before finishing your work on this issue you MUST:",
+    "1. Remove ALL current GitHub assignees from the issue.",
+    "2. Set exactly ONE assignee for the next step — choose the appropriate agent from next_assignee_roles.",
+    "3. End your final issue comment with this exact footer on its own line: [next assignee role -> <role>]"
+  ],
   "agents": [
     {
       "name": "bud-dev",

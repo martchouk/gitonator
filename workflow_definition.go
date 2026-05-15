@@ -88,3 +88,36 @@ func (wd *WorkflowDef) AllStatusIDs() []string {
 	}
 	return ids
 }
+
+// HasRole reports whether role is used by any status in this workflow.
+func (wd *WorkflowDef) HasRole(role string) bool {
+	for _, s := range wd.Statuses {
+		if s.Role == role {
+			return true
+		}
+	}
+	return false
+}
+
+// NextRolesFrom returns the unique agent roles reachable via outbound static transitions
+// from fromStatus. Dynamic targets ("$metadata.*") are excluded because they cannot be
+// resolved without runtime metadata.
+func (wd *WorkflowDef) NextRolesFrom(fromStatus string) []string {
+	seen := map[string]bool{}
+	var roles []string
+	for _, t := range wd.Transitions {
+		if t.From == nil || len(t.To) == 0 || t.To[0] == '$' {
+			continue
+		}
+		for _, f := range t.From {
+			if f == fromStatus {
+				if sd := wd.StatusByID(t.To); sd != nil && sd.Role != "" && !seen[sd.Role] {
+					seen[sd.Role] = true
+					roles = append(roles, sd.Role)
+				}
+				break
+			}
+		}
+	}
+	return roles
+}

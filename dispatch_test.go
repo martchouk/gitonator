@@ -21,13 +21,14 @@ func leanRegistry(t *testing.T) *WorkflowRegistry {
 
 // mockGitHub implements GitHubAPI for dispatch tests.
 type mockGitHub struct {
-	issues           []Issue // returned in sequence by GetIssue
-	getIssueIdx      int
-	setLabelsCalled  bool
-	setLabelsArgs    []string
-	setLabelsErr     error // if non-nil, returned by SetIssueLabels
-	postedComments   []string
-	postCommentErr   error // if non-nil, returned by PostIssueComment
+	issues          []Issue // returned in sequence by GetIssue
+	getIssueIdx     int
+	setLabelsCalled bool
+	setLabelsArgs   []string
+	setLabelsErr    error // if non-nil, returned by SetIssueLabels
+	postedComments  []string
+	postCommentErr  error          // if non-nil, returned by PostIssueComment
+	comments        []IssueComment // returned by ListIssueComments
 }
 
 func (m *mockGitHub) GetIssue(_ context.Context, _ int) (Issue, error) {
@@ -40,7 +41,7 @@ func (m *mockGitHub) GetIssue(_ context.Context, _ int) (Issue, error) {
 	return m.issues[i], nil
 }
 func (m *mockGitHub) ListIssueComments(_ context.Context, _ int, _ int) ([]IssueComment, error) {
-	return nil, nil
+	return m.comments, nil
 }
 func (m *mockGitHub) PostIssueComment(_ context.Context, _ int, body string) (IssueComment, error) {
 	m.postedComments = append(m.postedComments, body)
@@ -456,8 +457,8 @@ func TestProcessIssueWith_YAMLWorkflow_QueuesDevTask(t *testing.T) {
 }
 
 // TestProcessIssueWith_UnknownStatusLabel_LogsWarning verifies that processIssueWith emits a
-// WARN log when an issue carries a status label that is not defined in the active workflow,
-// does not queue any task, and posts a correction comment on the issue (closes #37).
+// WARN log when an issue carries a status label not in the active workflow with no comment
+// footer fallback, does not queue any task, and does NOT post any GitHub comment.
 func TestProcessIssueWith_UnknownStatusLabel_LogsWarning(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	issue := Issue{
@@ -487,10 +488,10 @@ func TestProcessIssueWith_UnknownStatusLabel_LogsWarning(t *testing.T) {
 		t.Fatalf("unexpected result type %T", result)
 	}
 	if queued, _ := m["queued"].(bool); queued {
-		t.Error("expected queued=false for unknown status label, got true")
+		t.Error("expected queued=false for unknown status label with no footer, got true")
 	}
 
-	// A WARN line must appear in the log output.
+	// A WARN line must appear in the server log.
 	logOutput := logBuf.String()
 	if !strings.Contains(logOutput, "WARN") {
 		t.Errorf("expected WARN in log output for unknown status label, got: %s", logOutput)
@@ -499,34 +500,175 @@ func TestProcessIssueWith_UnknownStatusLabel_LogsWarning(t *testing.T) {
 		t.Errorf("expected log to mention the unknown label, got: %s", logOutput)
 	}
 
-	// A correction comment must have been posted to the issue.
-	if len(mock.postedComments) == 0 {
-		t.Fatal("expected a correction comment to be posted, but none was")
-	}
-	comment := mock.postedComments[0]
-	if !strings.Contains(comment, "status:approved-for-dev") {
-		t.Errorf("expected comment to mention the unknown label; got: %s", comment)
-	}
-	if !strings.Contains(comment, "transition_issue") {
-		t.Errorf("expected comment to instruct use of transition_issue; got: %s", comment)
-	}
-	if !strings.Contains(comment, "status:story-definition") {
-		t.Errorf("expected comment to list valid lean statuses; got: %s", comment)
+	// The server must NOT post any comment to the issue.
+	if len(mock.postedComments) != 0 {
+		t.Errorf("expected no GitHub comment to be posted, but got %d comment(s): %v",
+			len(mock.postedComments), mock.postedComments)
 	}
 }
 
-// TestProcessIssueWith_UnknownStatusLabel_CommentFailureDoesNotError verifies that a failure
-// to post the correction comment does not cause processIssueWith to return an error —
-// the warning is best-effort and must not block webhook processing.
-func TestProcessIssueWith_UnknownStatusLabel_CommentFailureDoesNotError(t *testing.T) {
+// TestProcessIssueWith_CommentFooter_OverridesLabel verifies that a valid
+// "[next assignee role -> <role>]" footer in the last comment takes priority over
+// the status label when determining the role for the work package.
+func TestProcessIssueWith_CommentFooter_OverridesLabel(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	issue := Issue{
-		Number: 100,
-		Labels: []GitHubLabel{{Name: "status:po-analysis"}},
+		Number:    101,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "mud-rev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}}, // label says developer
 	}
 	mock := &mockGitHub{
-		issues:         []Issue{issue},
-		postCommentErr: fmt.Errorf("github: 403 forbidden"),
+		issues: []Issue{issue},
+		comments: []IssueComment{
+			{ID: 1, Body: "Work complete.\n[next assignee role -> reviewer]"},
+		},
+	}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 101, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Fatal("expected queued=true when footer overrides label, got false")
+	}
+
+	task, err := store.FindActiveTaskByIssue(101)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected an active task, got nil")
+	}
+	if task.Role != "reviewer" {
+		t.Errorf("task.Role=%q, want %q (footer should override label)", task.Role, "reviewer")
+	}
+}
+
+// TestProcessIssueWith_CommentFooter_UnknownLabel_Routes verifies that when a status label
+// is unknown but the last comment has a valid "[next assignee role -> <role>]" footer,
+// the server routes the task via the footer instead of stalling.
+func TestProcessIssueWith_CommentFooter_UnknownLabel_Routes(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number:    102,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:ready-for-review"}}, // unknown label
+	}
+	mock := &mockGitHub{
+		issues: []Issue{issue},
+		comments: []IssueComment{
+			{ID: 10, Body: "PR is up.\n[next assignee role -> reviewer]"},
+		},
+	}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 102, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Fatal("expected queued=true when footer rescues unknown label, got false")
+	}
+
+	task, err := store.FindActiveTaskByIssue(102)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected an active task, got nil")
+	}
+	if task.Role != "reviewer" {
+		t.Errorf("task.Role=%q, want %q", task.Role, "reviewer")
+	}
+}
+
+// TestProcessIssueWith_CommentFooter_InvalidRole_FallsBackToLabel verifies that a footer
+// containing an unrecognised role is silently ignored and routing falls back to the label.
+func TestProcessIssueWith_CommentFooter_InvalidRole_FallsBackToLabel(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number:    103,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
+	}
+	mock := &mockGitHub{
+		issues: []Issue{issue},
+		comments: []IssueComment{
+			{ID: 5, Body: "[next assignee role -> bogusrole]"},
+		},
+	}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 103, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Fatal("expected queued=true via label fallback when footer role is invalid")
+	}
+
+	task, err := store.FindActiveTaskByIssue(103)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected an active task, got nil")
+	}
+	if task.Role != "developer" {
+		t.Errorf("task.Role=%q, want %q (should fall back to label role)", task.Role, "developer")
+	}
+}
+
+// TestProcessIssueWith_CommentFooter_TerminalState verifies that a valid comment footer
+// does NOT cause a task to be queued when the status label is a known terminal state.
+func TestProcessIssueWith_CommentFooter_TerminalState(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number: 104,
+		Labels: []GitHubLabel{{Name: "status:done"}},
+	}
+	mock := &mockGitHub{
+		issues: []Issue{issue},
+		comments: []IssueComment{
+			{ID: 20, Body: "[next assignee role -> po]"},
+		},
 	}
 	s := &Server{
 		cfg:    Config{Owner: "owner", Repo: "repo"},
@@ -535,9 +677,58 @@ func TestProcessIssueWith_UnknownStatusLabel_CommentFailureDoesNotError(t *testi
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	_, err := s.processIssueWith(context.Background(), 100, wd)
+	result, err := s.processIssueWith(context.Background(), 104, wd)
 	if err != nil {
-		t.Errorf("processIssueWith must not return error when comment posting fails, got: %v", err)
+		t.Fatalf("processIssueWith: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); queued {
+		t.Error("expected queued=false for terminal state even with a comment footer, got true")
+	}
+}
+
+// TestProcessIssueWith_NextAssigneeRolesPopulated verifies that a queued WorkPackage
+// carries the next_assignee_roles derived from outbound workflow transitions.
+func TestProcessIssueWith_NextAssigneeRolesPopulated(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	issue := Issue{
+		Number:    105,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
+	}
+	mock := &mockGitHub{issues: []Issue{issue}}
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     mock,
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), 105, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Fatal("expected queued=true for status:in-development")
+	}
+
+	pkg, ok := m["task"].(WorkPackage)
+	if !ok {
+		t.Fatalf("expected task to be WorkPackage, got %T", m["task"])
+	}
+	if !containsString(pkg.NextAssigneeRoles, "reviewer") {
+		t.Errorf("expected NextAssigneeRoles to contain %q, got %v", "reviewer", pkg.NextAssigneeRoles)
 	}
 }
 

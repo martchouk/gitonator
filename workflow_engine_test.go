@@ -541,6 +541,125 @@ func TestValidTransitionsFrom_UnknownStatusEmpty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// parseNextAssigneeRole
+// ---------------------------------------------------------------------------
+
+func TestParseNextAssigneeRole_ValidFooter(t *testing.T) {
+	comments := []IssueComment{
+		{ID: 1, Body: "Work complete.\n[next assignee role -> reviewer]"},
+	}
+	role, ok := parseNextAssigneeRole(comments)
+	if !ok {
+		t.Fatal("expected ok=true for valid footer, got false")
+	}
+	if role != "reviewer" {
+		t.Errorf("role=%q, want %q", role, "reviewer")
+	}
+}
+
+func TestParseNextAssigneeRole_FooterWithSpaces(t *testing.T) {
+	comments := []IssueComment{
+		{ID: 1, Body: "[next assignee role ->  developer ]"},
+	}
+	role, ok := parseNextAssigneeRole(comments)
+	if !ok {
+		t.Fatal("expected ok=true for footer with extra spaces, got false")
+	}
+	if role != "developer" {
+		t.Errorf("role=%q, want %q", role, "developer")
+	}
+}
+
+func TestParseNextAssigneeRole_NoFooter(t *testing.T) {
+	comments := []IssueComment{
+		{ID: 1, Body: "Implementation complete, PR is up."},
+	}
+	_, ok := parseNextAssigneeRole(comments)
+	if ok {
+		t.Error("expected ok=false when no footer present, got true")
+	}
+}
+
+func TestParseNextAssigneeRole_EmptyComments(t *testing.T) {
+	_, ok := parseNextAssigneeRole(nil)
+	if ok {
+		t.Error("expected ok=false for empty comments, got true")
+	}
+}
+
+func TestParseNextAssigneeRole_FooterOnlyInOlderComment(t *testing.T) {
+	// Footer is in the first comment, not the last — must not match.
+	comments := []IssueComment{
+		{ID: 1, Body: "[next assignee role -> developer]"},
+		{ID: 2, Body: "Updated implementation."},
+	}
+	_, ok := parseNextAssigneeRole(comments)
+	if ok {
+		t.Error("expected ok=false when footer is only in an older comment, got true")
+	}
+}
+
+func TestParseNextAssigneeRole_EmptyRoleValue(t *testing.T) {
+	comments := []IssueComment{
+		{ID: 1, Body: "[next assignee role ->  ]"},
+	}
+	_, ok := parseNextAssigneeRole(comments)
+	if ok {
+		t.Error("expected ok=false for empty role value in footer, got true")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// HasRole
+// ---------------------------------------------------------------------------
+
+func TestHasRole_KnownRole(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	for _, role := range []string{"po", "developer", "reviewer"} {
+		if !wd.HasRole(role) {
+			t.Errorf("HasRole(%q) = false, want true", role)
+		}
+	}
+}
+
+func TestHasRole_UnknownRole(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	if wd.HasRole("bogusrole") {
+		t.Error("HasRole(\"bogusrole\") = true, want false")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NextRolesFrom
+// ---------------------------------------------------------------------------
+
+func TestNextRolesFrom_InDevelopment(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	// status:in-development → status:code-review (reviewer), status:blocked (po), etc.
+	roles := wd.NextRolesFrom("status:in-development")
+	if !containsString(roles, "reviewer") {
+		t.Errorf("expected NextRolesFrom(status:in-development) to include %q, got %v", "reviewer", roles)
+	}
+}
+
+func TestNextRolesFrom_New(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	// status:new → po_start_definition (po), block_issue (po/developer/reviewer), po_reject (po)
+	roles := wd.NextRolesFrom("status:new")
+	if !containsString(roles, "po") {
+		t.Errorf("expected NextRolesFrom(status:new) to include %q, got %v", "po", roles)
+	}
+}
+
+func TestNextRolesFrom_UnknownStatus(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	roles := wd.NextRolesFrom("status:nonexistent")
+	if len(roles) != 0 {
+		t.Errorf("expected empty slice for unknown status, got %v", roles)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // blocked round-trip (integration-style)
 // ---------------------------------------------------------------------------
 
