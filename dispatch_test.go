@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -909,5 +910,96 @@ func TestProcessIssueWith_PopulatesWorkflowContext(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected status:code-review in ValidTransitions, got %v", pkg.ValidTransitions)
+	}
+}
+
+// safeGitHub is a goroutine-safe GitHubAPI stub for concurrent tests.
+// All methods return fixed values without mutating shared state.
+type safeGitHub struct {
+	issue    Issue
+	comments []IssueComment
+}
+
+func (s *safeGitHub) GetIssue(_ context.Context, _ int) (Issue, error) {
+	return s.issue, nil
+}
+func (s *safeGitHub) ListIssueComments(_ context.Context, _ int, _ int) ([]IssueComment, error) {
+	return s.comments, nil
+}
+func (s *safeGitHub) PostIssueComment(_ context.Context, _ int, _ string) (IssueComment, error) {
+	return IssueComment{}, nil
+}
+func (s *safeGitHub) AssignIssue(_ context.Context, _ int, _ []string) (Issue, error) {
+	return s.issue, nil
+}
+func (s *safeGitHub) SetIssueLabels(_ context.Context, _ int, labels []string) ([]GitHubLabel, error) {
+	out := make([]GitHubLabel, len(labels))
+	for i, l := range labels {
+		out[i] = GitHubLabel{Name: l}
+	}
+	return out, nil
+}
+func (s *safeGitHub) AddIssueLabels(_ context.Context, _ int, _ []string) ([]GitHubLabel, error) {
+	return nil, nil
+}
+func (s *safeGitHub) RemoveIssueLabel(_ context.Context, _ int, _ string) error { return nil }
+func (s *safeGitHub) CloseIssue(_ context.Context, _ int) error                 { return nil }
+func (s *safeGitHub) ReopenIssue(_ context.Context, _ int) error                { return nil }
+
+// TestProcessIssueConcurrent_NoDuplicateTasks reproduces the TOCTOU race from issue #53:
+// concurrent webhook handlers for the same issue both read the same active task, both
+// supersede it, and both enqueue a replacement — producing duplicate active tasks.
+// The test runs N goroutines simultaneously (via a starting-gun barrier) and asserts that
+// exactly one task remains in 'queued' status after all goroutines complete.
+// Without the per-issue mutex in processIssueWith this test reliably produces > 1 queued task.
+func TestProcessIssueConcurrent_NoDuplicateTasks(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	const issueNumber = 200
+	const goroutines = 10
+
+	issue := Issue{
+		Number:    issueNumber,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
+	}
+
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     &safeGitHub{issue: issue},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	// Starting-gun barrier: all goroutines block until the channel is closed,
+	// maximising the chance they enter the critical section simultaneously.
+	ready := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			<-ready
+			_, _ = s.processIssueWith(context.Background(), issueNumber, wd)
+		}()
+	}
+	close(ready)
+	wg.Wait()
+
+	// Exactly one task must remain in 'queued' status.
+	tasks, err := store.ListTasksByIssue(issueNumber, 100)
+	if err != nil {
+		t.Fatalf("ListTasksByIssue: %v", err)
+	}
+	var queued int
+	for _, tsk := range tasks {
+		if tsk.Status == "queued" {
+			queued++
+		}
+	}
+	if queued != 1 {
+		t.Errorf("expected exactly 1 queued task after %d concurrent processIssueWith calls, got %d (total tasks: %d)",
+			goroutines, queued, len(tasks))
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -33,6 +34,10 @@ type Server struct {
 	logger    *log.Logger
 	debug     bool
 	workflows *WorkflowRegistry
+	// issueMu stores a *sync.Mutex per issue number. Entries are never evicted because
+	// the number of tracked issues is bounded and deletion would add complexity for
+	// negligible benefit. See issueProcessLock in dispatch.go.
+	issueMu sync.Map
 }
 
 func (s *Server) debugf(format string, args ...interface{}) {
