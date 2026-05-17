@@ -162,6 +162,13 @@ Initialize labels in a target GitHub repository before running a workflow:
 
 The scripts are idempotent: existing labels are updated with the expected color and description, and missing labels are created. The lean script creates the labels required by `workflows/workflow-lean-3-roles-issue.yaml`; the full script creates the labels required by `workflows/workflow-full-6-roles-issue.yaml`, including guard labels such as `needs:architecture`, `needs:ui-design`, `area:ui`, `area:ux`, and `risk:high`.
 
+`deploy/init_repo_lean.sh` and `deploy/init_repo_full.sh` are generated from the workflow YAML files. After changing a workflow definition, regenerate them and verify they are in sync:
+
+```bash
+go run ./deploy/sync_init_repo_scripts.go
+go run ./deploy/sync_init_repo_scripts.go -check
+```
+
 **Lean workflow** (`?workflow=lean`) statuses:
 
 - `status:new`
