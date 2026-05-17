@@ -104,6 +104,11 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 					issueNumber, state.StatusLabel, wd.Workflow.Key)
 			} else {
 				s.debugf("processIssue: issue=%d no action — terminal or wait state", issueNumber)
+				if sd := wd.StatusByID(state.StatusLabel); sd != nil && !sd.QueuesWork {
+					if err := s.clearActiveTasksForIssue(issueNumber); err != nil {
+						return nil, err
+					}
+				}
 			}
 			return map[string]interface{}{
 				"issue":    issue,
@@ -126,21 +131,15 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 	unlock := s.issueProcessLock(issueNumber)
 	defer unlock()
 
-	// Close out any dispatched task for this issue before queuing a new one.
-	// This is a no-op if no dispatched task exists.
-	if err := s.store.CompleteDispatchedTask(issueNumber); err != nil {
-		s.logger.Printf("close-out dispatched task failed: issue=%d err=%v", issueNumber, err)
-	}
-
 	existing, err := s.store.FindActiveTaskByIssue(issueNumber)
 	if err != nil {
 		return nil, err
 	}
 	if existing != nil {
-		if existing.Role == pkg.Role && existing.Assignee == pkg.Assignee {
-			// Fully deduplicated — same role and same assignee.
-			s.debugf("processIssue: issue=%d task deduplicated existing_task_id=%d role=%s",
-				issueNumber, existing.ID, existing.Role)
+		if existing.Role == pkg.Role && existing.Assignee == pkg.Assignee && existing.CurrentStatus == pkg.CurrentStatus {
+			// Fully deduplicated — same status, role, and assignee.
+			s.debugf("processIssue: issue=%d task deduplicated existing_task_id=%d role=%s status=%s",
+				issueNumber, existing.ID, existing.Role, existing.CurrentStatus)
 			return map[string]interface{}{
 				"issue":         issue,
 				"workflow":      state,
@@ -149,14 +148,17 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 				"existing_task": existing,
 			}, nil
 		}
-		// Role or assignee changed — supersede the stale task so the new one
-		// reflects the current state and reaches the right agent.
+		// Status, role, or assignee changed — clear stale active tasks so the
+		// new one reflects the current state and reaches the right agent.
 		if existing.Role == pkg.Role {
-			s.debugf("processIssue: issue=%d superseding stale task existing_task_id=%d role=%s old_assignee=%s new_assignee=%s",
-				issueNumber, existing.ID, existing.Role, existing.Assignee, pkg.Assignee)
+			s.debugf("processIssue: issue=%d superseding stale task existing_task_id=%d role=%s old_status=%s new_status=%s old_assignee=%s new_assignee=%s",
+				issueNumber, existing.ID, existing.Role, existing.CurrentStatus, pkg.CurrentStatus, existing.Assignee, pkg.Assignee)
 		} else {
 			s.debugf("processIssue: issue=%d superseding stale task existing_task_id=%d old_role=%s new_role=%s",
 				issueNumber, existing.ID, existing.Role, pkg.Role)
+		}
+		if err := s.store.CompleteDispatchedTask(issueNumber); err != nil {
+			return nil, fmt.Errorf("complete stale dispatched task: %w", err)
 		}
 		if err := s.store.SupersedeQueuedTask(issueNumber); err != nil {
 			return nil, fmt.Errorf("supersede stale task: %w", err)
@@ -195,4 +197,18 @@ func (s *Server) issueProcessLock(issueNumber int) func() {
 	mu := v.(*sync.Mutex)
 	mu.Lock()
 	return mu.Unlock
+}
+
+// clearActiveTasksForIssue clears any in-flight or queued work when an issue reaches
+// a known workflow state that no longer queues work, such as a terminal status.
+func (s *Server) clearActiveTasksForIssue(issueNumber int) error {
+	unlock := s.issueProcessLock(issueNumber)
+	defer unlock()
+	if err := s.store.CompleteDispatchedTask(issueNumber); err != nil {
+		return fmt.Errorf("complete dispatched task for non-queueing state: %w", err)
+	}
+	if err := s.store.SupersedeQueuedTask(issueNumber); err != nil {
+		return fmt.Errorf("supersede queued task for non-queueing state: %w", err)
+	}
+	return nil
 }

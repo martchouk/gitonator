@@ -1003,3 +1003,198 @@ func TestProcessIssueConcurrent_NoDuplicateTasks(t *testing.T) {
 			goroutines, queued, len(tasks))
 	}
 }
+
+func TestProcessIssueWith_DispatchedSameStateDeduplicates(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	const issueNumber = 201
+	issue := Issue{
+		Number:    issueNumber,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "ada-pow"}},
+		Labels:    []GitHubLabel{{Name: "status:po-approval"}},
+	}
+	store := tempStore(t)
+	if _, err := store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       issueNumber,
+		Role:          "po",
+		Assignee:      "ada-pow",
+		CurrentStatus: "status:po-approval",
+	}); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	dispatched, err := store.GetNextWorkPackage("bridge-test", []string{"po"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if dispatched == nil {
+		t.Fatal("expected seeded task to be dispatched")
+	}
+
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     &safeGitHub{issue: issue},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), issueNumber, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); queued {
+		t.Fatal("expected queued=false for same-state dispatched task")
+	}
+	if deduplicated, _ := m["deduplicated"].(bool); !deduplicated {
+		t.Fatal("expected deduplicated=true for same-state dispatched task")
+	}
+
+	tasks, err := store.ListTasksByIssue(issueNumber, 100)
+	if err != nil {
+		t.Fatalf("ListTasksByIssue: %v", err)
+	}
+	var queued, dispatchedCount, completed int
+	for _, task := range tasks {
+		switch task.Status {
+		case "queued":
+			queued++
+		case "dispatched":
+			dispatchedCount++
+		case "completed":
+			completed++
+		}
+	}
+	if queued != 0 || dispatchedCount != 1 || completed != 0 || len(tasks) != 1 {
+		t.Fatalf("expected original dispatched task to remain active without replacement; queued=%d dispatched=%d completed=%d total=%d",
+			queued, dispatchedCount, completed, len(tasks))
+	}
+}
+
+func TestProcessIssueWith_TerminalStateCompletesDispatchedTask(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	const issueNumber = 202
+	issue := Issue{
+		Number: issueNumber,
+		User:   GitHubUser{Login: "creator"},
+		Labels: []GitHubLabel{{Name: "status:done"}},
+	}
+	store := tempStore(t)
+	if _, err := store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       issueNumber,
+		Role:          "po",
+		Assignee:      "ada-pow",
+		CurrentStatus: "status:po-approval",
+	}); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if _, err := store.GetNextWorkPackage("bridge-test", []string{"po"}); err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     &safeGitHub{issue: issue},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), issueNumber, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); queued {
+		t.Fatal("expected queued=false for terminal state")
+	}
+
+	tasks, err := store.ListTasksByIssue(issueNumber, 100)
+	if err != nil {
+		t.Fatalf("ListTasksByIssue: %v", err)
+	}
+	var queued, dispatchedCount, completed int
+	for _, task := range tasks {
+		switch task.Status {
+		case "queued":
+			queued++
+		case "dispatched":
+			dispatchedCount++
+		case "completed":
+			completed++
+		}
+	}
+	if queued != 0 || dispatchedCount != 0 || completed != 1 || len(tasks) != 1 {
+		t.Fatalf("expected terminal state to complete in-flight task without replacement; queued=%d dispatched=%d completed=%d total=%d",
+			queued, dispatchedCount, completed, len(tasks))
+	}
+}
+
+func TestProcessIssueWith_DispatchedStatusChangeQueuesReplacement(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	const issueNumber = 203
+	issue := Issue{
+		Number:    issueNumber,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "bud-dev"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}},
+	}
+	store := tempStore(t)
+	if _, err := store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       issueNumber,
+		Role:          "developer",
+		Assignee:      "bud-dev",
+		CurrentStatus: "status:ready-for-development",
+	}); err != nil {
+		t.Fatalf("seed task: %v", err)
+	}
+	if _, err := store.GetNextWorkPackage("bridge-test", []string{"developer"}); err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+
+	s := &Server{
+		cfg:    Config{Owner: "owner", Repo: "repo"},
+		gh:     &safeGitHub{issue: issue},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	result, err := s.processIssueWith(context.Background(), issueNumber, wd)
+	if err != nil {
+		t.Fatalf("processIssueWith: %v", err)
+	}
+	m, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected result type %T", result)
+	}
+	if queued, _ := m["queued"].(bool); !queued {
+		t.Fatal("expected queued=true after dispatched task status changed")
+	}
+
+	tasks, err := store.ListTasksByIssue(issueNumber, 100)
+	if err != nil {
+		t.Fatalf("ListTasksByIssue: %v", err)
+	}
+	var queued, completed int
+	var queuedStatus string
+	for _, task := range tasks {
+		switch task.Status {
+		case "queued":
+			queued++
+			queuedStatus = task.CurrentStatus
+		case "completed":
+			completed++
+		}
+	}
+	if queued != 1 || completed != 1 || queuedStatus != "status:in-development" {
+		t.Fatalf("expected old task completed and one replacement queued for status:in-development; queued=%d completed=%d queuedStatus=%q total=%d",
+			queued, completed, queuedStatus, len(tasks))
+	}
+}
