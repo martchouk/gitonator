@@ -20,6 +20,7 @@ func (s *Server) runHTTP(ctx context.Context) error {
 
 	// Bridge polling endpoint.
 	mux.HandleFunc("/api/v1/work/next", s.handleWorkNext)
+	mux.HandleFunc("/api/v1/work/fail", s.handleWorkFail)
 
 	// MCP tool inspection and manual override (replaces the removed stdio interface).
 	mux.HandleFunc("/mcp/tools/call", s.handleMCPToolsCall)
@@ -101,6 +102,75 @@ func (s *Server) handleWorkNext(w http.ResponseWriter, r *http.Request) {
 		"ok":   true,
 		"task": pkg, // nil when no work is available
 	})
+}
+
+// handleWorkFail implements POST /api/v1/work/fail.
+// Bridges call it when an agent process exits unsuccessfully, so the task can
+// be made available to another bridge immediately instead of waiting for stale recovery.
+func (s *Server) handleWorkFail(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeAgent(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		TaskID    int64  `json:"task_id"`
+		IssueID   int    `json:"issue_id"`
+		BridgeID  string `json:"bridge_id"`
+		Agent     string `json:"agent"`
+		ExitCode  int    `json:"exit_code"`
+		ErrorText string `json:"error_text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	req.BridgeID = strings.TrimSpace(req.BridgeID)
+	req.Agent = strings.TrimSpace(req.Agent)
+	req.ErrorText = truncateForLog(strings.TrimSpace(req.ErrorText), 4000)
+	if req.TaskID <= 0 {
+		writeError(w, http.StatusBadRequest, "task_id is required")
+		return
+	}
+	if req.BridgeID == "" {
+		writeError(w, http.StatusBadRequest, "bridge_id is required")
+		return
+	}
+	if req.ErrorText == "" {
+		req.ErrorText = "agent failed without error output"
+	}
+
+	requeued, err := s.store.RequeueDispatchedTask(req.TaskID, req.BridgeID, req.ErrorText)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if req.IssueID > 0 {
+		_ = s.store.RecordFailure(req.IssueID, "agent_run", req.ErrorText, map[string]any{
+			"task_id":   req.TaskID,
+			"bridge_id": req.BridgeID,
+			"agent":     req.Agent,
+			"exit_code": req.ExitCode,
+			"requeued":  requeued,
+		})
+	}
+	s.logger.Printf("work failed: bridge=%s task=%d issue=%d agent=%s exit=%d requeued=%t error=%s",
+		req.BridgeID, req.TaskID, req.IssueID, req.Agent, req.ExitCode, requeued, req.ErrorText)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":       true,
+		"requeued": requeued,
+	})
+}
+
+func truncateForLog(s string, max int) string {
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	return s[:max]
 }
 
 // handleMCPToolsCall implements POST /mcp/tools/call for manual inspection and overrides.

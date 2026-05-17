@@ -137,12 +137,22 @@ transitions:
   - id: po_start_definition
     from:
       - status:new
-      - status:story-definition
-    to: status:story-definition
+    to: status:dev-planning
     allowed_roles:
       - po
-    queues_next_role: po
-    description: "PO starts or continues user story / requirement definition."
+    queues_next_role: developer
+    required_outputs:
+      feature_request:
+        - user_story
+        - acceptance_criteria
+      bug:
+        - requirement_from_bug_report
+        - expected_behavior
+        - reproduction_or_observed_behavior
+      change_request:
+        - change_requirement
+        - acceptance_criteria
+    description: "PO defines the issue requirement and publishes it directly to developer planning."
 
   - id: po_reject_before_planning
     from:

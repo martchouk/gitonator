@@ -252,6 +252,39 @@ func TestCompleteDispatchedTaskIsNoopWhenNone(t *testing.T) {
 	}
 }
 
+func TestRequeueDispatchedTask(t *testing.T) {
+	s := tempStore(t)
+	if _, err := s.QueueTask(testPkg(77, "reviewer")); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	dispatched, err := s.GetNextWorkPackage("bridge-1", []string{"reviewer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if dispatched == nil {
+		t.Fatal("expected task to be dispatched")
+	}
+
+	ok, err := s.RequeueDispatchedTask(dispatched.ID, "bridge-1", "agent quota exhausted")
+	if err != nil {
+		t.Fatalf("RequeueDispatchedTask: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected dispatched task to be requeued")
+	}
+
+	pkg, err := s.GetNextWorkPackage("bridge-2", []string{"reviewer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage after requeue: %v", err)
+	}
+	if pkg == nil {
+		t.Fatal("expected requeued task to be claimable by another bridge")
+	}
+	if pkg.IssueID != 77 || pkg.Role != "reviewer" {
+		t.Fatalf("unexpected package after requeue: %+v", pkg)
+	}
+}
+
 func TestHasAnyTask_FalseWhenNone(t *testing.T) {
 	s := tempStore(t)
 	seen, err := s.HasAnyTask(999)

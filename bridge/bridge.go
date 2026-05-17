@@ -55,6 +55,11 @@ type workNextResp struct {
 	Task *WorkPackage `json:"task"`
 }
 
+type AgentResult struct {
+	ExitCode  int
+	ErrorText string
+}
+
 func main() {
 	cfg := Config{
 		BaseURL:     envOr("ORCH_BASE_URL", "https://mcp.singularia.de"),
@@ -154,8 +159,19 @@ func main() {
 			continue
 		}
 
-		if err := runAgent(logger, agent, worktree, *pkg, roster.AgentInstructions); err != nil {
+		result, err := runAgent(logger, agent, worktree, *pkg, roster.AgentInstructions)
+		if err != nil {
 			logger.Printf("agent run error: agent=%s issue=%d err=%v", agent.Name, pkg.IssueID, err)
+		}
+		if err != nil || result.ExitCode != 0 {
+			if result.ErrorText == "" && err != nil {
+				result.ErrorText = err.Error()
+			}
+			if reportErr := reportWorkFailure(client, cfg, *pkg, *agent, result); reportErr != nil {
+				logger.Printf("work/fail report error: agent=%s issue=%d err=%v", agent.Name, pkg.IssueID, reportErr)
+			}
+			time.Sleep(time.Duration(cfg.PollSeconds) * time.Second)
+			continue
 		}
 		// No sleep — poll immediately after agent exits.
 	}
@@ -209,22 +225,22 @@ WORK PACKAGE JSON:
 	return []byte(prompt), nil
 }
 
-func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage, instructions []string) error {
+func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage, instructions []string) (AgentResult, error) {
 	pkgData, err := buildAgentPackageJSON(pkg, instructions)
 	if err != nil {
-		return fmt.Errorf("marshal work package: %w", err)
+		return AgentResult{ExitCode: -1, ErrorText: err.Error()}, fmt.Errorf("marshal work package: %w", err)
 	}
 
 	tmpFile, err := os.CreateTemp("", fmt.Sprintf("work-%d-*.json", pkg.ID))
 	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+		return AgentResult{ExitCode: -1, ErrorText: err.Error()}, fmt.Errorf("create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
 	if _, err := tmpFile.Write(pkgData); err != nil {
 		tmpFile.Close()
-		return fmt.Errorf("write temp file: %w", err)
+		return AgentResult{ExitCode: -1, ErrorText: err.Error()}, fmt.Errorf("write temp file: %w", err)
 	}
 	tmpFile.Close()
 
@@ -232,13 +248,14 @@ func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage
 	cmdLine = strings.ReplaceAll(cmdLine, "{worktree}", shellQuote(worktree))
 	cmdLine = strings.ReplaceAll(cmdLine, "{package_file}", shellQuote(tmpPath))
 
+	output := boundedBuffer{limit: 4000}
 	cmd := exec.Command("sh", "-c", cmdLine)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = io.MultiWriter(os.Stdout, &output)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &output)
 	cmd.Env = buildEnv(agent.Env)
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("spawn agent: %w", err)
+		return AgentResult{ExitCode: -1, ErrorText: err.Error()}, fmt.Errorf("spawn agent: %w", err)
 	}
 
 	logger.Printf("spawned agent=%s role=%s issue=%d pid=%d",
@@ -259,7 +276,14 @@ func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage
 	logger.Printf("agent exited: agent=%s issue=%d exit=%d duration=%s",
 		agent.Name, pkg.IssueID, exitCode, duration)
 
-	return nil
+	result := AgentResult{ExitCode: exitCode}
+	if exitCode != 0 {
+		result.ErrorText = strings.TrimSpace(output.String())
+		if result.ErrorText == "" && waitErr != nil {
+			result.ErrorText = waitErr.Error()
+		}
+	}
+	return result, nil
 }
 
 func fetchNextWork(client *http.Client, cfg Config, roles []string) (*WorkPackage, error) {
@@ -292,6 +316,71 @@ func fetchNextWork(client *http.Client, cfg Config, roles []string) (*WorkPackag
 		return nil, fmt.Errorf("decode work/next response: %w", err)
 	}
 	return out.Task, nil
+}
+
+func reportWorkFailure(client *http.Client, cfg Config, pkg WorkPackage, agent Agent, result AgentResult) error {
+	body, err := json.Marshal(map[string]any{
+		"task_id":    pkg.ID,
+		"issue_id":   pkg.IssueID,
+		"bridge_id":  cfg.BridgeID,
+		"agent":      agent.Name,
+		"exit_code":  result.ExitCode,
+		"error_text": result.ErrorText,
+	})
+	if err != nil {
+		return err
+	}
+
+	u := strings.TrimRight(cfg.BaseURL, "/") + "/api/v1/work/fail"
+	req, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("work/fail failed status=%d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	return nil
+}
+
+type boundedBuffer struct {
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if b.limit <= 0 {
+		return len(p), nil
+	}
+	remaining := b.limit - b.buf.Len()
+	if remaining > 0 {
+		if len(p) > remaining {
+			_, _ = b.buf.Write(p[:remaining])
+			b.truncated = true
+			return len(p), nil
+		}
+		_, _ = b.buf.Write(p)
+		return len(p), nil
+	}
+	b.truncated = true
+	return len(p), nil
+}
+
+func (b *boundedBuffer) String() string {
+	out := b.buf.String()
+	if b.truncated {
+		out += "\n[agent output truncated]"
+	}
+	return out
 }
 
 // resolveRosterEnv resolves $VAR references in each agent's Env map in-place.

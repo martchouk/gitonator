@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -99,6 +101,52 @@ func TestProcessWebhookPayload_LooksUpStoredWorkflowKey(t *testing.T) {
 		t.Fatalf("processWebhookPayload: %v", err)
 	}
 	// If the stored key was used, the issue was processed successfully (no error).
+}
+
+func TestHandleWorkFailRequeuesDispatchedTask(t *testing.T) {
+	store := tempStore(t)
+	if _, err := store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       57,
+		Role:          "reviewer",
+		Assignee:      "mud-rev",
+		CurrentStatus: "status:plan-review",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	dispatched, err := store.GetNextWorkPackage("bigmac", []string{"reviewer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if dispatched == nil {
+		t.Fatal("expected task to be dispatched")
+	}
+
+	s := &Server{
+		cfg:    Config{AgentSharedToken: "secret"},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+	body := strings.NewReader(`{"task_id":` + fmt.Sprint(dispatched.ID) + `,"issue_id":57,"bridge_id":"bigmac","agent":"mud-rev","exit_code":1,"error_text":"You're out of extra usage"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/work/fail", body)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	s.handleWorkFail(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	next, err := store.GetNextWorkPackage("backup", []string{"reviewer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage after fail: %v", err)
+	}
+	if next == nil {
+		t.Fatal("expected failed task to be immediately requeued")
+	}
+	if next.ID != dispatched.ID {
+		t.Fatalf("expected same task id %d to be requeued, got %d", dispatched.ID, next.ID)
+	}
 }
 
 // TestTransitionIssue_CloseIssue verifies that a transition with close_issue:true

@@ -309,6 +309,31 @@ func (s *Store) CompleteDispatchedTask(issueNumber int) error {
 	return err
 }
 
+// RequeueDispatchedTask moves a bridge-claimed dispatched task back to queued
+// after the bridge reports that its agent could not complete the work.
+func (s *Store) RequeueDispatchedTask(taskID int64, bridgeID, errorText string) (bool, error) {
+	res, err := s.db.Exec(
+		`UPDATE tasks
+		 SET status='queued',
+		     bridge_id=NULL,
+		     claimed_at=NULL,
+		     last_message='agent failed; requeued',
+		     error_text=?
+		 WHERE id=?
+		   AND status='dispatched'
+		   AND bridge_id=?`,
+		errorText, taskID, bridgeID,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // RecoverStaleTasks re-queues dispatched tasks that have not been followed by a
 // webhook within staleAfterSeconds. The bridge_id is logged for diagnostics.
 func (s *Store) RecoverStaleTasks(staleAfterSeconds int) (int64, error) {

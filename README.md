@@ -196,7 +196,7 @@ The scripts are idempotent: existing labels are updated with the expected color 
 Typical feature flow using the default `lean` workflow:
 
 1. New issue is created → `status:new` → PO task queued
-2. PO defines the story → `status:story-definition` → PO task queued; PO transitions to `status:dev-planning` when ready
+2. PO defines the story and publishes it to the developer → `status:dev-planning` → Developer task queued
 3. Developer creates a plan → `status:dev-planning` → Developer task queued; transitions to `status:plan-review`
 4. Reviewer approves the plan → `status:ready-for-development` → Developer task queued
 5. Developer implements → `status:in-development` → Developer task queued; transitions to `status:code-review`
@@ -211,6 +211,10 @@ The reviewer may send work back instead of accepting:
 - from `status:code-review` → back to `status:in-development` (code changes requested)
 
 Each loop repeats until the reviewer accepts.
+
+### Bridge failure handling
+
+When an agent process exits unsuccessfully, the bridge reports the failed work package to `POST /api/v1/work/fail`. The server immediately moves the dispatched task back to `queued`, preserving the same task id, so another bridge can claim and retry it. Stale dispatched task recovery remains a fallback for crashed bridges that cannot report failure.
 
 ### Blocked state
 

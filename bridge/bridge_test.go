@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -226,6 +229,45 @@ func TestBuildAgentPackageJSON_DoesNotMutateOriginal(t *testing.T) {
 	}
 	if len(pkg.AgentInstructions) != 0 {
 		t.Errorf("expected original pkg.AgentInstructions to be unmodified, got %v", pkg.AgentInstructions)
+	}
+}
+
+func TestReportWorkFailurePostsToServer(t *testing.T) {
+	var method, path, auth string
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		path = r.URL.Path
+		auth = r.Header.Get("Authorization")
+		raw, _ := io.ReadAll(r.Body)
+		body = string(raw)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"requeued":true}`))
+	}))
+	defer srv.Close()
+
+	cfg := Config{BaseURL: srv.URL, BridgeID: "bigmac", Token: "secret"}
+	pkg := WorkPackage{ID: 6, IssueID: 57, Role: "reviewer"}
+	err := reportWorkFailure(srv.Client(), cfg, pkg, Agent{Name: "mud-rev"}, AgentResult{
+		ExitCode:  1,
+		ErrorText: "You're out of extra usage",
+	})
+	if err != nil {
+		t.Fatalf("reportWorkFailure: %v", err)
+	}
+	if method != http.MethodPost {
+		t.Errorf("method=%s, want POST", method)
+	}
+	if path != "/api/v1/work/fail" {
+		t.Errorf("path=%s, want /api/v1/work/fail", path)
+	}
+	if auth != "Bearer secret" {
+		t.Errorf("auth=%q", auth)
+	}
+	for _, want := range []string{`"task_id":6`, `"issue_id":57`, `"bridge_id":"bigmac"`, `"agent":"mud-rev"`, `"exit_code":1`, "extra usage"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
 	}
 }
 
