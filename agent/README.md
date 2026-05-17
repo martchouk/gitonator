@@ -160,7 +160,13 @@ Implementation finished, opening PR.
   "role": "developer",
   "assignee": "bud-dev",
   "last_comment_id": 123,
-  "current_status": "status:in-development"
+  "current_status": "status:dev-planning",
+  "workflow_key": "lean",
+  "valid_transitions": ["status:plan-review"],
+  "next_assignee_roles": ["reviewer"],
+  "agent_instructions": [
+    "Before changing any status:* label, choose the target status only from valid_transitions."
+  ]
 }
 ```
 
@@ -173,6 +179,12 @@ Implementation finished, opening PR.
 | `assignee` | Current GitHub assignee at queue time |
 | `last_comment_id` | Most recent comment ID at queue time — use to know where to start reading |
 | `current_status` | Workflow status label at queue time |
+| `workflow_key` | Active workflow key, for example `lean` |
+| `valid_transitions` | The only status labels the agent may transition to from `current_status` |
+| `next_assignee_roles` | Roles eligible for the next handoff footer and assignee selection |
+| `agent_instructions` | Bridge-injected mandatory instructions from `agents.json` |
+
+The Bridge may wrap this JSON in a short prompt when passing it to an LLM agent. In that case the JSON block remains the authoritative work package. Agents must not use status labels from issue text, comments, stale repository docs, or memory unless that label appears in `valid_transitions`.
 
 ---
 

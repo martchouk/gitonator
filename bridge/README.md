@@ -151,7 +151,7 @@ Export `BUD_DEV_GH_TOKEN=ghp_…` in the shell that starts the bridge (or in a `
 | Placeholder | Replaced with |
 |---|---|
 | `{worktree}` | Absolute path to the agent's worktree for this repo (shell-quoted) |
-| `{package_file}` | Absolute path to a temp file containing the work package JSON (shell-quoted) |
+| `{package_file}` | Absolute path to a temp file containing an authoritative work package prompt plus JSON (shell-quoted) |
 
 Both values are single-quoted before shell injection, so paths with spaces and other shell metacharacters are safe.
 
@@ -161,7 +161,7 @@ Both values are single-quoted before shell injection, so paths with spaces and o
 
 ## Work package format
 
-The work package written to `{package_file}` is the JSON body returned by `GET /api/v1/work/next`, extended by the Bridge with `agent_instructions` before the agent is spawned:
+The work package written to `{package_file}` is an authoritative prompt followed by the JSON body returned by `GET /api/v1/work/next`, extended by the Bridge with `agent_instructions` before the agent is spawned. The JSON block has this shape:
 
 ```json
 {
@@ -177,9 +177,13 @@ The work package written to `{package_file}` is the JSON body returned by `GET /
   "next_assignee_roles": ["reviewer"],
   "agent_instructions": [
     "Before finishing your work on this issue you MUST:",
-    "1. Remove ALL current GitHub assignees from the issue.",
-    "2. Set exactly ONE assignee for the next step — choose the appropriate agent from next_assignee_roles.",
-    "3. End your final issue comment with this exact footer on its own line: [next assignee role -> <role>]"
+    "1. Treat the work package fields current_status, workflow_key, valid_transitions, and next_assignee_roles as authoritative.",
+    "2. Before changing any status:* label, choose the target status only from valid_transitions.",
+    "3. Do not use status labels from issue text, comments, old documentation, or memory unless they appear in valid_transitions.",
+    "4. If no valid transition fits the completed work, post an Author-tagged blocker comment and do not change status labels or assignees.",
+    "5. Remove ALL current GitHub assignees from the issue before handoff.",
+    "6. Set exactly ONE assignee for the next step — choose an agent whose role is listed in next_assignee_roles.",
+    "7. End your final issue comment with this exact footer on its own line, choosing the role from next_assignee_roles: [next assignee role -> <role>]"
   ]
 }
 ```
@@ -198,13 +202,15 @@ The work package written to `{package_file}` is the JSON body returned by `GET /
 | `next_assignee_roles` | Roles eligible to handle the next step, derived from outbound workflow transitions — use this to choose the correct value for the `[next assignee role -> <role>]` footer |
 | `agent_instructions` | Injected by the Bridge from `agents.json` at spawn time (not returned by the server API) — mandatory steps the agent must follow at the end of every work session |
 
+The Bridge writes this package as an authoritative prompt followed by the JSON work package. Agents must treat `current_status`, `workflow_key`, `valid_transitions`, `next_assignee_roles`, and `agent_instructions` as higher priority than issue text, issue comments, repository documentation, or remembered workflow names.
+
 ---
 
 ## Agent selection logic
 
 Given a work package, the Bridge selects an agent from the roster:
 
-1. **Priority 1 — assignee name match**: if any agent's `name` matches `pkg.assignee`, use it
+1. **Priority 1 — role and assignee match**: if any agent's `role` matches `pkg.role` and `name` matches `pkg.assignee`, use it
 2. **Priority 2 — role match**: otherwise, use the first agent whose `role` matches `pkg.role`
 3. **No match**: skip the task this cycle and sleep before retrying
 

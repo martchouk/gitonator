@@ -16,13 +16,16 @@ import (
 
 // WorkPackage is the work unit received from the orchestrator via AGENTS_CONFIG.
 type WorkPackage struct {
-	ID            int64  `json:"id"`
-	Repo          string `json:"repo"`
-	IssueID       int    `json:"issue_id"`
-	Role          string `json:"role"`
-	Assignee      string `json:"assignee"`
-	LastCommentID int64  `json:"last_comment_id"`
-	CurrentStatus string `json:"current_status"`
+	ID                int64    `json:"id"`
+	Repo              string   `json:"repo"`
+	IssueID           int      `json:"issue_id"`
+	Role              string   `json:"role"`
+	Assignee          string   `json:"assignee"`
+	LastCommentID     int64    `json:"last_comment_id"`
+	CurrentStatus     string   `json:"current_status"`
+	WorkflowKey       string   `json:"workflow_key"`
+	ValidTransitions  []string `json:"valid_transitions"`
+	NextAssigneeRoles []string `json:"next_assignee_roles"`
 }
 
 func main() {
@@ -84,6 +87,9 @@ func showPackage(pkgFile string, pkg WorkPackage) error {
 	fmt.Printf("Assignee:       %s\n", blankIfEmpty(pkg.Assignee))
 	fmt.Printf("Last comment:   %d\n", pkg.LastCommentID)
 	fmt.Printf("Current status: %s\n", blankIfEmpty(pkg.CurrentStatus))
+	fmt.Printf("Workflow:       %s\n", blankIfEmpty(pkg.WorkflowKey))
+	fmt.Printf("Valid next:     %s\n", strings.Join(pkg.ValidTransitions, ", "))
+	fmt.Printf("Next roles:     %s\n", strings.Join(pkg.NextAssigneeRoles, ", "))
 	return nil
 }
 
@@ -238,10 +244,21 @@ func readWorkPackage(path string) (WorkPackage, error) {
 	if err != nil {
 		return pkg, err
 	}
+	raw = extractWorkPackageJSON(raw)
 	if err := json.Unmarshal(raw, &pkg); err != nil {
 		return pkg, err
 	}
 	return pkg, nil
+}
+
+func extractWorkPackageJSON(raw []byte) []byte {
+	const marker = "WORK PACKAGE JSON:"
+	text := string(raw)
+	idx := strings.Index(text, marker)
+	if idx < 0 {
+		return raw
+	}
+	return []byte(strings.TrimSpace(text[idx+len(marker):]))
 }
 
 func sortedKeys(m map[string]string) []string {

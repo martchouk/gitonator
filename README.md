@@ -373,7 +373,7 @@ curl -sS -X POST \
 curl -sS -X POST \
   -H "Authorization: Bearer $AGENT_SHARED_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"validate_transition","arguments":{"issue_number":8,"to_status":"status:ready-for-review","actor":"bud-dev","assignee":"mud-rev"}}' \
+  -d '{"name":"validate_transition","arguments":{"issue_number":8,"to_status":"status:dev-planning","actor":"ada-pow","assignee":"bud-dev","workflow":"lean"}}' \
   "https://mcp.singularia.de/mcp/tools/call" | jq
 ```
 
@@ -383,7 +383,7 @@ curl -sS -X POST \
 curl -sS -X POST \
   -H "Authorization: Bearer $AGENT_SHARED_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"transition_issue","arguments":{"issue_number":8,"status":"status:ready-for-review","assignee":"mud-rev","actor":"bud-dev"}}' \
+  -d '{"name":"transition_issue","arguments":{"issue_number":8,"status":"status:dev-planning","assignee":"bud-dev","actor":"ada-pow","workflow":"lean"}}' \
   "https://mcp.singularia.de/mcp/tools/call" | jq
 ```
 

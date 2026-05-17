@@ -99,31 +99,53 @@ Your orchestrator uses `status:*` labels as the issue state machine.
 
 These labels are **repository-local**, so you must create them in every repository you want to use with the orchestrator.
 
-### Required status labels
+Use the setup scripts from the repository root to create or update the required labels:
 
-Create these labels exactly:
+```bash
+deploy/init_repo_lean.sh owner/repo
+deploy/init_repo_full.sh owner/repo
+```
+
+If `owner/repo` is omitted, the scripts use `GH_REPO` or the current `gh repo view` repository.
+
+### Lean workflow status labels
+
+`deploy/init_repo_lean.sh` creates these status labels:
 
 - `status:new`
-- `status:po-analysis`
-- `status:awaiting-stakeholder-approval`
-- `status:approved-for-dev`
-- `status:in-progress`
-- `status:ready-for-review`
-- `status:review-in-progress`
-- `status:changes-requested`
-- `status:ready-for-po-review`
-- `status:po-review-in-progress`
-- `status:awaiting-final-stakeholder-approval`
+- `status:story-definition`
+- `status:dev-planning`
+- `status:plan-review`
+- `status:ready-for-development`
+- `status:in-development`
+- `status:code-review`
+- `status:po-approval`
 - `status:blocked`
 - `status:done`
 - `status:rejected`
 
-### Recommended optional labels
+### Full workflow status labels
 
-These are useful too:
+`deploy/init_repo_full.sh` creates these status labels:
 
-- `type:feature`
-- `type:bug`
+- `status:new`
+- `status:triage`
+- `status:solution-design`
+- `status:ui-design`
+- `status:ready-for-dev`
+- `status:in-development`
+- `status:architecture-review`
+- `status:ui-review`
+- `status:code-review`
+- `status:testing`
+- `status:po-acceptance`
+- `status:blocked`
+- `status:done`
+- `status:rejected`
+
+The scripts also create the matching `type:*`, `priority:*`, `role:*`, and workflow-specific helper labels.
+
+Do not create or use legacy status labels such as `status:ready-for-review`, `status:ready-for-po-review`, `status:approved-for-dev`, `status:in-progress`, or `status:changes-requested` unless they are explicitly added to the active YAML workflow.
 
 You may also use stakeholder labels like:
 
@@ -270,75 +292,68 @@ After the issue is created and webhook delivered:
 
 ## 6. First workflow test on GitHub
 
-Now test the full comment-driven workflow.
+Now test the lean issue workflow.
 
-### Step A — PO analysis
+### Step A — PO story definition
 
 As `thebesserwisser`, post:
 
 ```text
-[po-analysis]
-type: feature
-stakeholder: alicehuman
-summary: Define user story and acceptance criteria.
-[/po-analysis]
+Author: thebesserwisser
+
+Summary:
+Define user story and acceptance criteria.
+
+[next assignee role -> developer]
 ```
 
 Then transition the issue into:
 
-- `status:awaiting-stakeholder-approval`
+- `status:dev-planning`
 
-### Step B — Stakeholder approval
-
-As the stakeholder user, comment:
-
-```text
-/approve
-```
-
-Expected:
-
-- the issue becomes eligible for developer work
-- next status should be `status:approved-for-dev`
-
-### Step C — Developer handoff
+### Step B — Developer handoff
 
 As `johnvolldepp`, after implementation, comment:
 
 ```text
-[handoff]
-from: johnvolldepp
-to: bobwurst
-state: ready-for-review
-summary: Implementation finished, ready for static review.
-[/handoff]
+Author: johnvolldepp
+
+Implementation finished and ready for review.
+
+[next assignee role -> reviewer]
 ```
 
-### Step D — Reviewer loop
+Then transition the issue into the next status listed in the work package `valid_transitions`, for example `status:code-review`.
+
+### Step C — Reviewer loop
 
 As `bobwurst`, either:
 
 reject back to developer:
 
 ```text
-[handoff]
-from: bobwurst
-to: johnvolldepp
-state: changes-requested
-summary: Please address the review findings.
-[/handoff]
+Author: bobwurst
+
+Please address the review findings.
+
+[next assignee role -> developer]
 ```
 
-or accept to PO:
+or accept to PO approval:
 
 ```text
-[handoff]
-from: bobwurst
-to: thebesserwisser
-state: ready-for-po-review
-summary: Static review accepted.
-[/handoff]
+Author: bobwurst
+
+Review accepted.
+
+[next assignee role -> po]
 ```
+
+When accepting, transition to `status:po-approval`.
+
+### Step D — PO final approval
+
+As `thebesserwisser`, confirm rollout approval, transition to `status:done`, remove assignees, and close the issue.
 
 ---
 

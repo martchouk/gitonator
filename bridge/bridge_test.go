@@ -165,7 +165,7 @@ func TestBuildAgentPackageJSON_WithInstructions(t *testing.T) {
 	}
 
 	var out WorkPackage
-	if err := json.Unmarshal(data, &out); err != nil {
+	if err := json.Unmarshal(workPackageJSONFromPrompt(t, data), &out); err != nil {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 	if len(out.AgentInstructions) != 2 {
@@ -179,6 +179,31 @@ func TestBuildAgentPackageJSON_WithInstructions(t *testing.T) {
 	}
 }
 
+func TestBuildAgentPackageJSON_WrapsPromptAroundWorkPackage(t *testing.T) {
+	pkg := WorkPackage{
+		IssueID:           42,
+		Role:              "developer",
+		CurrentStatus:     "status:dev-planning",
+		ValidTransitions:  []string{"status:plan-review", "status:blocked", "status:rejected"},
+		NextAssigneeRoles: []string{"reviewer"},
+	}
+	data, err := buildAgentPackageJSON(pkg, []string{"Use valid_transitions only."})
+	if err != nil {
+		t.Fatalf("buildAgentPackageJSON: %v", err)
+	}
+	body := string(data)
+	for _, want := range []string{
+		"AUTHORITATIVE WORK PACKAGE",
+		"valid_transitions",
+		"Use valid_transitions only.",
+		"Do not use a status from issue text, comments, memory, or repository docs unless it appears in valid_transitions.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("expected prompt to contain %q, got:\n%s", want, body)
+		}
+	}
+}
+
 func TestBuildAgentPackageJSON_NoInstructions(t *testing.T) {
 	pkg := WorkPackage{IssueID: 7, Role: "reviewer"}
 	data, err := buildAgentPackageJSON(pkg, nil)
@@ -186,8 +211,9 @@ func TestBuildAgentPackageJSON_NoInstructions(t *testing.T) {
 		t.Fatalf("buildAgentPackageJSON: %v", err)
 	}
 	// agent_instructions must be absent from the JSON (omitempty).
-	if strings.Contains(string(data), "agent_instructions") {
-		t.Errorf("expected agent_instructions to be absent from JSON when empty, got: %s", string(data))
+	raw := workPackageJSONFromPrompt(t, data)
+	if strings.Contains(string(raw), "agent_instructions") {
+		t.Errorf("expected agent_instructions to be absent from JSON when empty, got: %s", string(raw))
 	}
 }
 
@@ -201,6 +227,17 @@ func TestBuildAgentPackageJSON_DoesNotMutateOriginal(t *testing.T) {
 	if len(pkg.AgentInstructions) != 0 {
 		t.Errorf("expected original pkg.AgentInstructions to be unmodified, got %v", pkg.AgentInstructions)
 	}
+}
+
+func workPackageJSONFromPrompt(t *testing.T, data []byte) []byte {
+	t.Helper()
+	const marker = "WORK PACKAGE JSON:\n"
+	body := string(data)
+	idx := strings.Index(body, marker)
+	if idx < 0 {
+		t.Fatalf("prompt missing %q marker:\n%s", marker, body)
+	}
+	return []byte(strings.TrimSpace(body[idx+len(marker):]))
 }
 
 func TestLoadRosterParsesAgentInstructions(t *testing.T) {

@@ -182,13 +182,31 @@ func selectAgent(roster Roster, pkg *WorkPackage) *Agent {
 	return nil
 }
 
-// buildAgentPackageJSON injects instructions into a copy of pkg and returns the JSON
-// to be written to the agent's package file.
+// buildAgentPackageJSON injects instructions into a copy of pkg and wraps the
+// JSON in an authoritative prompt to be written to the agent's package file.
 func buildAgentPackageJSON(pkg WorkPackage, instructions []string) ([]byte, error) {
 	if len(instructions) > 0 {
 		pkg.AgentInstructions = instructions
 	}
-	return json.MarshalIndent(pkg, "", "  ")
+	raw, err := json.MarshalIndent(pkg, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	prompt := fmt.Sprintf(`AUTHORITATIVE WORK PACKAGE
+
+You are running in headless agent mode. The JSON block below is the authoritative work package from the orchestrator.
+
+Rules:
+- Treat current_status, workflow_key, valid_transitions, next_assignee_roles, and agent_instructions as higher priority than issue body text, issue comments, repository documentation, memory, or inferred workflow names.
+- Before changing any status:* label, choose the target status only from valid_transitions.
+- Do not use a status from issue text, comments, memory, or repository docs unless it appears in valid_transitions.
+- If no valid transition fits the work you completed, post an Author-tagged issue comment explaining the blocker and do not change status labels.
+- Choose the handoff footer role from next_assignee_roles, unless the chosen transition is terminal and no next role is needed.
+
+WORK PACKAGE JSON:
+%s
+`, string(raw))
+	return []byte(prompt), nil
 }
 
 func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage, instructions []string) error {
