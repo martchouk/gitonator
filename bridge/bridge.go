@@ -14,12 +14,13 @@ import (
 )
 
 type Config struct {
-	BaseURL     string
-	BridgeID    string
-	Token       string
-	AgentsFile  string
-	PollSeconds int
-	LogLevel    string
+	BaseURL              string
+	BridgeID             string
+	Token                string
+	AgentsFile           string
+	PollSeconds          int
+	AgentFailureCooldown time.Duration
+	LogLevel             string
 }
 
 type Agent struct {
@@ -60,14 +61,27 @@ type AgentResult struct {
 	ErrorText string
 }
 
+type failureClass int
+
+const (
+	unknownFailure failureClass = iota
+	transientFailure
+)
+
+type agentCooldowns struct {
+	defaultDuration time.Duration
+	untilByAgent    map[string]time.Time
+}
+
 func main() {
 	cfg := Config{
-		BaseURL:     envOr("ORCH_BASE_URL", "https://mcp.singularia.de"),
-		BridgeID:    strings.TrimSpace(os.Getenv("BRIDGE_ID")),
-		Token:       strings.TrimSpace(os.Getenv("AGENT_SHARED_TOKEN")),
-		AgentsFile:  strings.TrimSpace(os.Getenv("AGENTS_CONFIG")),
-		PollSeconds: envInt("POLL_SECONDS", 5),
-		LogLevel:    strings.ToUpper(strings.TrimSpace(os.Getenv("LOG_LEVEL"))),
+		BaseURL:              envOr("ORCH_BASE_URL", "https://mcp.singularia.de"),
+		BridgeID:             strings.TrimSpace(os.Getenv("BRIDGE_ID")),
+		Token:                strings.TrimSpace(os.Getenv("AGENT_SHARED_TOKEN")),
+		AgentsFile:           strings.TrimSpace(os.Getenv("AGENTS_CONFIG")),
+		PollSeconds:          envInt("POLL_SECONDS", 5),
+		AgentFailureCooldown: time.Duration(envInt("AGENT_FAILURE_COOLDOWN_SECONDS", 300)) * time.Second,
+		LogLevel:             strings.ToUpper(strings.TrimSpace(os.Getenv("LOG_LEVEL"))),
 	}
 
 	if cfg.BridgeID == "" {
@@ -116,6 +130,7 @@ func main() {
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
+	cooldowns := newAgentCooldowns(cfg.AgentFailureCooldown)
 
 	for {
 		if debug {
@@ -140,10 +155,14 @@ func main() {
 				pkg.ID, pkg.IssueID, pkg.Role, pkg.Assignee, pkg.CurrentStatus)
 		}
 
-		agent := selectAgent(roster, pkg)
+		agent := selectAgent(roster, pkg, cooldowns, time.Now())
 		if agent == nil {
-			logger.Printf("warning: no agent for role=%s assignee=%s — skipping", pkg.Role, pkg.Assignee)
-			time.Sleep(time.Duration(cfg.PollSeconds) * time.Second)
+			logger.Printf("warning: no available agent for role=%s assignee=%s — requeueing", pkg.Role, pkg.Assignee)
+			result := AgentResult{ExitCode: -1, ErrorText: "no available bridge agent for role/assignee; matching agent may be cooling down"}
+			if reportErr := reportWorkFailure(client, cfg, *pkg, Agent{}, result); reportErr != nil {
+				logger.Printf("work/fail report error: issue=%d err=%v", pkg.IssueID, reportErr)
+			}
+			time.Sleep(cooldowns.sleepDurationFor(pkg, roster, time.Now(), time.Duration(cfg.PollSeconds)*time.Second))
 			continue
 		}
 
@@ -167,6 +186,12 @@ func main() {
 			if result.ErrorText == "" && err != nil {
 				result.ErrorText = err.Error()
 			}
+			class := classifyAgentFailure(result, err)
+			if class == transientFailure {
+				until := cooldowns.mark(agent.Name, class, result.ErrorText, time.Now())
+				logger.Printf("agent cooling down: agent=%s until=%s reason=%s",
+					agent.Name, until.Format(time.RFC3339), result.ErrorText)
+			}
 			if reportErr := reportWorkFailure(client, cfg, *pkg, *agent, result); reportErr != nil {
 				logger.Printf("work/fail report error: agent=%s issue=%d err=%v", agent.Name, pkg.IssueID, reportErr)
 			}
@@ -182,20 +207,27 @@ func main() {
 // Priority 2: match by role only (any agent capable of the required role).
 // Assignee-only matches across roles are intentionally ignored to prevent a stale
 // assignee from routing work to the wrong agent type.
-func selectAgent(roster Roster, pkg *WorkPackage) *Agent {
+func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *agentCooldowns, now time.Time) *Agent {
 	if pkg.Assignee != "" {
 		for i := range roster.Agents {
 			if roster.Agents[i].Role == pkg.Role && roster.Agents[i].Name == pkg.Assignee {
-				return &roster.Agents[i]
+				if agentAvailable(cooldowns, roster.Agents[i].Name, now) {
+					return &roster.Agents[i]
+				}
+				return nil
 			}
 		}
 	}
 	for i := range roster.Agents {
-		if roster.Agents[i].Role == pkg.Role {
+		if roster.Agents[i].Role == pkg.Role && agentAvailable(cooldowns, roster.Agents[i].Name, now) {
 			return &roster.Agents[i]
 		}
 	}
 	return nil
+}
+
+func agentAvailable(cooldowns *agentCooldowns, name string, now time.Time) bool {
+	return cooldowns == nil || !cooldowns.isCooling(name, now)
 }
 
 // buildAgentPackageJSON injects instructions into a copy of pkg and wraps the
@@ -349,6 +381,102 @@ func reportWorkFailure(client *http.Client, cfg Config, pkg WorkPackage, agent A
 		return fmt.Errorf("work/fail failed status=%d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	return nil
+}
+
+func newAgentCooldowns(defaultDuration time.Duration) *agentCooldowns {
+	if defaultDuration <= 0 {
+		defaultDuration = 5 * time.Minute
+	}
+	return &agentCooldowns{
+		defaultDuration: defaultDuration,
+		untilByAgent:    map[string]time.Time{},
+	}
+}
+
+func (c *agentCooldowns) mark(agent string, class failureClass, reason string, now time.Time) time.Time {
+	if c == nil || agent == "" || class != transientFailure {
+		return time.Time{}
+	}
+	until := now.Add(c.defaultDuration)
+	c.untilByAgent[agent] = until
+	return until
+}
+
+func (c *agentCooldowns) isCooling(agent string, now time.Time) bool {
+	if c == nil {
+		return false
+	}
+	until, ok := c.untilByAgent[agent]
+	if !ok {
+		return false
+	}
+	if now.Before(until) {
+		return true
+	}
+	delete(c.untilByAgent, agent)
+	return false
+}
+
+func (c *agentCooldowns) sleepDurationFor(pkg *WorkPackage, roster Roster, now time.Time, fallback time.Duration) time.Duration {
+	if c == nil {
+		return fallback
+	}
+	var candidates []string
+	if pkg.Assignee != "" {
+		for _, a := range roster.Agents {
+			if a.Role == pkg.Role && a.Name == pkg.Assignee {
+				candidates = append(candidates, a.Name)
+				break
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		for _, a := range roster.Agents {
+			if a.Role == pkg.Role {
+				candidates = append(candidates, a.Name)
+			}
+		}
+	}
+	var max time.Duration
+	for _, name := range candidates {
+		until, ok := c.untilByAgent[name]
+		if !ok || !now.Before(until) {
+			continue
+		}
+		d := until.Sub(now)
+		if d > max {
+			max = d
+		}
+	}
+	if max > 0 {
+		return max
+	}
+	return fallback
+}
+
+func classifyAgentFailure(result AgentResult, err error) failureClass {
+	text := strings.ToLower(result.ErrorText)
+	if err != nil {
+		text += " " + strings.ToLower(err.Error())
+	}
+	for _, marker := range []string{
+		"out of extra usage",
+		"quota",
+		"rate limit",
+		"rate-limit",
+		"too many requests",
+		"temporarily unavailable",
+		"overloaded",
+		"network is unreachable",
+		"connection refused",
+		"connection reset",
+		"timeout",
+	} {
+		if strings.Contains(text, marker) {
+			return transientFailure
+		}
+	}
+	return unknownFailure
 }
 
 type boundedBuffer struct {

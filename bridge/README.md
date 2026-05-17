@@ -62,6 +62,7 @@ go build -o agent-bridge .
 |---|---|---|
 | `ORCH_BASE_URL` | `https://mcp.singularia.de` | Base URL of the central orchestrator |
 | `POLL_SECONDS` | `5` | Seconds to sleep between poll cycles when no work is available |
+| `AGENT_FAILURE_COOLDOWN_SECONDS` | `300` | Seconds to pause an agent after transient failures such as quota exhaustion, rate limits, provider overload, or network errors |
 | `LOG_LEVEL` | _(empty)_ | Set to `DEBUG` for verbose per-cycle logging |
 
 ---
@@ -214,6 +215,8 @@ Given a work package, the Bridge selects an agent from the roster:
 2. **Priority 2 — role match**: otherwise, use the first agent whose `role` matches `pkg.role`
 3. **No match**: skip the task this cycle and sleep before retrying
 
+Agents that recently failed with a transient provider/resource error are put into an in-memory cooldown and skipped until the cooldown expires. If all matching agents are cooling down, the Bridge reports the claimed task back to the server for requeue and sleeps until a matching agent becomes available, preventing tight claim/fail/requeue loops.
+
 ---
 
 ## Log output
@@ -291,6 +294,7 @@ export AGENT_SHARED_TOKEN="supersecret"
 export BRIDGE_ID="home-bridge"
 export AGENTS_CONFIG="$PWD/agents.json"
 export POLL_SECONDS=5
+export AGENT_FAILURE_COOLDOWN_SECONDS=300
 export LOG_LEVEL=DEBUG
 
 # If agents.json uses $VAR references, export those too:

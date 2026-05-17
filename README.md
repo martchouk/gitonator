@@ -64,6 +64,7 @@ The Bridge (`bridge/`) runs on agent machines and:
 - polls `/api/v1/work/next?roles=...&bridge_id=...` for queued tasks
 - atomically claims a task (marks it `dispatched`)
 - spawns the correct agent process via a configurable launch template
+- cools down agents after transient quota/rate-limit/provider failures to avoid tight retry loops
 - polls immediately again after the agent exits
 
 The `agent-task` CLI (`agent/`) is the tool an agent process uses to inspect the work package, open the issue in a browser, post GitHub comments, or post `/approve`.
@@ -226,7 +227,7 @@ The `full` workflow uses one PO intake pass before the first handoff. New issues
 
 ### Bridge failure handling
 
-When an agent process exits unsuccessfully, the bridge reports the failed work package to `POST /api/v1/work/fail`. The server immediately moves the dispatched task back to `queued`, preserving the same task id, so another bridge can claim and retry it. Stale dispatched task recovery remains a fallback for crashed bridges that cannot report failure.
+When an agent process exits unsuccessfully, the bridge reports the failed work package to `POST /api/v1/work/fail`. The server immediately moves the dispatched task back to `queued`, preserving the same task id, so another bridge can claim and retry it. For transient provider/resource failures, such as quota exhaustion or rate limits, the bridge also cools down that agent for `AGENT_FAILURE_COOLDOWN_SECONDS` seconds before selecting it again. Stale dispatched task recovery remains a fallback for crashed bridges that cannot report failure.
 
 ### Blocked state
 

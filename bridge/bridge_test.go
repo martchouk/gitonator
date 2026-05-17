@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestSelectAgentRoleAndAssigneeMatch verifies that when an agent matches both role and
@@ -19,7 +20,7 @@ func TestSelectAgentRoleAndAssigneeMatch(t *testing.T) {
 	}}
 
 	pkg := &WorkPackage{Role: "developer", Assignee: "bud-dev-2"}
-	agent := selectAgent(roster, pkg)
+	agent := selectAgent(roster, pkg, nil, time.Now())
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
@@ -38,7 +39,7 @@ func TestSelectAgentCrossRoleAssigneeIgnored(t *testing.T) {
 
 	// ada-pow is in the roster but as "po", not "developer" — must not be selected.
 	pkg := &WorkPackage{Role: "developer", Assignee: "ada-pow"}
-	agent := selectAgent(roster, pkg)
+	agent := selectAgent(roster, pkg, nil, time.Now())
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
@@ -55,7 +56,7 @@ func TestSelectAgentFallsBackToRole(t *testing.T) {
 
 	// No assignee — falls back to role match.
 	pkg := &WorkPackage{Role: "developer", Assignee: ""}
-	agent := selectAgent(roster, pkg)
+	agent := selectAgent(roster, pkg, nil, time.Now())
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
@@ -70,9 +71,81 @@ func TestSelectAgentReturnsNilWhenNoMatch(t *testing.T) {
 	}}
 
 	pkg := &WorkPackage{Role: "reviewer", Assignee: "nobody"}
-	agent := selectAgent(roster, pkg)
+	agent := selectAgent(roster, pkg, nil, time.Now())
 	if agent != nil {
 		t.Errorf("expected nil, got %s", agent.Name)
+	}
+}
+
+func TestSelectAgentSkipsCoolingAgent(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev-1", Role: "developer"},
+		{Name: "bud-dev-2", Role: "developer"},
+	}}
+	cooldowns := newAgentCooldowns(5 * time.Minute)
+	cooldowns.mark("bud-dev-1", transientFailure, "quota exhausted", time.Unix(100, 0))
+
+	pkg := &WorkPackage{Role: "developer"}
+	agent := selectAgent(roster, pkg, cooldowns, time.Unix(101, 0))
+	if agent == nil {
+		t.Fatal("expected fallback agent, got nil")
+	}
+	if agent.Name != "bud-dev-2" {
+		t.Errorf("expected non-cooling bud-dev-2, got %s", agent.Name)
+	}
+}
+
+func TestSelectAgentReturnsNilWhenAssignedAgentCooling(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "ada-pow", Role: "po"},
+		{Name: "paula-po", Role: "po"},
+	}}
+	cooldowns := newAgentCooldowns(5 * time.Minute)
+	cooldowns.mark("ada-pow", transientFailure, "quota exhausted", time.Unix(100, 0))
+
+	pkg := &WorkPackage{Role: "po", Assignee: "ada-pow"}
+	agent := selectAgent(roster, pkg, cooldowns, time.Unix(101, 0))
+	if agent != nil {
+		t.Fatalf("expected nil for cooling assigned agent, got %s", agent.Name)
+	}
+}
+
+func TestClassifyAgentFailureDetectsQuota(t *testing.T) {
+	result := AgentResult{ExitCode: 1, ErrorText: "You're out of extra usage · resets 2:30pm (Europe/Berlin)"}
+	class := classifyAgentFailure(result, nil)
+	if class != transientFailure {
+		t.Fatalf("class=%v, want transientFailure", class)
+	}
+}
+
+func TestAgentCooldownUsesConfiguredDuration(t *testing.T) {
+	cooldowns := newAgentCooldowns(5 * time.Minute)
+	now := time.Unix(100, 0)
+	until := cooldowns.mark("ada-pow", transientFailure, "quota exhausted", now)
+	if !until.Equal(now.Add(5 * time.Minute)) {
+		t.Fatalf("until=%s, want %s", until, now.Add(5*time.Minute))
+	}
+	if !cooldowns.isCooling("ada-pow", now.Add(4*time.Minute)) {
+		t.Fatal("expected agent to be cooling before cooldown expires")
+	}
+	if cooldowns.isCooling("ada-pow", now.Add(5*time.Minute+time.Second)) {
+		t.Fatal("expected cooldown to expire")
+	}
+}
+
+func TestAgentCooldownSleepDurationUsesMatchingAgentCooldown(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "ada-pow", Role: "po"},
+		{Name: "bud-dev", Role: "developer"},
+	}}
+	cooldowns := newAgentCooldowns(5 * time.Minute)
+	now := time.Unix(100, 0)
+	cooldowns.mark("ada-pow", transientFailure, "quota exhausted", now)
+
+	got := cooldowns.sleepDurationFor(&WorkPackage{Role: "po"}, roster, now.Add(time.Minute), 10*time.Second)
+	want := 4 * time.Minute
+	if got != want {
+		t.Fatalf("sleep duration=%s, want %s", got, want)
 	}
 }
 
