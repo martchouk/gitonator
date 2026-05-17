@@ -399,6 +399,67 @@ func TestFullWorkflow_GuardedTransitionFails(t *testing.T) {
 	}
 }
 
+func TestFullWorkflow_NewIssueRoutesDirectlyToArchitecture(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	issue := Issue{
+		Number: 1,
+		Labels: []GitHubLabel{{Name: "status:new"}, {Name: "needs:architecture"}},
+	}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:solution-design")
+	if !res.Allowed {
+		t.Errorf("expected status:new -> solution-design to pass, violations: %v", res.Violations)
+	}
+}
+
+func TestFullWorkflow_NewIssueRoutesDirectlyToUIDesign(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	issue := Issue{
+		Number: 1,
+		Labels: []GitHubLabel{{Name: "status:new"}, {Name: "area:ui"}},
+	}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:ui-design")
+	if !res.Allowed {
+		t.Errorf("expected status:new -> ui-design to pass, violations: %v", res.Violations)
+	}
+}
+
+func TestFullWorkflow_NewIssueRoutesDirectlyToDeveloper(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	issue := Issue{
+		Number: 1,
+		Labels: []GitHubLabel{{Name: "status:new"}, {Name: "type:bug"}},
+	}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:ready-for-dev")
+	if !res.Allowed {
+		t.Errorf("expected status:new -> ready-for-dev to pass, violations: %v", res.Violations)
+	}
+}
+
+func TestFullWorkflow_NewIssueDoesNotSelfHandoffToTriage(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	issue := Issue{
+		Number: 1,
+		Labels: []GitHubLabel{{Name: "status:new"}},
+	}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:triage")
+	if res.Allowed {
+		t.Error("expected status:new -> triage to be disallowed; PO intake should hand off directly")
+	}
+}
+
+func TestFullWorkflow_NextRolesFromNewExcludesPO(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	roles := wd.NextRolesFrom("status:new")
+	for _, want := range []string{"architect", "uidesigner", "developer"} {
+		if !containsString(roles, want) {
+			t.Errorf("expected NextRolesFrom(status:new) to include %q, got %v", want, roles)
+		}
+	}
+	if containsString(roles, "po") {
+		t.Errorf("expected NextRolesFrom(status:new) not to include po self-handoff, got %v", roles)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // applyTransitionMetadata
 // ---------------------------------------------------------------------------

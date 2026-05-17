@@ -212,6 +212,18 @@ The reviewer may send work back instead of accepting:
 
 Each loop repeats until the reviewer accepts.
 
+### Main lifecycle (full workflow)
+
+The `full` workflow uses one PO intake pass before the first handoff. New issues no longer move from `status:new` to `status:triage` for a second PO task. Instead, PO defines the requirement and routes directly:
+
+- architecture needed → `status:solution-design` → Architect task queued
+- UI/UX needed without architecture first → `status:ui-design` → UI designer task queued
+- small or clear work → `status:ready-for-dev` → Developer task queued
+- invalid or out of scope → `status:rejected`
+- blocked or missing information → `status:blocked` → PO task queued
+
+`status:triage` remains for exception paths such as reopen, blocked re-triage, or clarification requested by architect/UI/developer.
+
 ### Bridge failure handling
 
 When an agent process exits unsuccessfully, the bridge reports the failed work package to `POST /api/v1/work/fail`. The server immediately moves the dispatched task back to `queued`, preserving the same task id, so another bridge can claim and retry it. Stale dispatched task recovery remains a fallback for crashed bridges that cannot report failure.

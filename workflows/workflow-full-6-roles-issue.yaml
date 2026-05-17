@@ -4,8 +4,9 @@ workflow:
   entity: issue
   version: 1
   purpose: >
-    Proposed dead-end-free issue workflow configuration for lean GitHub issue
-    processing across feature requests, bugs, and change requests.
+    Dead-end-free full GitHub issue workflow configuration across feature
+    requests, bugs, and change requests, with PO intake, architecture, UI,
+    development, review, testing, and acceptance roles.
   supported_issue_types:
     - feature_request
     - bug
@@ -39,7 +40,6 @@ issue_types:
   - id: type:feature
     name: feature_request
     default_path:
-      - status:triage
       - status:solution-design
       - status:ready-for-dev
       - status:in-development
@@ -50,7 +50,6 @@ issue_types:
   - id: type:bug
     name: bug
     default_path:
-      - status:triage
       - status:ready-for-dev
       - status:in-development
       - status:code-review
@@ -60,7 +59,6 @@ issue_types:
   - id: type:change-request
     name: change_request
     default_path:
-      - status:triage
       - status:solution-design
       - status:ready-for-dev
       - status:in-development
@@ -138,6 +136,17 @@ guards:
       - area:ui
       - area:ux
       - needs:ui-design
+  has_ui_impact_without_architecture:
+    description: "Issue needs UI/UX design and does not need architectural design first."
+    any_label:
+      - area:ui
+      - area:ux
+      - needs:ui-design
+    all_absent:
+      - needs:architecture
+      - risk:high
+      - type:feature
+      - type:change-request
   needs_architecture:
     description: "Issue needs architectural design or architecture review."
     any_label:
@@ -153,6 +162,8 @@ guards:
       - area:ui
       - area:ux
       - risk:high
+      - type:feature
+      - type:change-request
 
 transition_defaults:
   validation:
@@ -174,16 +185,6 @@ transitions:
     queues_next_role: po
     description: "Apply initial status to an issue without a status label."
 
-  - id: po_start_triage
-    from:
-      - status:new
-      - status:triage
-    to: status:triage
-    allowed_roles:
-      - po
-    queues_next_role: po
-    description: "PO starts or continues triage."
-
   - id: po_reject_at_triage
     from:
       - status:new
@@ -196,6 +197,7 @@ transitions:
 
   - id: po_request_architecture
     from:
+      - status:new
       - status:triage
     to: status:solution-design
     allowed_roles:
@@ -206,7 +208,17 @@ transitions:
 
   - id: po_request_ui_design
     from:
+      - status:new
       - status:triage
+    to: status:ui-design
+    allowed_roles:
+      - po
+    guard: has_ui_impact_without_architecture
+    queues_next_role: uidesigner
+    description: "PO sends an issue directly to UI designer when UI/UX work is needed without architecture first."
+
+  - id: architect_request_ui_design
+    from:
       - status:solution-design
     to: status:ui-design
     allowed_roles:
@@ -214,10 +226,11 @@ transitions:
       - architect
     guard: has_ui_impact
     queues_next_role: uidesigner
-    description: "PO or architect sends issue to UI designer."
+    description: "PO or architect sends an architected issue to UI designer."
 
   - id: po_mark_ready_for_dev
     from:
+      - status:new
       - status:triage
     to: status:ready-for-dev
     allowed_roles:
@@ -482,7 +495,6 @@ transitions:
 canonical_paths:
   feature_with_architecture_and_ui:
     - status:new
-    - status:triage
     - status:solution-design
     - status:ui-design
     - status:ready-for-dev
@@ -494,7 +506,6 @@ canonical_paths:
     - status:done
   simple_bug:
     - status:new
-    - status:triage
     - status:ready-for-dev
     - status:in-development
     - status:code-review
@@ -503,7 +514,6 @@ canonical_paths:
     - status:done
   ui_change:
     - status:new
-    - status:triage
     - status:ui-design
     - status:ready-for-dev
     - status:in-development
