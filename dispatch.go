@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 )
 
 // WorkPackage is the canonical work unit exchanged between orchestrator and bridge.
@@ -116,6 +117,15 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 	pkg.ValidTransitions = wd.ValidTransitionsFrom(state.StatusLabel)
 	pkg.NextAssigneeRoles = wd.NextRolesFrom(state.StatusLabel)
 
+	// Serialise the store critical section per issue to prevent the TOCTOU race where
+	// two concurrent webhook handlers both read the same active task, both supersede it,
+	// and both queue a replacement — producing duplicate active tasks. GitHub API calls
+	// and state computation above are intentionally outside this lock so unrelated I/O
+	// does not block concurrent processing of different issues.
+	// Critical section: CompleteDispatchedTask → FindActiveTaskByIssue → SupersedeQueuedTask → QueueTask.
+	unlock := s.issueProcessLock(issueNumber)
+	defer unlock()
+
 	// Close out any dispatched task for this issue before queuing a new one.
 	// This is a no-op if no dispatched task exists.
 	if err := s.store.CompleteDispatchedTask(issueNumber); err != nil {
@@ -172,4 +182,17 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 
 func (s *Server) computeState(wd *WorkflowDef, issue Issue, comments []IssueComment) WorkflowState {
 	return computeWorkflowStateFromDef(wd, issue, comments)
+}
+
+// issueProcessLock acquires the per-issue mutex for issueNumber and returns an unlock func.
+// It serialises the four-step store critical section
+// (CompleteDispatchedTask → FindActiveTaskByIssue → SupersedeQueuedTask → QueueTask)
+// so that concurrent webhook handlers for the same issue cannot both read a stale task,
+// both supersede it, and both enqueue a replacement. Per-issue granularity means
+// unrelated issues are never blocked by each other.
+func (s *Server) issueProcessLock(issueNumber int) func() {
+	v, _ := s.issueMu.LoadOrStore(issueNumber, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
