@@ -19,6 +19,7 @@ type Config struct {
 	Owner               string
 	Repo                string
 	HTTPAddr            string
+	DashboardAddr       string
 	WebhookSecret       string
 	SQLitePath          string
 	AgentSharedToken    string
@@ -34,6 +35,7 @@ type Server struct {
 	logger    *log.Logger
 	debug     bool
 	workflows *WorkflowRegistry
+	hub       *SSEHub
 	// issueMu stores a *sync.Mutex per issue number. Entries are never evicted because
 	// the number of tracked issues is bounded and deletion would add complexity for
 	// negligible benefit. See issueProcessLock in dispatch.go.
@@ -70,6 +72,8 @@ func main() {
 	}
 	logger.Printf("workflows loaded: keys=%s default=lean", strings.Join(workflows.Keys(), ","))
 
+	hub := newSSEHub()
+
 	server := &Server{
 		cfg: cfg,
 		gh: &GitHubClient{
@@ -82,6 +86,7 @@ func main() {
 		logger:    logger,
 		debug:     debug,
 		workflows: workflows,
+		hub:       hub,
 	}
 
 	logger.Printf("started: repo=%s/%s addr=%s sqlite=%s",
@@ -98,7 +103,6 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	errCh := make(chan error, 1)
 
@@ -107,6 +111,15 @@ func main() {
 	go func() {
 		errCh <- server.runHTTP(ctx)
 	}()
+
+	if server.cfg.DashboardAddr != "" {
+		go func() {
+			if err := server.runDashboard(ctx, hub); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Printf("dashboard server error: %v", err)
+			}
+		}()
+		logger.Printf("dashboard server enabled on %s", server.cfg.DashboardAddr)
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
@@ -133,6 +146,7 @@ func loadConfig() (Config, error) {
 		Owner:               strings.TrimSpace(os.Getenv("GITHUB_OWNER")),
 		Repo:                strings.TrimSpace(os.Getenv("GITHUB_REPO")),
 		HTTPAddr:            defaultString(os.Getenv("HTTP_ADDR"), "127.0.0.1:7777"),
+		DashboardAddr:       strings.TrimSpace(os.Getenv("DASHBOARD_ADDR")),
 		WebhookSecret:       strings.TrimSpace(os.Getenv("WEBHOOK_SECRET")),
 		SQLitePath:          defaultString(os.Getenv("SQLITE_PATH"), "orchestrator.db"),
 		AgentSharedToken:    strings.TrimSpace(os.Getenv("AGENT_SHARED_TOKEN")),

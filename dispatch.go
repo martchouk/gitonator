@@ -173,6 +173,19 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 	s.logger.Printf("task queued: issue=%d role=%s assignee=%s task_id=%d status=%s",
 		issueNumber, pkg.Role, pkg.Assignee, taskID, pkg.CurrentStatus)
 
+	if s.hub != nil {
+		s.hub.Broadcast(SSEEvent{
+			Type: "task_queued",
+			Data: map[string]interface{}{
+				"issue_number": issueNumber,
+				"task_id":      taskID,
+				"role":         pkg.Role,
+				"status":       pkg.CurrentStatus,
+				"assignee":     pkg.Assignee,
+			},
+		})
+	}
+
 	return map[string]interface{}{
 		"issue":    issue,
 		"workflow": state,

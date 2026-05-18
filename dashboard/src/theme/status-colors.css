@@ -1,0 +1,47 @@
+:root {
+  --status-color-intake: var(--md-sys-color-tertiary);
+  --status-color-intake-container: var(--md-sys-color-tertiary-container);
+  --status-color-intake-on-container: var(--md-sys-color-on-tertiary-container);
+
+  --status-color-design: var(--md-sys-color-secondary);
+  --status-color-design-container: var(--md-sys-color-secondary-container);
+  --status-color-design-on-container: var(--md-sys-color-on-secondary-container);
+
+  --status-color-implementation: var(--md-sys-color-primary);
+  --status-color-implementation-container: var(--md-sys-color-primary-container);
+  --status-color-implementation-on-container: var(--md-sys-color-on-primary-container);
+
+  --status-color-review: #6750a4;
+  --status-color-review-container: #eaddff;
+  --status-color-review-on-container: #21005d;
+
+  --status-color-terminal: var(--md-sys-color-on-surface-variant);
+  --status-color-terminal-container: var(--md-sys-color-surface-variant);
+  --status-color-terminal-on-container: var(--md-sys-color-on-surface);
+
+  --status-color-requirements: var(--md-sys-color-secondary);
+  --status-color-requirements-container: var(--md-sys-color-secondary-container);
+  --status-color-requirements-on-container: var(--md-sys-color-on-secondary-container);
+
+  --status-color-planning: var(--md-sys-color-secondary);
+  --status-color-planning-container: var(--md-sys-color-secondary-container);
+  --status-color-planning-on-container: var(--md-sys-color-on-secondary-container);
+
+  --status-color-acceptance: var(--md-sys-color-primary);
+  --status-color-acceptance-container: var(--md-sys-color-primary-container);
+  --status-color-acceptance-on-container: var(--md-sys-color-on-primary-container);
+
+  --status-color-exception: var(--md-sys-color-error);
+  --status-color-exception-container: var(--md-sys-color-error-container);
+  --status-color-exception-on-container: var(--md-sys-color-on-error-container);
+
+  --status-color-blocked: var(--md-sys-color-error);
+  --status-color-blocked-container: var(--md-sys-color-error-container);
+  --status-color-blocked-on-container: var(--md-sys-color-on-error-container);
+}
+
+[data-theme='dark'] {
+  --status-color-review: #d0bcff;
+  --status-color-review-container: #4f378b;
+  --status-color-review-on-container: #eaddff;
+}

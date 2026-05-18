@@ -94,6 +94,19 @@ func (s *Server) handleWorkNext(w http.ResponseWriter, r *http.Request) {
 	if pkg != nil {
 		s.logger.Printf("work claimed: bridge=%s roles=%s task=%d issue=%d role=%s assignee=%s",
 			bridgeID, rolesRaw, pkg.ID, pkg.IssueID, pkg.Role, pkg.Assignee)
+		if s.hub != nil {
+			s.hub.Broadcast(SSEEvent{
+				Type: "task_dispatched",
+				Data: map[string]interface{}{
+					"issue_number": pkg.IssueID,
+					"task_id":      pkg.ID,
+					"role":         pkg.Role,
+					"bridge_id":    bridgeID,
+					"status":       pkg.CurrentStatus,
+					"assignee":     pkg.Assignee,
+				},
+			})
+		}
 	} else {
 		s.debugf("work/next: bridge=%s roles=%s no work available", bridgeID, rolesRaw)
 	}
