@@ -6,6 +6,10 @@ bridge/agent-bridge
 agent/agent-task
 agents.json
 
+# Dashboard frontend build artifacts
+dashboard/node_modules/
+dashboard/dist/
+
 # Agent role files — applied by apply-role.sh (not for version control)
 CLAUDE.md
 GIT_HYGIENE.md
