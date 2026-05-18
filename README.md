@@ -86,7 +86,13 @@ npm install
 npm run build        # produces dashboard/dist/
 ```
 
-Deploy `dashboard/dist/` to a static web server (e.g. nginx on singularia.de). The frontend connects to `http://127.0.0.1:6666` from the browser — this works because both run on the same machine.
+The backend URL is set at build time via `VITE_API_BASE_URL`. For local development the default `http://127.0.0.1:6666` is used. For a public deployment (e.g. singularia.de) set the variable so the browser can reach the backend:
+
+```bash
+VITE_API_BASE_URL=https://singularia.de:6666 npm run build
+```
+
+Deploy `dashboard/dist/` to a static web server (e.g. nginx on singularia.de).
 
 ---
 

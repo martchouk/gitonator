@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -539,6 +540,80 @@ func TestListRecentAudit(t *testing.T) {
 	}
 	if len(audit) != 2 {
 		t.Fatalf("expected 2 entries (limit), got %d", len(audit))
+	}
+}
+
+// --- /api/v1/dashboard/stream ---
+
+// flushRecorder wraps httptest.ResponseRecorder and implements http.Flusher so
+// that handleDashboardStream does not fall back to the "streaming not supported" error path.
+type flushRecorder struct {
+	*httptest.ResponseRecorder
+	flushed int
+}
+
+func (f *flushRecorder) Flush() { f.flushed++ }
+
+func TestHandleDashboardStream_HeadersAndConnectedEvent(t *testing.T) {
+	d := newTestDashboardServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/stream", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+	req = req.WithContext(ctx)
+	cancel() // cancel immediately so the handler returns after sending the first event
+
+	w := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+	d.handleDashboardStream(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Content-Type: want text/event-stream, got %s", ct)
+	}
+	if xab := w.Header().Get("X-Accel-Buffering"); xab != "no" {
+		t.Errorf("X-Accel-Buffering: want no, got %s", xab)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "event: connected") {
+		t.Errorf("expected 'event: connected' in body, got: %s", body)
+	}
+}
+
+func TestHandleDashboardStream_MethodNotAllowed(t *testing.T) {
+	d := newTestDashboardServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/stream", nil)
+	w := httptest.NewRecorder()
+	d.handleDashboardStream(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", w.Code)
+	}
+}
+
+// noFlushWriter is a minimal http.ResponseWriter that does NOT implement http.Flusher.
+type noFlushWriter struct {
+	header http.Header
+	code   int
+	body   strings.Builder
+}
+
+func (n *noFlushWriter) Header() http.Header {
+	if n.header == nil {
+		n.header = make(http.Header)
+	}
+	return n.header
+}
+func (n *noFlushWriter) Write(b []byte) (int, error) { return n.body.Write(b) }
+func (n *noFlushWriter) WriteHeader(code int)        { n.code = code }
+
+func TestHandleDashboardStream_NoFlusherSupport(t *testing.T) {
+	d := newTestDashboardServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/stream", nil)
+	// noFlushWriter does not implement http.Flusher, so the handler must return 500.
+	w := &noFlushWriter{}
+	d.handleDashboardStream(w, req)
+	if w.code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.code)
 	}
 }
 

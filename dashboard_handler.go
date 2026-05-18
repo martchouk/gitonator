@@ -16,12 +16,6 @@ type DashboardServer struct {
 	hub       *SSEHub
 	gh        GitHubAPI
 	logger    interface{ Printf(string, ...interface{}) }
-
-	// issueCache holds the last-fetched GitHub issue list and refresh timestamp.
-	issueCache struct {
-		issues    []GitHubIssueSummary
-		fetchedAt time.Time
-	}
 }
 
 // GitHubIssueSummary is a lightweight representation of a GitHub issue used by
@@ -368,12 +362,7 @@ func (d *DashboardServer) handleWorkflowGet(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	resp := buildWorkflowGraph(wd)
-	b, _ := json.Marshal(resp)
-	setCORSHeaders(w)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(b)
+	writeJSON(w, http.StatusOK, buildWorkflowGraph(wd))
 }
 
 func buildWorkflowGraph(wd *WorkflowDef) WorkflowGraphResponse {
