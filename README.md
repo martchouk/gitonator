@@ -44,6 +44,58 @@ Core features:
 
 ---
 
+## Dashboard
+
+A web dashboard is available at `http://127.0.0.1:6666` (configurable via `DASHBOARD_ADDR`).
+
+Enable it by setting the environment variable:
+
+```bash
+DASHBOARD_ADDR=127.0.0.1:6666
+```
+
+### Dashboard features
+
+| Area | URL | Description |
+|------|-----|-------------|
+| Live View | `/` | Real-time table of active workflows with SSE updates |
+| Workflow List | `/workflows` | Grid of loaded workflow definitions |
+| Workflow Graph | `/workflows/:key` | Interactive directed graph (ReactFlow + dagre layout) |
+| Setup Docs | `/docs/setup` | Step-by-step configuration guide |
+| API Docs | `/docs/api` | Full REST API reference with curl examples |
+
+### Dashboard REST API (port 6666)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/dashboard/issues` | Active issues + task-queue state |
+| `GET` | `/api/v1/dashboard/issues/{number}` | Single issue detail + audit history |
+| `GET` | `/api/v1/dashboard/tasks` | Recent tasks (all statuses) |
+| `GET` | `/api/v1/dashboard/audit` | Recent transition audit entries |
+| `GET` | `/api/v1/dashboard/stream` | SSE live event stream |
+| `GET` | `/api/v1/workflows` | List loaded workflow definitions |
+| `GET` | `/api/v1/workflows/{id}` | Full workflow as graph-ready JSON |
+
+The dashboard API is unauthenticated (v1: trusted internal network).
+
+### Building the frontend
+
+```bash
+cd dashboard
+npm install
+npm run build        # produces dashboard/dist/
+```
+
+The backend URL is set at build time via `VITE_API_BASE_URL`. For local development the default `http://127.0.0.1:6666` is used. For a public deployment (e.g. singularia.de) set the variable so the browser can reach the backend:
+
+```bash
+VITE_API_BASE_URL=https://singularia.de:6666 npm run build
+```
+
+Deploy `dashboard/dist/` to a static web server (e.g. nginx on singularia.de).
+
+---
+
 ## Architecture
 
 ### Central server
@@ -55,6 +107,7 @@ One Go process provides:
 - `/api/v1/work/next` — Bridge polling endpoint
 - `/mcp/tools/call`
 - `/mcp/tools/list`
+- `/api/v1/dashboard/*` — Dashboard API (when `DASHBOARD_ADDR` is set)
 
 ### Local Bridge + agents
 

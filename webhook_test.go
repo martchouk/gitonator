@@ -149,6 +149,87 @@ func TestHandleWorkFailRequeuesDispatchedTask(t *testing.T) {
 	}
 }
 
+func newWorkFailServer(t *testing.T) *Server {
+	t.Helper()
+	return &Server{
+		cfg:    Config{AgentSharedToken: "secret"},
+		store:  tempStore(t),
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+}
+
+func workFailRequest(t *testing.T, method, body string) *http.Request {
+	t.Helper()
+	var bodyReader *strings.Reader
+	if body != "" {
+		bodyReader = strings.NewReader(body)
+	} else {
+		bodyReader = strings.NewReader("")
+	}
+	req := httptest.NewRequest(method, "/api/v1/work/fail", bodyReader)
+	req.Header.Set("Authorization", "Bearer secret")
+	return req
+}
+
+func TestHandleWorkFail_WrongMethod(t *testing.T) {
+	s := newWorkFailServer(t)
+	req := workFailRequest(t, http.MethodGet, "")
+	rec := httptest.NewRecorder()
+	s.handleWorkFail(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleWorkFail_InvalidJSON(t *testing.T) {
+	s := newWorkFailServer(t)
+	req := workFailRequest(t, http.MethodPost, "not-json")
+	rec := httptest.NewRecorder()
+	s.handleWorkFail(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleWorkFail_MissingTaskID(t *testing.T) {
+	s := newWorkFailServer(t)
+	req := workFailRequest(t, http.MethodPost, `{"bridge_id":"b1","error_text":"oops"}`)
+	rec := httptest.NewRecorder()
+	s.handleWorkFail(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleWorkFail_MissingBridgeID(t *testing.T) {
+	s := newWorkFailServer(t)
+	req := workFailRequest(t, http.MethodPost, `{"task_id":1,"error_text":"oops"}`)
+	rec := httptest.NewRecorder()
+	s.handleWorkFail(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleWorkFail_TaskNotFound(t *testing.T) {
+	s := newWorkFailServer(t)
+	// task_id 9999 doesn't exist; RequeueDispatchedTask should return requeued=false without error
+	req := workFailRequest(t, http.MethodPost, `{"task_id":9999,"bridge_id":"b1","error_text":"oops"}`)
+	rec := httptest.NewRecorder()
+	s.handleWorkFail(rec, req)
+	// Not-found is still a 200 — the endpoint returns requeued:false, not an error.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["requeued"] != false {
+		t.Errorf("expected requeued=false, got %v", body["requeued"])
+	}
+}
+
 // TestTransitionIssue_CloseIssue verifies that a transition with close_issue:true
 // triggers a CloseIssue call on the GitHub client (Finding 2, issue #46).
 func TestTransitionIssue_CloseIssue(t *testing.T) {

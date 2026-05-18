@@ -524,24 +524,7 @@ func (s *Store) ListTasksByIssue(issueNumber int, limit int) ([]TaskRow, error) 
 	}
 	defer rows.Close()
 
-	var out []TaskRow
-	for rows.Next() {
-		var t TaskRow
-		if err := rows.Scan(
-			&t.ID, &t.IssueNumber, &t.Repo, &t.Role, &t.Assignee,
-			&t.LastCommentID, &t.CurrentStatus, &t.Status,
-			&t.DedupKey, &t.BridgeID, &t.CreatedAt,
-			&t.ClaimedAt, &t.FinishedAt, &t.HeartbeatAt, &t.ClaimedBy, &t.ErrorText,
-			&t.PayloadRaw,
-		); err != nil {
-			return nil, err
-		}
-		if t.PayloadRaw != "" {
-			t.Payload = json.RawMessage(t.PayloadRaw)
-		}
-		out = append(out, t)
-	}
-	return out, rows.Err()
+	return scanTaskRows(rows)
 }
 
 // SetIssueMetadata inserts or replaces a single metadata key for the given issue.
@@ -614,6 +597,111 @@ func (s *Store) SetIssueWorkflowKey(issueNumber int, key string) error {
 // Returns ("", false, nil) when no key has been stored.
 func (s *Store) GetIssueWorkflowKey(issueNumber int) (string, bool, error) {
 	return s.GetIssueMetadata(issueNumber, "_workflow_key")
+}
+
+// ListActiveTasksAllIssues returns the most recent queued or dispatched task per issue.
+func (s *Store) ListActiveTasksAllIssues(limit int) ([]TaskRow, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := s.db.Query(
+		`SELECT id, issue_number, COALESCE(repo,''), role, COALESCE(assignee,''),
+		        COALESCE(last_comment_id,0), COALESCE(current_status,''), status,
+		        COALESCE(dedup_key,''), bridge_id, created_at,
+		        claimed_at, finished_at, heartbeat_at, claimed_by, error_text,
+		        COALESCE(payload_json,'')
+		 FROM tasks
+		 WHERE status IN ('queued','dispatched')
+		 ORDER BY id DESC
+		 LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanTaskRows(rows)
+}
+
+// ListRecentTasks returns the most recently created tasks across all issues.
+func (s *Store) ListRecentTasks(limit int) ([]TaskRow, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(
+		`SELECT id, issue_number, COALESCE(repo,''), role, COALESCE(assignee,''),
+		        COALESCE(last_comment_id,0), COALESCE(current_status,''), status,
+		        COALESCE(dedup_key,''), bridge_id, created_at,
+		        claimed_at, finished_at, heartbeat_at, claimed_by, error_text,
+		        COALESCE(payload_json,'')
+		 FROM tasks
+		 ORDER BY id DESC
+		 LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanTaskRows(rows)
+}
+
+// ListRecentAudit returns the most recent transition audit entries across all issues.
+func (s *Store) ListRecentAudit(limit int) ([]TransitionAuditRow, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(
+		`SELECT id, issue_number, from_status, to_status, from_assignee, to_assignee,
+		        actor, trigger_type, trigger_comment_id, result, reason,
+		        validation_json, metadata_json, created_at
+		 FROM transition_audit
+		 ORDER BY id DESC
+		 LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TransitionAuditRow
+	for rows.Next() {
+		var r TransitionAuditRow
+		if err := rows.Scan(
+			&r.ID, &r.IssueNumber, &r.FromStatus, &r.ToStatus,
+			&r.FromAssignee, &r.ToAssignee, &r.Actor,
+			&r.TriggerType, &r.TriggerCommentID, &r.Result, &r.Reason,
+			&r.ValidationRaw, &r.MetadataRaw, &r.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		r.Validation = json.RawMessage(r.ValidationRaw)
+		r.Metadata = json.RawMessage(r.MetadataRaw)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func scanTaskRows(rows *sql.Rows) ([]TaskRow, error) {
+	var out []TaskRow
+	for rows.Next() {
+		var t TaskRow
+		if err := rows.Scan(
+			&t.ID, &t.IssueNumber, &t.Repo, &t.Role, &t.Assignee,
+			&t.LastCommentID, &t.CurrentStatus, &t.Status,
+			&t.DedupKey, &t.BridgeID, &t.CreatedAt,
+			&t.ClaimedAt, &t.FinishedAt, &t.HeartbeatAt, &t.ClaimedBy, &t.ErrorText,
+			&t.PayloadRaw,
+		); err != nil {
+			return nil, err
+		}
+		if t.PayloadRaw != "" {
+			t.Payload = json.RawMessage(t.PayloadRaw)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 func marshalOrEmpty(v interface{}) string {
