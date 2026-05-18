@@ -20,7 +20,7 @@ func TestSelectAgentRoleAndAssigneeMatch(t *testing.T) {
 	}}
 
 	pkg := &WorkPackage{Role: "developer", Assignee: "bud-dev-2"}
-	agent := selectAgent(roster, pkg, nil, time.Now())
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
@@ -39,7 +39,7 @@ func TestSelectAgentCrossRoleAssigneeIgnored(t *testing.T) {
 
 	// ada-pow is in the roster but as "po", not "developer" — must not be selected.
 	pkg := &WorkPackage{Role: "developer", Assignee: "ada-pow"}
-	agent := selectAgent(roster, pkg, nil, time.Now())
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
@@ -56,7 +56,7 @@ func TestSelectAgentFallsBackToRole(t *testing.T) {
 
 	// No assignee — falls back to role match.
 	pkg := &WorkPackage{Role: "developer", Assignee: ""}
-	agent := selectAgent(roster, pkg, nil, time.Now())
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
@@ -71,7 +71,7 @@ func TestSelectAgentReturnsNilWhenNoMatch(t *testing.T) {
 	}}
 
 	pkg := &WorkPackage{Role: "reviewer", Assignee: "nobody"}
-	agent := selectAgent(roster, pkg, nil, time.Now())
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
 	if agent != nil {
 		t.Errorf("expected nil, got %s", agent.Name)
 	}
@@ -79,14 +79,14 @@ func TestSelectAgentReturnsNilWhenNoMatch(t *testing.T) {
 
 func TestSelectAgentSkipsCoolingAgent(t *testing.T) {
 	roster := Roster{Agents: []Agent{
-		{Name: "bud-dev-1", Role: "developer"},
-		{Name: "bud-dev-2", Role: "developer"},
+		{Name: "bud-dev-1", Role: "developer", LLMProvider: "anthropic"},
+		{Name: "bud-dev-2", Role: "developer", LLMProvider: "openai"},
 	}}
-	cooldowns := newAgentCooldowns(5 * time.Minute)
-	cooldowns.mark("bud-dev-1", transientFailure, "quota exhausted", time.Unix(100, 0))
+	cooldowns := newProviderCooldowns(5 * time.Minute)
+	cooldowns.mark("anthropic", transientFailure, "quota exhausted", time.Unix(100, 0))
 
 	pkg := &WorkPackage{Role: "developer"}
-	agent := selectAgent(roster, pkg, cooldowns, time.Unix(101, 0))
+	agent := selectAgent(roster, pkg, cooldowns, newAgentSelector(), time.Unix(101, 0))
 	if agent == nil {
 		t.Fatal("expected fallback agent, got nil")
 	}
@@ -95,18 +95,57 @@ func TestSelectAgentSkipsCoolingAgent(t *testing.T) {
 	}
 }
 
-func TestSelectAgentReturnsNilWhenAssignedAgentCooling(t *testing.T) {
+func TestSelectAgentFallsBackWhenAssignedAgentProviderCooling(t *testing.T) {
 	roster := Roster{Agents: []Agent{
-		{Name: "ada-pow", Role: "po"},
-		{Name: "paula-po", Role: "po"},
+		{Name: "ada-pow", Role: "po", LLMProvider: "anthropic"},
+		{Name: "paula-po", Role: "po", LLMProvider: "openai"},
 	}}
-	cooldowns := newAgentCooldowns(5 * time.Minute)
-	cooldowns.mark("ada-pow", transientFailure, "quota exhausted", time.Unix(100, 0))
+	cooldowns := newProviderCooldowns(5 * time.Minute)
+	cooldowns.mark("anthropic", transientFailure, "quota exhausted", time.Unix(100, 0))
 
 	pkg := &WorkPackage{Role: "po", Assignee: "ada-pow"}
-	agent := selectAgent(roster, pkg, cooldowns, time.Unix(101, 0))
-	if agent != nil {
-		t.Fatalf("expected nil for cooling assigned agent, got %s", agent.Name)
+	agent := selectAgent(roster, pkg, cooldowns, newAgentSelector(), time.Unix(101, 0))
+	if agent == nil {
+		t.Fatal("expected fallback agent, got nil")
+	}
+	if agent.Name != "paula-po" {
+		t.Fatalf("expected paula-po fallback, got %s", agent.Name)
+	}
+}
+
+func TestSelectAgentPrefersPastWorkerWhenAvailable(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev", Role: "developer", LLMProvider: "anthropic"},
+		{Name: "elza-dev", Role: "developer", LLMProvider: "openai"},
+	}}
+	pkg := &WorkPackage{Role: "developer", PastWorkers: []string{"bud-dev", "elza-dev"}}
+
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
+	if agent == nil {
+		t.Fatal("expected agent, got nil")
+	}
+	if agent.Name != "elza-dev" {
+		t.Fatalf("expected most recent past worker elza-dev, got %s", agent.Name)
+	}
+}
+
+func TestSelectAgentRoundRobinRolePool(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev", Role: "developer", LLMProvider: "anthropic"},
+		{Name: "elza-dev", Role: "developer", LLMProvider: "openai"},
+		{Name: "mud-rev", Role: "reviewer", LLMProvider: "anthropic"},
+	}}
+	selector := newAgentSelector()
+	pkg := &WorkPackage{Role: "developer"}
+
+	first := selectAgent(roster, pkg, nil, selector, time.Now())
+	second := selectAgent(roster, pkg, nil, selector, time.Now())
+	third := selectAgent(roster, pkg, nil, selector, time.Now())
+	if first == nil || second == nil || third == nil {
+		t.Fatalf("expected three selections, got first=%v second=%v third=%v", first, second, third)
+	}
+	if first.Name != "bud-dev" || second.Name != "elza-dev" || third.Name != "bud-dev" {
+		t.Fatalf("round robin sequence got %s, %s, %s", first.Name, second.Name, third.Name)
 	}
 }
 
@@ -119,28 +158,28 @@ func TestClassifyAgentFailureDetectsQuota(t *testing.T) {
 }
 
 func TestAgentCooldownUsesConfiguredDuration(t *testing.T) {
-	cooldowns := newAgentCooldowns(5 * time.Minute)
+	cooldowns := newProviderCooldowns(5 * time.Minute)
 	now := time.Unix(100, 0)
-	until := cooldowns.mark("ada-pow", transientFailure, "quota exhausted", now)
+	until := cooldowns.mark("anthropic", transientFailure, "quota exhausted", now)
 	if !until.Equal(now.Add(5 * time.Minute)) {
 		t.Fatalf("until=%s, want %s", until, now.Add(5*time.Minute))
 	}
-	if !cooldowns.isCooling("ada-pow", now.Add(4*time.Minute)) {
-		t.Fatal("expected agent to be cooling before cooldown expires")
+	if !cooldowns.isCooling("anthropic", now.Add(4*time.Minute)) {
+		t.Fatal("expected provider to be cooling before cooldown expires")
 	}
-	if cooldowns.isCooling("ada-pow", now.Add(5*time.Minute+time.Second)) {
+	if cooldowns.isCooling("anthropic", now.Add(5*time.Minute+time.Second)) {
 		t.Fatal("expected cooldown to expire")
 	}
 }
 
-func TestAgentCooldownSleepDurationUsesMatchingAgentCooldown(t *testing.T) {
+func TestProviderCooldownSleepDurationUsesMatchingProviderCooldown(t *testing.T) {
 	roster := Roster{Agents: []Agent{
-		{Name: "ada-pow", Role: "po"},
-		{Name: "bud-dev", Role: "developer"},
+		{Name: "ada-pow", Role: "po", LLMProvider: "anthropic"},
+		{Name: "bud-dev", Role: "developer", LLMProvider: "openai"},
 	}}
-	cooldowns := newAgentCooldowns(5 * time.Minute)
+	cooldowns := newProviderCooldowns(5 * time.Minute)
 	now := time.Unix(100, 0)
-	cooldowns.mark("ada-pow", transientFailure, "quota exhausted", now)
+	cooldowns.mark("anthropic", transientFailure, "quota exhausted", now)
 
 	got := cooldowns.sleepDurationFor(&WorkPackage{Role: "po"}, roster, now.Add(time.Minute), 10*time.Second)
 	want := 4 * time.Minute

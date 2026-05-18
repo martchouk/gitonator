@@ -510,6 +510,54 @@ func TestGetNextWorkPackage_NextAssigneeRolesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestGetNextWorkPackageIncludesPastWorkers(t *testing.T) {
+	s := tempStore(t)
+
+	first := testPkg(91, "developer")
+	first.Assignee = "bud-dev"
+	if _, err := s.QueueTask(first); err != nil {
+		t.Fatalf("QueueTask first: %v", err)
+	}
+	if _, err := s.GetNextWorkPackage("bridge-1", []string{"developer"}); err != nil {
+		t.Fatalf("dispatch first: %v", err)
+	}
+	if err := s.CompleteDispatchedTask(91); err != nil {
+		t.Fatalf("complete first: %v", err)
+	}
+
+	second := testPkg(91, "reviewer")
+	second.Assignee = "mud-rev"
+	if _, err := s.QueueTask(second); err != nil {
+		t.Fatalf("QueueTask second: %v", err)
+	}
+	if _, err := s.GetNextWorkPackage("bridge-1", []string{"reviewer"}); err != nil {
+		t.Fatalf("dispatch second: %v", err)
+	}
+	if err := s.CompleteDispatchedTask(91); err != nil {
+		t.Fatalf("complete second: %v", err)
+	}
+
+	current := testPkg(91, "developer")
+	current.Assignee = "elza-dev"
+	if _, err := s.QueueTask(current); err != nil {
+		t.Fatalf("QueueTask current: %v", err)
+	}
+
+	got, err := s.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil || got == nil {
+		t.Fatalf("GetNextWorkPackage: %v %v", got, err)
+	}
+	want := []string{"bud-dev", "mud-rev"}
+	if len(got.PastWorkers) != len(want) {
+		t.Fatalf("PastWorkers: got %v, want %v", got.PastWorkers, want)
+	}
+	for i := range want {
+		if got.PastWorkers[i] != want[i] {
+			t.Fatalf("PastWorkers: got %v, want %v", got.PastWorkers, want)
+		}
+	}
+}
+
 // TestIssueWorkflowKeyPersistAndLookup verifies SetIssueWorkflowKey and
 // GetIssueWorkflowKey round-trip (Finding 3 from issue #46).
 func TestIssueWorkflowKeyPersistAndLookup(t *testing.T) {

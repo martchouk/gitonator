@@ -17,7 +17,7 @@ In a loop:
 
 1. Derives the union of roles from `agents.json`
 2. Calls `GET /api/v1/work/next?roles=<roles>&bridge_id=<id>` (atomically claims the task)
-3. Selects the matching agent (priority: assignee name match, then role match)
+3. Selects the matching agent (explicit assignee, then issue-role affinity, then role round-robin)
 4. Resolves the worktree path for the task's repo from the agent's config
 5. Writes the work package JSON to a temp file
 6. Spawns the agent's `launch_template` command, blocking until exit
@@ -62,7 +62,7 @@ go build -o agent-bridge .
 |---|---|---|
 | `ORCH_BASE_URL` | `https://mcp.singularia.de` | Base URL of the central orchestrator |
 | `POLL_SECONDS` | `5` | Seconds to sleep between poll cycles when no work is available |
-| `AGENT_FAILURE_COOLDOWN_SECONDS` | `300` | Seconds to pause an agent after transient failures such as quota exhaustion, rate limits, provider overload, or network errors |
+| `AGENT_FAILURE_COOLDOWN_SECONDS` | `300` | Seconds to pause a provider after transient failures such as quota exhaustion, rate limits, provider overload, or network errors |
 | `LOG_LEVEL` | _(empty)_ | Set to `DEBUG` for verbose per-cycle logging |
 
 ---
@@ -75,9 +75,9 @@ go build -o agent-bridge .
 {
   "agent_instructions": [
     "Before finishing your work on this issue you MUST:",
-    "1. Remove ALL current GitHub assignees from the issue.",
-    "2. Set exactly ONE assignee for the next step — choose the appropriate agent from next_assignee_roles.",
-    "3. End your final issue comment with this exact footer on its own line: [next assignee role -> <role>]"
+    "1. Treat current_status, workflow_key, valid_transitions, next_assignee_roles, and past_workers as authoritative.",
+    "2. Do not choose or hardcode concrete GitHub usernames for the next step.",
+    "3. End your single final issue comment with this exact footer on its own line: [next assignee role -> <role>]"
   ],
   "agents": [
     {
@@ -115,9 +115,9 @@ go build -o agent-bridge .
 | Field | Description |
 |---|---|
 | `agent_instructions` | _(optional)_ Array of instruction strings injected into every agent's work package JSON at spawn time. Use this to mandate the handoff footer protocol without modifying per-agent prompts. |
-| `name` | GitHub username of the agent — used for priority matching against `assignee` in the work package |
+| `name` | GitHub username of the agent — used for explicit-assignee matching and issue-role affinity |
 | `role` | Role this agent handles (e.g. `developer`, `reviewer`, `po`) |
-| `llm_provider` | Informational; not used by the Bridge itself |
+| `llm_provider` | Provider key used for provider-level cooldown after transient failures |
 | `launch_template` | Shell command template (run via `sh -c`) to start the agent |
 | `env` | _(optional)_ Per-agent environment variables injected into the agent subprocess |
 | `worktrees` | Map of `"owner/repo"` → absolute path to the local working directory for that repo |
@@ -171,6 +171,7 @@ The work package written to `{package_file}` is an authoritative prompt followed
   "issue_id": 8,
   "role": "developer",
   "assignee": "bud-dev",
+  "past_workers": ["bud-dev", "mud-rev"],
   "last_comment_id": 123,
   "current_status": "status:in-development",
   "workflow_key": "lean",
@@ -178,13 +179,13 @@ The work package written to `{package_file}` is an authoritative prompt followed
   "next_assignee_roles": ["reviewer"],
   "agent_instructions": [
     "Before finishing your work on this issue you MUST:",
-    "1. Treat the work package fields current_status, workflow_key, valid_transitions, and next_assignee_roles as authoritative.",
+    "1. Treat the work package fields current_status, workflow_key, valid_transitions, next_assignee_roles, and past_workers as authoritative.",
     "2. Before changing any status:* label, choose the target status only from valid_transitions.",
     "3. Do not use status labels from issue text, comments, old documentation, or memory unless they appear in valid_transitions.",
-    "4. If no valid transition fits the completed work, post an Author-tagged blocker comment and do not change status labels or assignees.",
-    "5. Remove ALL current GitHub assignees from the issue before handoff.",
-    "6. Set exactly ONE assignee for the next step — choose an agent whose role is listed in next_assignee_roles.",
-    "7. End your final issue comment with this exact footer on its own line, choosing the role from next_assignee_roles: [next assignee role -> <role>]"
+    "4. If no valid transition fits the completed work, post one Author-tagged blocker comment and do not change status labels or routing state.",
+    "5. Do not choose or hardcode concrete GitHub usernames for the next step. Route handoff by role only.",
+    "6. Do not add a concrete next assignee unless the work package explicitly instructs you to use that exact user.",
+    "7. End your single final issue comment with this exact footer on its own line, choosing the role from next_assignee_roles: [next assignee role -> <role>]"
   ]
 }
 ```
@@ -196,6 +197,7 @@ The work package written to `{package_file}` is an authoritative prompt followed
 | `issue_id` | GitHub issue number |
 | `role` | Role this task was queued for |
 | `assignee` | Current GitHub assignee at queue time — used for priority agent selection |
+| `past_workers` | Author-tagged workers and completed task assignees already seen on the issue; used for issue-role stickiness |
 | `last_comment_id` | Most recent comment ID at queue time — helps the agent know where to start reading |
 | `current_status` | Workflow status label at queue time |
 | `workflow_key` | Active workflow key (e.g. `lean`) |
@@ -203,7 +205,7 @@ The work package written to `{package_file}` is an authoritative prompt followed
 | `next_assignee_roles` | Roles eligible to handle the next step, derived from outbound workflow transitions — use this to choose the correct value for the `[next assignee role -> <role>]` footer |
 | `agent_instructions` | Injected by the Bridge from `agents.json` at spawn time (not returned by the server API) — mandatory steps the agent must follow at the end of every work session |
 
-The Bridge writes this package as an authoritative prompt followed by the JSON work package. Agents must treat `current_status`, `workflow_key`, `valid_transitions`, `next_assignee_roles`, and `agent_instructions` as higher priority than issue text, issue comments, repository documentation, or remembered workflow names.
+The Bridge writes this package as an authoritative prompt followed by the JSON work package. Agents must treat `current_status`, `workflow_key`, `valid_transitions`, `next_assignee_roles`, `past_workers`, and `agent_instructions` as higher priority than issue text, issue comments, repository documentation, or remembered workflow names.
 
 ---
 
@@ -211,11 +213,12 @@ The Bridge writes this package as an authoritative prompt followed by the JSON w
 
 Given a work package, the Bridge selects an agent from the roster:
 
-1. **Priority 1 — role and assignee match**: if any agent's `role` matches `pkg.role` and `name` matches `pkg.assignee`, use it
-2. **Priority 2 — role match**: otherwise, use the first agent whose `role` matches `pkg.role`
-3. **No match**: skip the task this cycle and sleep before retrying
+1. **Priority 1 — explicit assignee**: if any available agent's `role` matches `pkg.role` and `name` matches `pkg.assignee`, use it
+2. **Priority 2 — issue-role affinity**: otherwise, prefer the most recent available `past_workers` entry whose roster role matches `pkg.role`
+3. **Priority 3 — role round-robin**: otherwise, rotate across available agents whose `role` matches `pkg.role`
+4. **No match**: skip the task this cycle and sleep before retrying
 
-Agents that recently failed with a transient provider/resource error are put into an in-memory cooldown and skipped until the cooldown expires. If all matching agents are cooling down, the Bridge reports the claimed task back to the server for requeue and sleeps until a matching agent becomes available, preventing tight claim/fail/requeue loops.
+Providers that recently failed with a transient resource error are put into an in-memory cooldown and skipped until the cooldown expires. If all matching agents are on cooling providers, the Bridge reports the claimed task back to the server for requeue and sleeps until a matching provider becomes available, preventing tight claim/fail/requeue loops.
 
 ---
 

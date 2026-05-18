@@ -181,6 +181,7 @@ func decideNextActionFromDef(wd *WorkflowDef, cfg Config, issue Issue, state Wor
 
 // nextAssigneeFooterRe matches lines of the form "[next assignee role -> <role>]" with optional whitespace around the arrow.
 var nextAssigneeFooterRe = regexp.MustCompile(`^\[next assignee role\s*->\s*([^\]]+)\]$`)
+var authorHeaderRe = regexp.MustCompile(`^Author:\s*([A-Za-z0-9][A-Za-z0-9-]*)\s*$`)
 
 // parseNextAssigneeRole scans the last comment body for a structured footer
 // "[next assignee role -> <role>]". Returns ("", false) when absent or empty.
@@ -199,6 +200,27 @@ func parseNextAssigneeRole(comments []IssueComment) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func pastWorkersFromComments(comments []IssueComment) []string {
+	seen := map[string]bool{}
+	var workers []string
+	for _, comment := range comments {
+		for _, line := range strings.Split(comment.Body, "\n") {
+			line = strings.TrimSpace(line)
+			m := authorHeaderRe.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			worker := strings.TrimSpace(m[1])
+			if worker != "" && !seen[worker] {
+				seen[worker] = true
+				workers = append(workers, worker)
+			}
+			break
+		}
+	}
+	return workers
 }
 
 // applyTransitionMetadata writes set_metadata values and clears clear_metadata keys

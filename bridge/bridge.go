@@ -43,6 +43,7 @@ type WorkPackage struct {
 	IssueID           int      `json:"issue_id"`
 	Role              string   `json:"role"`
 	Assignee          string   `json:"assignee"`
+	PastWorkers       []string `json:"past_workers,omitempty"`
 	LastCommentID     int64    `json:"last_comment_id"`
 	CurrentStatus     string   `json:"current_status"`
 	WorkflowKey       string   `json:"workflow_key,omitempty"`
@@ -68,9 +69,13 @@ const (
 	transientFailure
 )
 
-type agentCooldowns struct {
+type providerCooldowns struct {
 	defaultDuration time.Duration
-	untilByAgent    map[string]time.Time
+	untilByProvider map[string]time.Time
+}
+
+type agentSelector struct {
+	nextByRole map[string]int
 }
 
 func main() {
@@ -130,7 +135,8 @@ func main() {
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	cooldowns := newAgentCooldowns(cfg.AgentFailureCooldown)
+	cooldowns := newProviderCooldowns(cfg.AgentFailureCooldown)
+	selector := newAgentSelector()
 
 	for {
 		if debug {
@@ -155,7 +161,7 @@ func main() {
 				pkg.ID, pkg.IssueID, pkg.Role, pkg.Assignee, pkg.CurrentStatus)
 		}
 
-		agent := selectAgent(roster, pkg, cooldowns, time.Now())
+		agent := selectAgent(roster, pkg, cooldowns, selector, time.Now())
 		if agent == nil {
 			logger.Printf("warning: no available agent for role=%s assignee=%s — requeueing", pkg.Role, pkg.Assignee)
 			result := AgentResult{ExitCode: -1, ErrorText: "no available bridge agent for role/assignee; matching agent may be cooling down"}
@@ -188,9 +194,9 @@ func main() {
 			}
 			class := classifyAgentFailure(result, err)
 			if class == transientFailure {
-				until := cooldowns.mark(agent.Name, class, result.ErrorText, time.Now())
-				logger.Printf("agent cooling down: agent=%s until=%s reason=%s",
-					agent.Name, until.Format(time.RFC3339), result.ErrorText)
+				until := cooldowns.mark(agent.LLMProvider, class, result.ErrorText, time.Now())
+				logger.Printf("provider cooling down: provider=%s agent=%s until=%s reason=%s",
+					providerKey(agent.LLMProvider), agent.Name, until.Format(time.RFC3339), result.ErrorText)
 			}
 			if reportErr := reportWorkFailure(client, cfg, *pkg, *agent, result); reportErr != nil {
 				logger.Printf("work/fail report error: agent=%s issue=%d err=%v", agent.Name, pkg.IssueID, reportErr)
@@ -203,31 +209,142 @@ func main() {
 }
 
 // selectAgent finds the agent to use for the work package.
-// Priority 1: match by role AND assignee name (preferred agent within the correct role).
-// Priority 2: match by role only (any agent capable of the required role).
+// Priority 1: match by role AND assignee name when that agent's provider is available.
+// Priority 2: match by role and past worker, preferring the most recent matching past worker.
+// Priority 3: round-robin over available agents for the required role.
 // Assignee-only matches across roles are intentionally ignored to prevent a stale
 // assignee from routing work to the wrong agent type.
-func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *agentCooldowns, now time.Time) *Agent {
+func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *providerCooldowns, selector *agentSelector, now time.Time) *Agent {
 	if pkg.Assignee != "" {
 		for i := range roster.Agents {
 			if roster.Agents[i].Role == pkg.Role && roster.Agents[i].Name == pkg.Assignee {
-				if agentAvailable(cooldowns, roster.Agents[i].Name, now) {
+				if agentAvailable(cooldowns, &roster.Agents[i], now) {
 					return &roster.Agents[i]
 				}
-				return nil
+				break
 			}
 		}
 	}
-	for i := range roster.Agents {
-		if roster.Agents[i].Role == pkg.Role && agentAvailable(cooldowns, roster.Agents[i].Name, now) {
-			return &roster.Agents[i]
+
+	for i := len(pkg.PastWorkers) - 1; i >= 0; i-- {
+		worker := strings.TrimSpace(pkg.PastWorkers[i])
+		if worker == "" || worker == pkg.Assignee {
+			continue
+		}
+		for j := range roster.Agents {
+			if roster.Agents[j].Role == pkg.Role && roster.Agents[j].Name == worker && agentAvailable(cooldowns, &roster.Agents[j], now) {
+				return &roster.Agents[j]
+			}
 		}
 	}
-	return nil
+
+	var candidates []*Agent
+	for i := range roster.Agents {
+		if roster.Agents[i].Role == pkg.Role && agentAvailable(cooldowns, &roster.Agents[i], now) {
+			candidates = append(candidates, &roster.Agents[i])
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	if selector == nil {
+		return candidates[0]
+	}
+	idx := selector.next(pkg.Role, len(candidates))
+	return candidates[idx]
 }
 
-func agentAvailable(cooldowns *agentCooldowns, name string, now time.Time) bool {
-	return cooldowns == nil || !cooldowns.isCooling(name, now)
+func newAgentSelector() *agentSelector {
+	return &agentSelector{nextByRole: map[string]int{}}
+}
+
+func (s *agentSelector) next(role string, n int) int {
+	if s == nil || n <= 0 {
+		return 0
+	}
+	idx := s.nextByRole[role] % n
+	s.nextByRole[role] = (idx + 1) % n
+	return idx
+}
+
+func agentAvailable(cooldowns *providerCooldowns, agent *Agent, now time.Time) bool {
+	return cooldowns == nil || agent == nil || !cooldowns.isCooling(agent.LLMProvider, now)
+}
+
+func providerKey(provider string) string {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return "<unknown>"
+	}
+	return provider
+}
+
+func newProviderCooldowns(defaultDuration time.Duration) *providerCooldowns {
+	if defaultDuration <= 0 {
+		defaultDuration = 5 * time.Minute
+	}
+	return &providerCooldowns{
+		defaultDuration: defaultDuration,
+		untilByProvider: map[string]time.Time{},
+	}
+}
+
+func (c *providerCooldowns) mark(provider string, class failureClass, reason string, now time.Time) time.Time {
+	if c == nil || class != transientFailure {
+		return time.Time{}
+	}
+	until := now.Add(c.defaultDuration)
+	c.untilByProvider[providerKey(provider)] = until
+	return until
+}
+
+func (c *providerCooldowns) isCooling(provider string, now time.Time) bool {
+	if c == nil {
+		return false
+	}
+	key := providerKey(provider)
+	until, ok := c.untilByProvider[key]
+	if !ok {
+		return false
+	}
+	if now.Before(until) {
+		return true
+	}
+	delete(c.untilByProvider, key)
+	return false
+}
+
+func (c *providerCooldowns) sleepDurationFor(pkg *WorkPackage, roster Roster, now time.Time, fallback time.Duration) time.Duration {
+	if c == nil {
+		return fallback
+	}
+	seen := map[string]bool{}
+	var providers []string
+	for _, a := range roster.Agents {
+		if a.Role != pkg.Role {
+			continue
+		}
+		key := providerKey(a.LLMProvider)
+		if !seen[key] {
+			seen[key] = true
+			providers = append(providers, key)
+		}
+	}
+	var min time.Duration
+	for _, provider := range providers {
+		until, ok := c.untilByProvider[provider]
+		if !ok || !now.Before(until) {
+			return fallback
+		}
+		d := until.Sub(now)
+		if min == 0 || d < min {
+			min = d
+		}
+	}
+	if min > 0 {
+		return min
+	}
+	return fallback
 }
 
 // buildAgentPackageJSON injects instructions into a copy of pkg and wraps the
@@ -245,11 +362,12 @@ func buildAgentPackageJSON(pkg WorkPackage, instructions []string) ([]byte, erro
 You are running in headless agent mode. The JSON block below is the authoritative work package from the orchestrator.
 
 Rules:
-- Treat current_status, workflow_key, valid_transitions, next_assignee_roles, and agent_instructions as higher priority than issue body text, issue comments, repository documentation, memory, or inferred workflow names.
+- Treat current_status, workflow_key, valid_transitions, next_assignee_roles, past_workers, and agent_instructions as higher priority than issue body text, issue comments, repository documentation, memory, or inferred workflow names.
 - Before changing any status:* label, choose the target status only from valid_transitions.
 - Do not use a status from issue text, comments, memory, or repository docs unless it appears in valid_transitions.
 - If no valid transition fits the work you completed, post an Author-tagged issue comment explaining the blocker and do not change status labels.
 - Choose the handoff footer role from next_assignee_roles, unless the chosen transition is terminal and no next role is needed.
+- Do not choose or hardcode concrete GitHub usernames for the next step; the bridge selects the concrete agent from the role pool.
 
 WORK PACKAGE JSON:
 %s
@@ -381,77 +499,6 @@ func reportWorkFailure(client *http.Client, cfg Config, pkg WorkPackage, agent A
 		return fmt.Errorf("work/fail failed status=%d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	return nil
-}
-
-func newAgentCooldowns(defaultDuration time.Duration) *agentCooldowns {
-	if defaultDuration <= 0 {
-		defaultDuration = 5 * time.Minute
-	}
-	return &agentCooldowns{
-		defaultDuration: defaultDuration,
-		untilByAgent:    map[string]time.Time{},
-	}
-}
-
-func (c *agentCooldowns) mark(agent string, class failureClass, reason string, now time.Time) time.Time {
-	if c == nil || agent == "" || class != transientFailure {
-		return time.Time{}
-	}
-	until := now.Add(c.defaultDuration)
-	c.untilByAgent[agent] = until
-	return until
-}
-
-func (c *agentCooldowns) isCooling(agent string, now time.Time) bool {
-	if c == nil {
-		return false
-	}
-	until, ok := c.untilByAgent[agent]
-	if !ok {
-		return false
-	}
-	if now.Before(until) {
-		return true
-	}
-	delete(c.untilByAgent, agent)
-	return false
-}
-
-func (c *agentCooldowns) sleepDurationFor(pkg *WorkPackage, roster Roster, now time.Time, fallback time.Duration) time.Duration {
-	if c == nil {
-		return fallback
-	}
-	var candidates []string
-	if pkg.Assignee != "" {
-		for _, a := range roster.Agents {
-			if a.Role == pkg.Role && a.Name == pkg.Assignee {
-				candidates = append(candidates, a.Name)
-				break
-			}
-		}
-	}
-	if len(candidates) == 0 {
-		for _, a := range roster.Agents {
-			if a.Role == pkg.Role {
-				candidates = append(candidates, a.Name)
-			}
-		}
-	}
-	var max time.Duration
-	for _, name := range candidates {
-		until, ok := c.untilByAgent[name]
-		if !ok || !now.Before(until) {
-			continue
-		}
-		d := until.Sub(now)
-		if d > max {
-			max = d
-		}
-	}
-	if max > 0 {
-		return max
-	}
-	return fallback
 }
 
 func classifyAgentFailure(result AgentResult, err error) failureClass {

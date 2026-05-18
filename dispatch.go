@@ -13,6 +13,7 @@ type WorkPackage struct {
 	IssueID           int      `json:"issue_id"`
 	Role              string   `json:"role"`
 	Assignee          string   `json:"assignee"`
+	PastWorkers       []string `json:"past_workers,omitempty"`
 	LastCommentID     int64    `json:"last_comment_id"`
 	CurrentStatus     string   `json:"current_status"`
 	WorkflowKey       string   `json:"workflow_key,omitempty"`
@@ -121,6 +122,7 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 	pkg.WorkflowKey = wd.Workflow.Key
 	pkg.ValidTransitions = wd.ValidTransitionsFrom(state.StatusLabel)
 	pkg.NextAssigneeRoles = wd.NextRolesFrom(state.StatusLabel)
+	pkg.PastWorkers = pastWorkersFromComments(comments)
 
 	// Serialise the store critical section per issue to prevent the TOCTOU race where
 	// two concurrent webhook handlers both read the same active task, both supersede it,

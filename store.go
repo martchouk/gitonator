@@ -256,7 +256,13 @@ func (s *Store) GetNextWorkPackage(bridgeID string, roles []string) (*WorkPackag
 		pkg.WorkflowKey = enriched.WorkflowKey
 		pkg.ValidTransitions = enriched.ValidTransitions
 		pkg.NextAssigneeRoles = enriched.NextAssigneeRoles
+		pkg.PastWorkers = enriched.PastWorkers
 	}
+	pastWorkers, err := s.listPastWorkersTx(tx, pkg.IssueID)
+	if err != nil {
+		return nil, err
+	}
+	pkg.PastWorkers = mergeUniqueStrings(pkg.PastWorkers, pastWorkers)
 
 	_, err = tx.Exec(
 		`UPDATE tasks SET status='dispatched', bridge_id=?, claimed_at=?
@@ -271,6 +277,63 @@ func (s *Store) GetNextWorkPackage(bridgeID string, roles []string) (*WorkPackag
 		return nil, err
 	}
 	return &pkg, nil
+}
+
+func (s *Store) ListPastWorkers(issueNumber int) ([]string, error) {
+	return s.listPastWorkers(s.db, issueNumber)
+}
+
+type queryer interface {
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+}
+
+func (s *Store) listPastWorkersTx(tx *sql.Tx, issueNumber int) ([]string, error) {
+	return s.listPastWorkers(tx, issueNumber)
+}
+
+func (s *Store) listPastWorkers(q queryer, issueNumber int) ([]string, error) {
+	rows, err := q.Query(
+		`SELECT assignee
+		 FROM tasks
+		 WHERE issue_number = ?
+		   AND status = 'completed'
+		   AND COALESCE(assignee, '') <> ''
+		 ORDER BY id ASC`,
+		issueNumber,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	seen := map[string]bool{}
+	var workers []string
+	for rows.Next() {
+		var worker string
+		if err := rows.Scan(&worker); err != nil {
+			return nil, err
+		}
+		if !seen[worker] {
+			seen[worker] = true
+			workers = append(workers, worker)
+		}
+	}
+	return workers, rows.Err()
+}
+
+func mergeUniqueStrings(values ...[]string) []string {
+	seen := map[string]bool{}
+	var merged []string
+	for _, group := range values {
+		for _, value := range group {
+			if value == "" || seen[value] {
+				continue
+			}
+			seen[value] = true
+			merged = append(merged, value)
+		}
+	}
+	return merged
 }
 
 // SupersedeQueuedTask cancels any queued (not yet dispatched) task for the given issue.

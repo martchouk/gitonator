@@ -117,7 +117,7 @@ The Bridge (`bridge/`) runs on agent machines and:
 - polls `/api/v1/work/next?roles=...&bridge_id=...` for queued tasks
 - atomically claims a task (marks it `dispatched`)
 - spawns the correct agent process via a configurable launch template
-- cools down agents after transient quota/rate-limit/provider failures to avoid tight retry loops
+- cools down providers after transient quota/rate-limit/provider failures to avoid tight retry loops
 - polls immediately again after the agent exits
 
 The `agent-task` CLI (`agent/`) is the tool an agent process uses to inspect the work package, open the issue in a browser, post GitHub comments, or post `/approve`.
@@ -137,7 +137,7 @@ The orchestrator routes tasks to roles. The Bridge maps roles to agent processes
 
 ### Stakeholder resolution
 
-The current GitHub assignee of the issue is passed to the Bridge in the work package as `assignee`. The Bridge uses this for priority-1 agent matching (see `bridge/README.md`).
+The current GitHub assignee of the issue is passed to the Bridge in the work package as `assignee`. The Bridge first honors that explicit assignee when the matching agent is available, then uses issue-role affinity from `past_workers`, then round-robins over the role pool (see `bridge/README.md`).
 
 The stakeholder identity (used for manual approval lookups) is resolved from a `stakeholder:<username>` label on the issue, falling back to the issue creator. The `find_stakeholder_approvals` MCP tool uses this to locate `/approve` comments. The workflow engine itself does not act on `/approve` comments — approval is a manual MCP tool operation, not an automatic engine trigger.
 
@@ -287,7 +287,7 @@ The `full` workflow uses one PO intake pass before the first handoff. New issues
 
 ### Bridge failure handling
 
-When an agent process exits unsuccessfully, the bridge reports the failed work package to `POST /api/v1/work/fail`. The server immediately moves the dispatched task back to `queued`, preserving the same task id, so another bridge can claim and retry it. For transient provider/resource failures, such as quota exhaustion or rate limits, the bridge also cools down that agent for `AGENT_FAILURE_COOLDOWN_SECONDS` seconds before selecting it again. Stale dispatched task recovery remains a fallback for crashed bridges that cannot report failure.
+When an agent process exits unsuccessfully, the bridge reports the failed work package to `POST /api/v1/work/fail`. The server immediately moves the dispatched task back to `queued`, preserving the same task id, so another bridge can claim and retry it. For transient provider/resource failures, such as quota exhaustion or rate limits, the bridge also cools down that provider for `AGENT_FAILURE_COOLDOWN_SECONDS` seconds before selecting agents from it again. Stale dispatched task recovery remains a fallback for crashed bridges that cannot report failure.
 
 ### Blocked state
 
@@ -325,7 +325,8 @@ A task (work package) contains:
 - `repo` — `owner/repo` string
 - `issue_id` — GitHub issue number
 - `role` — role expected to handle this task
-- `assignee` — current GitHub assignee (used for priority Bridge routing)
+- `assignee` — current GitHub assignee (used for explicit-assignee Bridge routing)
+- `past_workers` — Author-tagged workers and completed task assignees already seen on the issue; used for issue-role stickiness
 - `last_comment_id` — ID of the most recent issue comment at queue time
 - `current_status` — current workflow status label at queue time
 - `workflow_key` — active workflow key (e.g. `lean`)
@@ -345,8 +346,8 @@ queued → dispatched → completed
 ### Deduplication
 
 Tasks are deduplicated by `dedup_key = issue:<N>`. If an active task for the same
-issue already exists **with the same role and same assignee**, a new one is not queued.
-If the role changed or the assignee changed within the same role, the stale task is
+issue already exists **with the same role, same status, and same assignee**, a new one is not queued.
+If the role, status, or assignee changed, the stale task is
 superseded and a fresh task is queued with the updated state.
 
 ### Stale task recovery

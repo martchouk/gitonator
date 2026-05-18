@@ -21,6 +21,7 @@ type WorkPackage struct {
 	IssueID           int      `json:"issue_id"`
 	Role              string   `json:"role"`
 	Assignee          string   `json:"assignee"`
+	PastWorkers       []string `json:"past_workers"`
 	LastCommentID     int64    `json:"last_comment_id"`
 	CurrentStatus     string   `json:"current_status"`
 	WorkflowKey       string   `json:"workflow_key"`

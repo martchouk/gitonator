@@ -679,6 +679,25 @@ func TestParseNextAssigneeRole_EmptyRoleValue(t *testing.T) {
 	}
 }
 
+func TestPastWorkersFromComments(t *testing.T) {
+	comments := []IssueComment{
+		{ID: 1, Body: "Author: bud-dev\n\nImplementation report."},
+		{ID: 2, Body: "No author header here."},
+		{ID: 3, Body: "Author: mud-rev\n\nReview report."},
+		{ID: 4, Body: "Author: bud-dev\n\nFollow-up."},
+	}
+	got := pastWorkersFromComments(comments)
+	want := []string{"bud-dev", "mud-rev"}
+	if len(got) != len(want) {
+		t.Fatalf("pastWorkersFromComments=%v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("pastWorkersFromComments=%v, want %v", got, want)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // HasRole
 // ---------------------------------------------------------------------------

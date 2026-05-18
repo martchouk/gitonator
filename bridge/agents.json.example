@@ -1,13 +1,13 @@
 {
   "agent_instructions": [
     "Before finishing your work on this issue you MUST:",
-    "1. Treat the work package fields current_status, workflow_key, valid_transitions, and next_assignee_roles as authoritative.",
+    "1. Treat the work package fields current_status, workflow_key, valid_transitions, next_assignee_roles, and past_workers as authoritative.",
     "2. Before changing any status:* label, choose the target status only from valid_transitions.",
     "3. Do not use status labels from issue text, comments, old documentation, or memory unless they appear in valid_transitions.",
-    "4. If no valid transition fits the completed work, post an Author-tagged blocker comment and do not change status labels or assignees.",
-    "5. Remove ALL current GitHub assignees from the issue before handoff.",
-    "6. Set exactly ONE assignee for the next step — choose an agent whose role is listed in next_assignee_roles.",
-    "7. End your final issue comment with this exact footer on its own line, choosing the role from next_assignee_roles: [next assignee role -> <role>]"
+    "4. If no valid transition fits the completed work, post one Author-tagged blocker comment and do not change status labels or routing state.",
+    "5. Do not choose or hardcode concrete GitHub usernames for the next step. Route handoff by role only.",
+    "6. Do not add a concrete next assignee unless the work package explicitly instructs you to use that exact user. The bridge chooses an available agent from the role pool.",
+    "7. End your single final issue comment with this exact footer on its own line, choosing the role from next_assignee_roles: [next assignee role -> <role>]"
   ],
   "agents": [
     {
