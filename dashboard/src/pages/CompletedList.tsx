@@ -121,7 +121,7 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
       }}>
-        {workerLogin || task.role || '–'}
+        {workerLogin || task.role || ''}
       </span>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: bridge !== '–' ? 1 : 0.4 }}>
         {bridge}
