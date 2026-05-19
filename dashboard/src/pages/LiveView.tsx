@@ -84,7 +84,7 @@ function RotatingWord() {
       key={idx}
       onAnimationEnd={() => setIdx((i) => (i + 1) % RUNNING_WORDS.length)}
       style={{
-        animation: 'wordCycle 2.8s ease-in-out forwards',
+        animation: 'wordCycle 4s ease-in-out forwards',
         display: 'inline-block',
         fontFamily: 'var(--font-mono)',
         fontSize: '0.6875rem',
