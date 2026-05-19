@@ -274,9 +274,11 @@
   to   { transform: rotate(360deg); }
 }
 
-@keyframes wordFadeIn {
-  from { opacity: 0; transform: translateY(-3px); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes wordCycle {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* ── Page title — JetBrains Mono bold, consistent across all pages ── */

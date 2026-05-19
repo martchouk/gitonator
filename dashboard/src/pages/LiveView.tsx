@@ -56,23 +56,33 @@ interface IssueDetailResponse {
 const RUNNING_WORDS = [
   'hyperspacing…', 'bebopping…',   'determining…', 'hammering…',
   'wibbling…',     'pondering…',   'cogitating…',  'calibrating…',
-  'reticulating…', 'manifolding…', 'quantum-shifting…', 'fluxing…',
-  'spooling…',     'recursing…',   'triangulating…',    'defragging…',
-  'synergising…',  'oscillating…', 'fuzzing…',     'caffeinating…',
+  'reticulating…', 'manifolding…', 'fluxing…',     'spooling…',
+  'recursing…',    'triangulating…','defragging…',  'synergising…',
+  'oscillating…',  'fuzzing…',     'caffeinating…','processing…',
+  'noodling…',     'wobbling…',    'crunching…',   'compiling…',
+];
+
+const WORD_COLORS = [
+  'var(--color-neon-green)',
+  'var(--color-neon-cyan)',
+  'var(--color-neon-amber)',
+  'var(--color-neon-yellow)',
 ];
 
 function RotatingWord() {
   const [idx, setIdx] = useState(() => Math.floor(Math.random() * RUNNING_WORDS.length));
-  useEffect(() => {
-    const id = setInterval(() => setIdx((i) => (i + 1) % RUNNING_WORDS.length), 750);
-    return () => clearInterval(id);
-  }, []);
   return (
     <span
       key={idx}
-      style={{ animation: 'wordFadeIn 0.25s ease-out', display: 'inline-block',
-               fontFamily: 'var(--font-mono)', fontSize: '0.6875rem',
-               fontWeight: 600, color: 'var(--color-neon-green)' }}
+      onAnimationEnd={() => setIdx((i) => (i + 1) % RUNNING_WORDS.length)}
+      style={{
+        animation: 'wordCycle 2.8s ease-in-out forwards',
+        display: 'inline-block',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '0.6875rem',
+        fontWeight: 600,
+        color: WORD_COLORS[idx % WORD_COLORS.length],
+      }}
     >
       {RUNNING_WORDS[idx]}
     </span>
@@ -165,7 +175,7 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       </span>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center' }}>
         {isRunning
-          ? <Clock size={13} style={{ animation: 'spin 0.35s linear infinite', color: 'var(--color-neon-green)', opacity: 0.85 }} />
+          ? <Clock size={13} style={{ animation: 'spin 2.5s linear infinite', color: 'var(--color-neon-green)', opacity: 0.85 }} />
           : duration(task.created_at, task.finished_at)
         }
       </span>
