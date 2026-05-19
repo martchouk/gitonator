@@ -172,8 +172,6 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 9px;
-  border-radius: var(--radius-full);
   font-family: var(--font-mono);
   font-size: 0.625rem;
   font-weight: 700;
@@ -206,31 +204,26 @@
 
 [data-theme='dark'] .sse-indicator--live {
   color: var(--color-neon-green);
-  background: rgba(0, 255, 136, 0.08);
 }
 
 [data-theme='dark'] .sse-indicator--off {
   color: var(--md-sys-color-error);
-  background: rgba(255, 45, 120, 0.07);
-  border: 1px solid rgba(255, 45, 120, 0.2);
 }
 
 [data-theme='dark'] .sse-indicator--connecting {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text-muted);
 }
 
 [data-theme='light'] .sse-indicator--live {
   color: #065f2e;
-  background: rgba(6, 95, 46, 0.07);
 }
 
 [data-theme='light'] .sse-indicator--off {
   color: var(--md-sys-color-error);
-  border: 1px solid rgba(200, 0, 0, 0.2);
 }
 
 [data-theme='light'] .sse-indicator--connecting {
-  border: 1px solid rgba(22, 163, 74, 0.15);
+  color: var(--color-text-muted);
 }
 
 /* ── Theme toggle button ────────────────────────────────────── */
