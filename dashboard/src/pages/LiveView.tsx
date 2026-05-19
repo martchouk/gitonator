@@ -66,7 +66,7 @@ export function LiveView() {
         <h2
           style={{
             margin: 0,
-            fontFamily: 'Roboto, sans-serif',
+            fontFamily: 'var(--font-sans)',
             fontSize: '1.75rem',
             fontWeight: 400,
           }}
@@ -198,7 +198,7 @@ export function LiveView() {
               gridTemplateColumns: '72px 1fr 180px 120px 120px 96px',
               padding: '12px 16px',
               background: 'var(--md-sys-color-surface-variant)',
-              fontFamily: 'Roboto, sans-serif',
+              fontFamily: 'var(--font-sans)',
               fontSize: '0.875rem',
               fontWeight: 500,
               letterSpacing: '0.00625rem',
@@ -253,7 +253,7 @@ export function LiveView() {
                     rel="noreferrer"
                     onClick={(e) => e.stopPropagation()}
                     style={{
-                      fontFamily: "'Roboto Mono', monospace",
+                      fontFamily: 'var(--font-mono)',
                       fontSize: '0.875rem',
                       color: 'var(--md-sys-color-primary)',
                       textDecoration: 'none',

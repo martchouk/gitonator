@@ -60,7 +60,7 @@ export function WorkflowNode({ data, selected }: { data: WorkflowNodeData; selec
       {/* Status label */}
       <div
         style={{
-          fontFamily: 'Roboto, sans-serif',
+          fontFamily: 'var(--font-sans)',
           fontSize: '0.875rem',
           fontWeight: 500,
           color: 'var(--md-sys-color-on-surface)',

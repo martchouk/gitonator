@@ -219,7 +219,7 @@ export function WorkflowGraph() {
               </SidebarDetail>
             )}
             <SidebarDetail label="Category">
-              <code style={{ fontFamily: "'Roboto Mono', monospace", fontSize: '0.875rem' }}>
+              <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.875rem' }}>
                 {selectedNode.category}
               </code>
             </SidebarDetail>

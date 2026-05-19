@@ -143,7 +143,7 @@ npm run build
 
       <style>{`
         .inline-code {
-          font-family: 'Roboto Mono', monospace;
+          font-family: var(--font-mono);
           font-size: 0.85em;
           background: var(--md-sys-color-surface-variant);
           padding: 1px 6px;
@@ -159,7 +159,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <section style={{ marginBottom: 'var(--spacing-xl)' }}>
       <h3
         style={{
-          fontFamily: 'Roboto, sans-serif',
+          fontFamily: 'var(--font-sans)',
           fontSize: '1.375rem',
           fontWeight: 500,
           marginBottom: 'var(--spacing-md)',

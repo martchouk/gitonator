@@ -33,7 +33,7 @@ export function WorkflowList() {
       {data && workflows.length === 0 && (
         <p style={{ color: 'var(--md-sys-color-on-surface-variant)' }}>
           No workflow definitions found. Ensure{' '}
-          <code style={{ fontFamily: "'Roboto Mono', monospace" }}>workflows/*.yaml</code> files are
+          <code style={{ fontFamily: 'var(--font-mono)' }}>workflows/*.yaml</code> files are
           present and the server is running.
         </p>
       )}
@@ -74,7 +74,7 @@ export function WorkflowList() {
                 color: 'var(--md-sys-color-on-surface-variant)',
               }}
             >
-              key: <code style={{ fontFamily: "'Roboto Mono', monospace" }}>{wf.key}</code>
+              key: <code style={{ fontFamily: 'var(--font-mono)' }}>{wf.key}</code>
             </div>
             <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
               <Chip label={`${wf.statusCount} statuses`} />

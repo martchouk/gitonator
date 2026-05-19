@@ -28,7 +28,7 @@ export function CodeBlock({ code }: Props) {
       <pre
         style={{
           margin: 0,
-          fontFamily: "'Roboto Mono', monospace",
+          fontFamily: 'var(--font-mono)',
           fontSize: '0.875rem',
           lineHeight: 1.5,
           whiteSpace: 'pre-wrap',

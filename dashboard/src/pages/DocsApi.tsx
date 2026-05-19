@@ -158,7 +158,7 @@ export function DocsApi() {
       <h2 style={{ fontWeight: 400, marginBottom: 'var(--spacing-sm)' }}>API Reference</h2>
       <p style={{ color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 'var(--spacing-xl)' }}>
         All endpoints are unauthenticated (v1: trusted internal network). Base URL:{' '}
-        <code style={{ fontFamily: "'Roboto Mono', monospace" }}>{BASE}</code>
+        <code style={{ fontFamily: 'var(--font-mono)' }}>{BASE}</code>
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
@@ -192,7 +192,7 @@ export function DocsApi() {
               >
                 <span
                   style={{
-                    fontFamily: 'Roboto, sans-serif',
+                    fontFamily: 'var(--font-sans)',
                     fontWeight: 700,
                     fontSize: '0.75rem',
                     color: methodColors[ep.method] ?? 'var(--md-sys-color-primary)',
@@ -203,7 +203,7 @@ export function DocsApi() {
                 </span>
                 <code
                   style={{
-                    fontFamily: "'Roboto Mono', monospace",
+                    fontFamily: 'var(--font-mono)',
                     fontSize: '0.875rem',
                     color: 'var(--md-sys-color-on-surface)',
                     flex: 1,
