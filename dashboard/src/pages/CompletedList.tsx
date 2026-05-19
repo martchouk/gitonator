@@ -86,7 +86,7 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       style={{
         display: 'grid',
         gridTemplateColumns: SUB_COLS,
-        padding: '7px 16px',
+        padding: '11px 16px',
         alignItems: 'center',
         borderBottom: '1px solid var(--md-sys-color-outline-variant)',
         fontSize: '0.8125rem',
@@ -98,7 +98,7 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
         {task.role || '–'}
       </span>
-      <span style={{ overflow: 'hidden' }}>
+      <span>
         {task.current_status
           ? <StatusChip status={task.current_status} />
           : <span style={{ color: 'var(--color-text-muted)' }}>–</span>
