@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, RotateCcw, Loader2, ClipboardList } from 'lucide-react';
+import { Zap, RotateCcw, Loader2, ClipboardList, ChevronDown, ChevronRight } from 'lucide-react';
 import useSWR from 'swr';
-import type { Issue } from '../api/types';
+import type { Issue, TaskRow } from '../api/types';
 import { get } from '../api/client';
 import { StatusChip } from '../components/StatusChip';
 import { useSSE } from '../hooks/useSSE';
@@ -18,8 +18,167 @@ function relativeTime(ts: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function duration(
+  created: string,
+  finished: { String: string; Valid: boolean } | null | undefined
+): string {
+  if (!finished?.Valid || !finished.String) return '–';
+  const ms = new Date(finished.String).getTime() - new Date(created).getTime();
+  if (ms < 0) return '–';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+function nullStr(f: { String: string; Valid: boolean } | null | undefined): string {
+  if (!f) return '–';
+  return f.Valid && f.String ? f.String : '–';
+}
+
+function taskOutcomeColor(status: string): string {
+  if (status === 'completed') return 'var(--color-neon-green)';
+  if (status === 'failed') return 'var(--color-neon-magenta)';
+  if (status === 'superseded') return 'var(--color-text-muted)';
+  return 'var(--color-text-muted)';
+}
+
 interface IssueResponse {
   issues: Issue[];
+}
+
+interface IssueDetailResponse {
+  number: number;
+  tasks: TaskRow[];
+}
+
+// 8 columns: step | role | status | outcome | assigned to | bridge | created | duration
+const SUB_COLS = '40px 90px 1fr 100px 120px 110px 78px 74px';
+
+function SubTableHeader() {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: SUB_COLS,
+        padding: '6px 16px',
+        background: 'var(--md-sys-color-surface)',
+        fontSize: '0.625rem',
+        fontWeight: 700,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        color: 'var(--color-text-muted)',
+        borderBottom: '1px solid var(--md-sys-color-outline-variant)',
+      }}
+    >
+      <span>#</span>
+      <span>Role</span>
+      <span>Status at Dispatch</span>
+      <span>Outcome</span>
+      <span>Assigned to</span>
+      <span>Bridge ID</span>
+      <span>Created</span>
+      <span>Duration</span>
+    </div>
+  );
+}
+
+function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
+  const isRunning = task.status === 'queued' || task.status === 'dispatched';
+  const bridge = nullStr(task.bridge_id);
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: SUB_COLS,
+        padding: '11px 16px',
+        alignItems: 'center',
+        borderBottom: '1px solid var(--md-sys-color-outline-variant)',
+        fontSize: '0.8125rem',
+      }}
+    >
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: isRunning ? 'var(--color-neon-green)' : 'var(--color-neon-amber)', display: 'flex', alignItems: 'center' }}>
+        {isRunning
+          ? <Loader2 size={13} style={{ animation: 'spin 1.2s linear infinite' }} />
+          : step
+        }
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
+        {task.role || '–'}
+      </span>
+      <span>
+        {task.current_status
+          ? <StatusChip status={task.current_status} />
+          : <span style={{ color: 'var(--color-text-muted)' }}>–</span>
+        }
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: isRunning ? 'var(--color-neon-green)' : taskOutcomeColor(task.status) }}>
+        {isRunning ? 'running…' : task.status}
+      </span>
+      <span style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: '0.6875rem',
+        color: task.assignee ? 'var(--color-neon-cyan)' : 'var(--color-neon-yellow)',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>
+        {task.assignee || task.role || '–'}
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: bridge !== '–' ? 1 : 0.4 }}>
+        {bridge}
+      </span>
+      <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+        {relativeTime(task.created_at)}
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+        {duration(task.created_at, task.finished_at)}
+      </span>
+    </div>
+  );
+}
+
+function ExpandedIssueDetail({ issueNumber }: { issueNumber: number }) {
+  const { data, error, mutate } = useSWR<IssueDetailResponse>(
+    `/api/v1/dashboard/issues/${issueNumber}`,
+    (url: string) => get<IssueDetailResponse>(url),
+    { refreshInterval: 10000 }
+  );
+
+  if (error) {
+    return <div style={{ padding: '8px 16px' }}><ErrorBanner onRetry={() => void mutate()} /></div>;
+  }
+
+  if (!data) {
+    return (
+      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+        <Loader2 size={16} style={{ animation: 'spin 1.2s linear infinite' }} />
+        Loading tasks…
+      </div>
+    );
+  }
+
+  // Tasks come DESC from API; reverse to chronological (step 1, 2, 3…)
+  const tasks = [...data.tasks].reverse();
+
+  if (tasks.length === 0) {
+    return (
+      <div style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+        No task records found.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SubTableHeader />
+      {tasks.map((task, idx) => (
+        <SubTaskRow key={task.id} task={task} step={idx + 1} />
+      ))}
+    </div>
+  );
 }
 
 export function LiveView() {
@@ -56,10 +215,8 @@ export function LiveView() {
     <div>
       <h2 className="page-title">Live View</h2>
 
-      {/* Error state */}
       {error && <ErrorBanner onRetry={() => void mutate()} />}
 
-      {/* Empty state */}
       {!error && !data && (
         <div
           style={{
@@ -97,7 +254,6 @@ export function LiveView() {
         </div>
       )}
 
-      {/* Issues table */}
       {issues.length > 0 && (
         <div
           style={{
@@ -110,18 +266,20 @@ export function LiveView() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '72px 1fr 180px 120px 120px 96px',
-              padding: '12px 16px',
+              gridTemplateColumns: '28px 80px 1fr 160px 160px 80px 110px',
+              padding: '10px 16px',
               background: 'var(--md-sys-color-surface-variant)',
-              fontFamily: 'var(--font-sans)',
-              fontSize: '0.875rem',
-              fontWeight: 500,
-              letterSpacing: '0.00625rem',
-              color: 'var(--md-sys-color-on-surface-variant)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.6875rem',
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: 'var(--color-text-muted)',
               borderBottom: '1px solid var(--md-sys-color-outline-variant)',
             }}
           >
-            <span>#</span>
+            <span />
+            <span>Issue #</span>
             <span>Title</span>
             <span>Status</span>
             <span>Assignee</span>
@@ -129,7 +287,6 @@ export function LiveView() {
             <span>Updated</span>
           </div>
 
-          {/* Rows */}
           {issues.map((issue) => {
             const isExpanded = expandedRow === issue.number;
             const isPulsing = pulsingIssues.has(issue.number);
@@ -138,20 +295,21 @@ export function LiveView() {
                 <div
                   role="row"
                   tabIndex={0}
-                  onClick={() =>
-                    setExpandedRow(isExpanded ? null : issue.number)
-                  }
+                  onClick={() => setExpandedRow(isExpanded ? null : issue.number)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ')
                       setExpandedRow(isExpanded ? null : issue.number);
                   }}
+                  className="live-row"
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '72px 1fr 180px 120px 120px 96px',
-                    padding: '12px 16px',
+                    gridTemplateColumns: '28px 80px 1fr 160px 160px 80px 110px',
+                    padding: '11px 16px',
                     alignItems: 'center',
                     cursor: 'pointer',
-                    borderBottom: '1px solid var(--md-sys-color-outline-variant)',
+                    borderBottom: isExpanded
+                      ? 'none'
+                      : '1px solid var(--md-sys-color-outline-variant)',
                     background: isExpanded
                       ? 'var(--md-sys-color-primary-container)'
                       : 'var(--md-sys-color-surface)',
@@ -162,6 +320,12 @@ export function LiveView() {
                     outline: 'none',
                   }}
                 >
+                  <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center' }}>
+                    {isExpanded
+                      ? <ChevronDown size={14} />
+                      : <ChevronRight size={14} />
+                    }
+                  </span>
                   <a
                     href={issue.url}
                     target="_blank"
@@ -169,7 +333,7 @@ export function LiveView() {
                     onClick={(e) => e.stopPropagation()}
                     style={{
                       fontFamily: 'var(--font-mono)',
-                      fontSize: '0.875rem',
+                      fontSize: '0.75rem',
                       color: 'var(--color-neon-amber)',
                       textDecoration: 'none',
                     }}
@@ -178,7 +342,8 @@ export function LiveView() {
                   </a>
                   <span
                     style={{
-                      fontSize: '0.875rem',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.75rem',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -195,8 +360,8 @@ export function LiveView() {
                   </span>
                   <span
                     style={{
-                      fontSize: '0.75rem',
                       fontFamily: 'var(--font-mono)',
+                      fontSize: '0.75rem',
                       color: 'var(--color-neon-cyan)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -206,8 +371,8 @@ export function LiveView() {
                   </span>
                   <span
                     style={{
-                      fontSize: '0.6875rem',
                       fontFamily: 'var(--font-mono)',
+                      fontSize: '0.75rem',
                       color: 'var(--color-text-muted)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -217,38 +382,24 @@ export function LiveView() {
                   </span>
                   <span
                     style={{
-                      fontSize: '0.6875rem',
-                      color: 'var(--md-sys-color-on-surface-variant)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.75rem',
+                      color: 'var(--color-text-muted)',
                     }}
                   >
                     {relativeTime(issue.updatedAt)}
                   </span>
                 </div>
 
-                {/* Expanded row */}
                 {isExpanded && (
                   <div
                     style={{
-                      padding: 'var(--spacing-md) var(--spacing-lg)',
-                      background: 'var(--md-sys-color-surface)',
-                      borderBottom: '1px solid var(--md-sys-color-outline-variant)',
                       borderLeft: '4px solid var(--md-sys-color-primary)',
+                      borderBottom: '1px solid var(--md-sys-color-outline-variant)',
+                      background: 'var(--md-sys-color-surface)',
                     }}
                   >
-                    {issue.activeTask && (
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: 'var(--spacing-xl)',
-                          flexWrap: 'wrap',
-                        }}
-                      >
-                        <Detail label="Task ID" value={String(issue.activeTask.id)} />
-                        <Detail label="Task Status" value={issue.activeTask.taskStatus} />
-                        <Detail label="Role" value={issue.activeTask.role} />
-                        <Detail label="Created" value={new Date(issue.activeTask.createdAt).toLocaleString()} />
-                      </div>
-                    )}
+                    <ExpandedIssueDetail issueNumber={issue.number} />
                   </div>
                 )}
               </React.Fragment>
@@ -258,6 +409,7 @@ export function LiveView() {
       )}
 
       <style>{`
+        .live-row:hover { background: var(--color-primary-subtle) !important; }
         @keyframes pulse {
           0% { opacity: 1; }
           50% { opacity: 0.5; }
@@ -306,24 +458,6 @@ export function ErrorBanner({ onRetry }: { onRetry: () => void }) {
       >
         <RotateCcw size={17} />
       </button>
-    </div>
-  );
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: '0.6875rem',
-          fontWeight: 500,
-          color: 'var(--md-sys-color-on-surface-variant)',
-          marginBottom: '2px',
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: '0.875rem', fontFamily: 'var(--font-mono)' }}>{value}</div>
     </div>
   );
 }
