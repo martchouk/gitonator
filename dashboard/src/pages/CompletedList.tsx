@@ -250,7 +250,7 @@ export function CompletedList() {
             }}
           >
             <span />
-            <span>#</span>
+            <span>Issue #</span>
             <span>Repo</span>
             <span>Final Status</span>
             <span>Workflow</span>
@@ -297,44 +297,22 @@ export function CompletedList() {
                       : <ChevronRight size={14} />
                     }
                   </span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.875rem',
-                      color: 'var(--color-neon-amber)',
-                    }}
-                  >
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-amber)' }}>
                     #{run.issueNumber}
                   </span>
-                  <span
-                    style={{
-                      fontSize: '0.875rem',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {run.repo || '–'}
                   </span>
                   <span>
                     <StatusChip status={run.finalStatus} />
                   </span>
-                  <span
-                    style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--color-neon-cyan)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  >
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {run.workflowKey || '–'}
                   </span>
-                  <span style={{ fontSize: '0.875rem', fontFamily: 'var(--font-mono)', color: 'var(--color-neon-amber)' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-amber)' }}>
                     {run.stepCount}
                   </span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                     {relativeTime(run.completedAt)}
                   </span>
                 </div>
