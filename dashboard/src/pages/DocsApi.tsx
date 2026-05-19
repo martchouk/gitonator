@@ -155,7 +155,7 @@ export function DocsApi() {
 
   return (
     <div style={{ maxWidth: '900px' }}>
-      <h2 style={{ fontWeight: 400, marginBottom: 'var(--spacing-sm)' }}>API Reference</h2>
+      <h2 className="page-title">API Reference</h2>
       <p style={{ color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 'var(--spacing-xl)' }}>
         All endpoints are unauthenticated (v1: trusted internal network). Base URL:{' '}
         <code style={{ fontFamily: 'var(--font-mono)' }}>{BASE}</code>
@@ -242,7 +242,7 @@ export function DocsApi() {
                   {ep.requestBody && (
                     <div style={{ marginBottom: 'var(--spacing-md)' }}>
                       <Label>Request body</Label>
-                      <CodeBlock code={ep.requestBody} language="json" />
+                      <CodeBlock code={ep.requestBody} language="request" />
                     </div>
                   )}
 

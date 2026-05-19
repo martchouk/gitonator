@@ -32,16 +32,7 @@ export function CompletedList() {
 
   return (
     <div>
-      <h2
-        style={{
-          margin: '0 0 var(--spacing-lg)',
-          fontWeight: 600,
-          fontSize: '1.75rem',
-          letterSpacing: '-0.02em',
-        }}
-      >
-        Completed Runs
-      </h2>
+      <h2 className="page-title">Completed Runs</h2>
 
       {error && (
         <p style={{ color: 'var(--md-sys-color-error)' }}>

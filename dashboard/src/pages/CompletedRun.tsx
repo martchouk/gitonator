@@ -270,14 +270,7 @@ export function CompletedRun() {
           flexWrap: 'wrap',
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            fontWeight: 600,
-            fontSize: '1.375rem',
-            letterSpacing: '-0.015em',
-          }}
-        >
+        <h2 className="page-title" style={{ margin: 0 }}>
           Issue #{data.issueNumber}
         </h2>
         <StatusChip status={data.finalStatus} />

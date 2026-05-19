@@ -4,7 +4,7 @@ import { CodeBlock } from '../components/CodeBlock';
 export function DocsSetup() {
   return (
     <div style={{ maxWidth: '768px' }}>
-      <h2 style={{ fontWeight: 400, marginBottom: 'var(--spacing-lg)' }}>Setup Guide</h2>
+      <h2 className="page-title">Setup Guide</h2>
       <p style={{ color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 'var(--spacing-xl)' }}>
         Step-by-step instructions for configuring a GitHub repository to work with
         github.mcp.

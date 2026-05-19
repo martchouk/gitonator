@@ -18,7 +18,7 @@ export function WorkflowList() {
 
   return (
     <div>
-      <h2 style={{ margin: '0 0 var(--spacing-lg)', fontWeight: 400 }}>Workflows</h2>
+      <h2 className="page-title">Workflows</h2>
 
       {error && (
         <p style={{ color: 'var(--md-sys-color-error)' }}>

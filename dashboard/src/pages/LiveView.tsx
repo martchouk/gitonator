@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WifiOff, AlertCircle, Loader2, ClipboardList } from 'lucide-react';
+import { AlertCircle, Loader2, ClipboardList } from 'lucide-react';
 import useSWR from 'swr';
 import type { Issue } from '../api/types';
 import { get } from '../api/client';
@@ -23,7 +23,7 @@ interface IssueResponse {
 }
 
 export function LiveView() {
-  const { status: sseStatus, lastEvent } = useSSE();
+  const { lastEvent } = useSSE();
   const { data, error, mutate } = useSWR<IssueResponse>(
     '/api/v1/dashboard/issues',
     (url: string) => get<IssueResponse>(url),
@@ -54,66 +54,7 @@ export function LiveView() {
 
   return (
     <div>
-      {/* Page header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 'var(--spacing-lg)',
-        }}
-      >
-        <h2
-          style={{
-            margin: 0,
-            fontFamily: 'var(--font-sans)',
-            fontSize: '1.75rem',
-            fontWeight: 400,
-          }}
-        >
-          Live View
-        </h2>
-
-        {/* SSE indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {sseStatus === 'connected' ? (
-            <>
-              <div
-                style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: 'var(--color-neon-green)',
-                  boxShadow: '0 0 8px var(--color-neon-green)',
-                }}
-              />
-              <span
-                style={{
-                  fontSize: '0.75rem',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--color-neon-green)',
-                  letterSpacing: '0.05em',
-                }}
-                role="status"
-                aria-live="polite"
-              >
-                LIVE
-              </span>
-            </>
-          ) : sseStatus === 'disconnected' ? (
-            <>
-              <WifiOff size={18} style={{ color: 'var(--md-sys-color-error)' }} />
-              <span style={{ fontSize: '0.75rem', color: 'var(--md-sys-color-error)' }}>
-                Disconnected
-              </span>
-            </>
-          ) : (
-            <span style={{ fontSize: '0.75rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
-              Connecting…
-            </span>
-          )}
-        </div>
-      </div>
+      <h2 className="page-title">Live View</h2>
 
       {/* Error state */}
       {error && (

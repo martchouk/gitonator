@@ -6,7 +6,7 @@ interface Props {
   language?: string;
 }
 
-export function CodeBlock({ code }: Props) {
+export function CodeBlock({ code, language }: Props) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -27,6 +27,7 @@ export function CodeBlock({ code }: Props) {
       }}
     >
       <pre
+        className={language ? `lang-${language}` : undefined}
         style={{
           margin: 0,
           fontFamily: 'var(--font-mono)',

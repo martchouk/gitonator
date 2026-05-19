@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom';
-import { Activity, GitBranch, CheckCircle2, BookOpen, Code2 } from 'lucide-react';
+import { Activity, GitBranch, CheckCircle2, BookOpen, Code2, WifiOff } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { LogoMark } from './LogoMark';
+import { useSSE } from '../hooks/useSSE';
 
 const NAV_ITEMS: { to: string; label: string; Icon: LucideIcon; exact?: boolean }[] = [
   { to: '/', label: 'Live View', Icon: Activity, exact: true },
@@ -11,6 +12,31 @@ const NAV_ITEMS: { to: string; label: string; Icon: LucideIcon; exact?: boolean 
   { to: '/docs/setup', label: 'Setup Docs', Icon: BookOpen },
   { to: '/docs/api', label: 'API Docs', Icon: Code2 },
 ];
+
+function SSEIndicator() {
+  const { status } = useSSE();
+  if (status === 'connected') {
+    return (
+      <div className="sse-indicator sse-indicator--live" role="status" aria-live="polite" title="Server-sent events connected">
+        <span className="sse-dot" />
+        <span className="sse-label">LIVE</span>
+      </div>
+    );
+  }
+  if (status === 'disconnected') {
+    return (
+      <div className="sse-indicator sse-indicator--off" title="Disconnected from event stream">
+        <WifiOff size={13} />
+        <span className="sse-label">OFF</span>
+      </div>
+    );
+  }
+  return (
+    <div className="sse-indicator sse-indicator--connecting" title="Connecting to event stream">
+      <span className="sse-dot sse-dot--pulse" />
+    </div>
+  );
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -41,6 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Right actions */}
         <div className="nav-actions">
+          <SSEIndicator />
           <ThemeToggle />
         </div>
       </header>
