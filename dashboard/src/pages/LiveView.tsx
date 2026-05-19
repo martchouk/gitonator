@@ -109,7 +109,9 @@ function RunningTimer({ createdAt }: { createdAt: string }) {
     ? `${s}s`
     : s < 3600
       ? `${Math.floor(s / 60)}m ${s % 60}s`
-      : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+      : s < 86400
+        ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m ${s % 60}s`
+        : `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h ${Math.floor((s % 3600) / 60)}m ${s % 60}s`;
   return (
     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-neon-green)' }}>
       {display}
