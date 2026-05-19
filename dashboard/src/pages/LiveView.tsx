@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, RotateCcw, Loader2, ClipboardList, ChevronDown, ChevronRight, Clock } from 'lucide-react';
+import { Zap, RotateCcw, Loader2, ClipboardList, ChevronDown, ChevronRight } from 'lucide-react';
 import useSWR from 'swr';
 import type { Issue, TaskRow } from '../api/types';
 import { get } from '../api/client';
@@ -66,7 +66,15 @@ const WORD_COLORS = [
   'var(--color-neon-green)',
   'var(--color-neon-cyan)',
   'var(--color-neon-amber)',
+  'var(--color-neon-magenta)',
   'var(--color-neon-yellow)',
+  'var(--color-neon-cyan)',
+  'var(--color-neon-green)',
+  'var(--color-neon-amber)',
+  'var(--color-neon-magenta)',
+  'var(--color-neon-yellow)',
+  'var(--color-neon-cyan)',
+  'var(--color-neon-green)',
 ];
 
 function RotatingWord() {
@@ -85,6 +93,26 @@ function RotatingWord() {
       }}
     >
       {RUNNING_WORDS[idx]}
+    </span>
+  );
+}
+
+function RunningTimer({ createdAt }: { createdAt: string }) {
+  const start = new Date(createdAt).getTime();
+  const [elapsed, setElapsed] = useState(() => Date.now() - start);
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(Date.now() - start), 1000);
+    return () => clearInterval(id);
+  }, [start]);
+  const s = Math.floor(elapsed / 1000);
+  const display = s < 60
+    ? `${s}s`
+    : s < 3600
+      ? `${Math.floor(s / 60)}m ${s % 60}s`
+      : `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  return (
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-neon-green)' }}>
+      {display}
     </span>
   );
 }
@@ -173,9 +201,9 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
         {relativeTime(task.created_at)}
       </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center' }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
         {isRunning
-          ? <Clock size={13} style={{ animation: 'spin 2.5s linear infinite', color: 'var(--color-neon-green)', opacity: 0.85 }} />
+          ? <RunningTimer createdAt={task.created_at} />
           : duration(task.created_at, task.finished_at)
         }
       </span>
