@@ -26,7 +26,7 @@ function SSEIndicator() {
   if (status === 'disconnected') {
     return (
       <div className="sse-indicator sse-indicator--off" title="Disconnected from event stream">
-        <WifiOff size={13} />
+        <WifiOff size={20} />
         <span className="sse-label">OFF</span>
       </div>
     );

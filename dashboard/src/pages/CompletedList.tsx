@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Loader2, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
+import { ErrorBanner } from './LiveView';
 import useSWR from 'swr';
 import type { CompletedIssueSummary, CompletedRunDetail, TaskRow } from '../api/types';
 import { get } from '../api/client';
@@ -132,17 +133,13 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
 }
 
 function ExpandedDetail({ issueNumber }: { issueNumber: number }) {
-  const { data, error } = useSWR<CompletedRunDetail>(
+  const { data, error, mutate } = useSWR<CompletedRunDetail>(
     `/api/v1/dashboard/completed/${issueNumber}`,
     (url: string) => get<CompletedRunDetail>(url)
   );
 
   if (error) {
-    return (
-      <div style={{ padding: '12px 16px', color: 'var(--md-sys-color-error)', fontSize: '0.875rem' }}>
-        Failed to load tasks: {error.message}
-      </div>
-    );
+    return <div style={{ padding: '8px 16px' }}><ErrorBanner onRetry={() => void mutate()} /></div>;
   }
 
   if (!data) {
@@ -176,7 +173,7 @@ function ExpandedDetail({ issueNumber }: { issueNumber: number }) {
 }
 
 export function CompletedList() {
-  const { data, error } = useSWR<CompletedListResponse>(
+  const { data, error, mutate } = useSWR<CompletedListResponse>(
     '/api/v1/dashboard/completed',
     (url: string) => get<CompletedListResponse>(url),
     { refreshInterval: 60000 }
@@ -190,11 +187,7 @@ export function CompletedList() {
     <div>
       <h2 className="page-title">Completed Runs</h2>
 
-      {error && (
-        <p style={{ color: 'var(--md-sys-color-error)' }}>
-          Failed to load: {error.message}
-        </p>
-      )}
+      {error && <ErrorBanner onRetry={() => void mutate()} />}
 
       {!data && !error && (
         <div

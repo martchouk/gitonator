@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ServerCrash, RotateCcw, Loader2, ClipboardList } from 'lucide-react';
+import { Zap, RotateCcw, Loader2, ClipboardList } from 'lucide-react';
 import useSWR from 'swr';
 import type { Issue } from '../api/types';
 import { get } from '../api/client';
@@ -57,45 +57,7 @@ export function LiveView() {
       <h2 className="page-title">Live View</h2>
 
       {/* Error state */}
-      {error && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 'var(--spacing-2xl)',
-            color: 'var(--color-text-muted)',
-            gap: 'var(--spacing-sm)',
-          }}
-        >
-          <ServerCrash size={40} style={{ opacity: 0.5 }} />
-          <span style={{ fontWeight: 500, fontSize: '1rem' }}>Service is offline</span>
-          <span style={{ fontSize: '0.875rem' }}>The backend could not be reached</span>
-          <button
-            onClick={() => void mutate()}
-            aria-label="Retry"
-            title="Retry"
-            style={{
-              marginTop: 'var(--spacing-xs)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--color-text-muted)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '6px',
-              borderRadius: 'var(--radius-md)',
-              transition: 'color 150ms ease',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-neon-green)')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
-          >
-            <RotateCcw size={20} />
-          </button>
-        </div>
-      )}
+      {error && <ErrorBanner onRetry={() => void mutate()} />}
 
       {/* Empty state */}
       {!error && !data && (
@@ -302,6 +264,48 @@ export function LiveView() {
           100% { opacity: 1; }
         }
       `}</style>
+    </div>
+  );
+}
+
+export function ErrorBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      style={{
+        border: '1px solid var(--md-sys-color-error)',
+        borderRadius: 'var(--md-shape-medium)',
+        padding: 'var(--spacing-md)',
+        marginBottom: 'var(--spacing-lg)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        color: 'var(--md-sys-color-error)',
+      }}
+    >
+      <Zap size={18} strokeWidth={2.5} />
+      <span style={{ fontSize: '0.9375rem', fontWeight: 500 }}>Service is offline</span>
+      <button
+        onClick={onRetry}
+        aria-label="Retry"
+        title="Retry"
+        style={{
+          marginLeft: 'auto',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--md-sys-color-error)',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '4px',
+          borderRadius: 'var(--radius-sm)',
+          opacity: 0.75,
+          transition: 'opacity 150ms ease',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+        onMouseLeave={e => (e.currentTarget.style.opacity = '0.75')}
+      >
+        <RotateCcw size={17} />
+      </button>
     </div>
   );
 }

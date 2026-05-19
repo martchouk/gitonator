@@ -1,15 +1,15 @@
-
 import { Link } from 'react-router-dom';
 import useSWR from 'swr';
 import type { WorkflowSummary } from '../api/types';
 import { get } from '../api/client';
+import { ErrorBanner } from './LiveView';
 
 interface WorkflowListResponse {
   workflows: WorkflowSummary[];
 }
 
 export function WorkflowList() {
-  const { data, error } = useSWR<WorkflowListResponse>(
+  const { data, error, mutate } = useSWR<WorkflowListResponse>(
     '/api/v1/workflows',
     (url: string) => get<WorkflowListResponse>(url)
   );
@@ -20,11 +20,7 @@ export function WorkflowList() {
     <div>
       <h2 className="page-title">Workflows</h2>
 
-      {error && (
-        <p style={{ color: 'var(--md-sys-color-error)' }}>
-          Failed to load workflows: {error.message}
-        </p>
-      )}
+      {error && <ErrorBanner onRetry={() => void mutate()} />}
 
       {!data && !error && (
         <p style={{ color: 'var(--md-sys-color-on-surface-variant)' }}>Loading…</p>
