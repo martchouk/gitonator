@@ -207,8 +207,6 @@
 [data-theme='dark'] .sse-indicator--live {
   color: var(--color-neon-green);
   background: rgba(0, 255, 136, 0.08);
-  border: 1px solid rgba(0, 255, 136, 0.22);
-  box-shadow: 0 0 8px rgba(0, 255, 136, 0.14);
 }
 
 [data-theme='dark'] .sse-indicator--off {
@@ -224,7 +222,6 @@
 [data-theme='light'] .sse-indicator--live {
   color: #065f2e;
   background: rgba(6, 95, 46, 0.07);
-  border: 1px solid rgba(6, 95, 46, 0.22);
 }
 
 [data-theme='light'] .sse-indicator--off {
