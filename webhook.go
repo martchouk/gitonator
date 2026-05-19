@@ -271,6 +271,7 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 
 	s.debugf("webhook received: delivery=%s event=%s query=%s payload_bytes=%d",
 		deliveryID, eventType, r.URL.RawQuery, len(payload))
+	s.debugf("webhook payload: delivery=%s\n%s", deliveryID, string(payload))
 
 	processed, err := s.store.IsDeliveryProcessed(deliveryID)
 	if err != nil {
