@@ -793,46 +793,39 @@ type CompletedIssueSummary struct {
 	StepCount   int    `json:"stepCount"`
 }
 
-// ListCompletedIssues returns issues whose most recent audit transition ended in a
-// recognised terminal status (done, closed, complete, merged, rejected, cancelled).
+// ListCompletedIssues returns issues that have no remaining active (queued/dispatched)
+// tasks, derived entirely from the tasks table. transition_audit is not used because
+// agents typically change GitHub labels directly rather than via transition_issue.
 func (s *Store) ListCompletedIssues(limit int) ([]CompletedIssueSummary, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	rows, err := s.db.Query(`
 		SELECT
-			a.issue_number,
-			a.to_status,
-			a.created_at,
-			COALESCE(t.repo, '')   AS repo,
-			COALESCE(im.value, '') AS workflow_key,
-			COALESCE(sc.cnt, 0)    AS step_count
-		FROM transition_audit a
+			t.issue_number,
+			COALESCE(t.current_status, '') AS final_status,
+			COALESCE(t.finished_at, t.created_at) AS completed_at,
+			COALESCE(t.repo, '')           AS repo,
+			COALESCE(im.value, '')         AS workflow_key,
+			COALESCE(sc.cnt, 0)            AS step_count
+		FROM tasks t
 		JOIN (
 			SELECT issue_number, MAX(id) AS max_id
-			FROM transition_audit
-			GROUP BY issue_number
-		) last_a ON a.issue_number = last_a.issue_number AND a.id = last_a.max_id
-		LEFT JOIN (
-			SELECT issue_number, repo
 			FROM tasks
-			WHERE id IN (SELECT MAX(id) FROM tasks GROUP BY issue_number)
-		) t ON t.issue_number = a.issue_number
+			GROUP BY issue_number
+		) last_t ON t.issue_number = last_t.issue_number AND t.id = last_t.max_id
 		LEFT JOIN issue_metadata im
-			ON im.issue_id = a.issue_number AND im.key = '_workflow_key'
+			ON im.issue_id = t.issue_number AND im.key = '_workflow_key'
 		LEFT JOIN (
 			SELECT issue_number, COUNT(*) AS cnt
-			FROM transition_audit
+			FROM tasks
 			GROUP BY issue_number
-		) sc ON sc.issue_number = a.issue_number
-		WHERE a.to_status LIKE '%done%'
-		   OR a.to_status LIKE '%closed%'
-		   OR a.to_status LIKE '%complete%'
-		   OR a.to_status LIKE '%merged%'
-		   OR a.to_status LIKE '%rejected%'
-		   OR a.to_status LIKE '%cancelled%'
-		   OR a.to_status LIKE '%canceled%'
-		ORDER BY a.created_at DESC
+		) sc ON sc.issue_number = t.issue_number
+		WHERE t.status IN ('completed', 'superseded', 'failed')
+		  AND t.issue_number NOT IN (
+			SELECT DISTINCT issue_number FROM tasks WHERE status IN ('queued', 'dispatched')
+		  )
+		ORDER BY COALESCE(t.finished_at, t.created_at) DESC
 		LIMIT ?
 	`, limit)
 	if err != nil {

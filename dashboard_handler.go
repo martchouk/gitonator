@@ -424,34 +424,42 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	audit, err := d.store.ListTransitionAudit(number, 200)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if len(audit) == 0 {
-		writeError(w, http.StatusNotFound, "no completed run found for this issue")
-		return
-	}
-
 	tasks, err := d.store.ListTasksByIssue(number, 100)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if tasks == nil {
-		tasks = []TaskRow{}
+	if len(tasks) == 0 {
+		writeError(w, http.StatusNotFound, "no completed run found for this issue")
+		return
 	}
 
-	repo := ""
-	if len(tasks) > 0 {
-		repo = tasks[0].Repo
+	audit, err := d.store.ListTransitionAudit(number, 200)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
+	if audit == nil {
+		audit = []TransitionAuditRow{}
+	}
+
+	// tasks is ordered DESC; index 0 is the most recent task.
+	mostRecent := tasks[0]
+	repo := mostRecent.Repo
 	workflowKey, _, _ := d.store.GetIssueWorkflowKey(number)
 
-	// Audit is ordered DESC; index 0 is the most recent entry.
-	finalStatus := audit[0].ToStatus
-	completedAt := audit[0].CreatedAt
+	finalStatus := mostRecent.CurrentStatus
+	completedAt := mostRecent.CreatedAt
+	if mostRecent.FinishedAt.Valid && mostRecent.FinishedAt.String != "" {
+		completedAt = mostRecent.FinishedAt.String
+	}
+
+	// Step count: prefer audit entries (each represents a real transition);
+	// fall back to task count when audit is empty.
+	stepCount := len(audit)
+	if stepCount == 0 {
+		stepCount = len(tasks)
+	}
 
 	detail := CompletedRunDetail{
 		IssueNumber: number,
@@ -459,7 +467,7 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 		WorkflowKey: workflowKey,
 		FinalStatus: finalStatus,
 		CompletedAt: completedAt,
-		StepCount:   len(audit),
+		StepCount:   stepCount,
 		Audit:       audit,
 		Tasks:       tasks,
 	}
