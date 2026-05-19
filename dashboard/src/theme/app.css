@@ -274,6 +274,11 @@
   to   { transform: rotate(360deg); }
 }
 
+@keyframes wordFadeIn {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Page title — JetBrains Mono bold, consistent across all pages ── */
 
 .page-title {

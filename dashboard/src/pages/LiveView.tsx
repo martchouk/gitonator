@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, RotateCcw, Loader2, ClipboardList, ChevronDown, ChevronRight } from 'lucide-react';
+import { Zap, RotateCcw, Loader2, ClipboardList, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import useSWR from 'swr';
 import type { Issue, TaskRow } from '../api/types';
 import { get } from '../api/client';
@@ -51,6 +51,32 @@ interface IssueResponse {
 interface IssueDetailResponse {
   number: number;
   tasks: TaskRow[];
+}
+
+const RUNNING_WORDS = [
+  'hyperspacing…', 'bebopping…',   'determining…', 'hammering…',
+  'wibbling…',     'pondering…',   'cogitating…',  'calibrating…',
+  'reticulating…', 'manifolding…', 'quantum-shifting…', 'fluxing…',
+  'spooling…',     'recursing…',   'triangulating…',    'defragging…',
+  'synergising…',  'oscillating…', 'fuzzing…',     'caffeinating…',
+];
+
+function RotatingWord() {
+  const [idx, setIdx] = useState(() => Math.floor(Math.random() * RUNNING_WORDS.length));
+  useEffect(() => {
+    const id = setInterval(() => setIdx((i) => (i + 1) % RUNNING_WORDS.length), 750);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span
+      key={idx}
+      style={{ animation: 'wordFadeIn 0.25s ease-out', display: 'inline-block',
+               fontFamily: 'var(--font-mono)', fontSize: '0.6875rem',
+               fontWeight: 600, color: 'var(--color-neon-green)' }}
+    >
+      {RUNNING_WORDS[idx]}
+    </span>
+  );
 }
 
 // 8 columns: step | role | status | outcome | assigned to | bridge | created | duration
@@ -114,8 +140,12 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
           : <span style={{ color: 'var(--color-text-muted)' }}>–</span>
         }
       </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: isRunning ? 'var(--color-neon-green)' : taskOutcomeColor(task.status) }}>
-        {isRunning ? 'running…' : task.status}
+      <span>
+        {isRunning ? <RotatingWord /> : (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: taskOutcomeColor(task.status) }}>
+            {task.status}
+          </span>
+        )}
       </span>
       <span style={{
         fontFamily: 'var(--font-mono)',
@@ -133,8 +163,11 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
         {relativeTime(task.created_at)}
       </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
-        {duration(task.created_at, task.finished_at)}
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center' }}>
+        {isRunning
+          ? <Clock size={13} style={{ animation: 'spin 0.35s linear infinite', color: 'var(--color-neon-green)', opacity: 0.85 }} />
+          : duration(task.created_at, task.finished_at)
+        }
       </span>
     </div>
   );
