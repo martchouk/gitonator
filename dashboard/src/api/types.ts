@@ -30,6 +30,7 @@ export interface TaskRow {
   created_at: string;
   claimed_at?: { String: string; Valid: boolean } | null;
   finished_at?: { String: string; Valid: boolean } | null;
+  claimed_by?: { String: string; Valid: boolean } | null;
 }
 
 export interface AuditRow {

@@ -35,10 +35,9 @@ function duration(
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-function bridgeId(row: TaskRow): string {
-  if (!row.bridge_id) return '–';
-  if (typeof row.bridge_id === 'string') return row.bridge_id || '–';
-  return row.bridge_id.Valid ? row.bridge_id.String : '–';
+function nullStr(f: { String: string; Valid: boolean } | null | undefined): string {
+  if (!f) return '–';
+  return f.Valid && f.String ? f.String : '–';
 }
 
 function taskOutcomeColor(status: string): string {
@@ -48,7 +47,8 @@ function taskOutcomeColor(status: string): string {
   return 'var(--color-text-muted)';
 }
 
-const SUB_COLS = '44px 100px 1fr 110px 110px 130px 84px 80px';
+// 9 columns: step | role | status | outcome | assigned to | claimed by | bridge | created | duration
+const SUB_COLS = '40px 90px 1fr 100px 100px 100px 110px 78px 74px';
 
 function SubTableHeader() {
   return (
@@ -70,8 +70,9 @@ function SubTableHeader() {
       <span>Role</span>
       <span>Status at Dispatch</span>
       <span>Outcome</span>
-      <span>Assignee</span>
-      <span>Bridge</span>
+      <span title="Target agent from work package">Assigned to</span>
+      <span title="Bridge that actually claimed and ran the task">Claimed by</span>
+      <span>Bridge ID</span>
       <span>Created</span>
       <span>Duration</span>
     </div>
@@ -79,6 +80,9 @@ function SubTableHeader() {
 }
 
 function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
+  const claimedBy = nullStr(task.claimed_by);
+  const bridge    = nullStr(task.bridge_id);
+
   return (
     <div
       style={{
@@ -90,22 +94,10 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
         fontSize: '0.8125rem',
       }}
     >
-      <span
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.75rem',
-          color: 'var(--color-neon-amber)',
-        }}
-      >
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-amber)' }}>
         {step}
       </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.75rem',
-          color: 'var(--color-neon-cyan)',
-        }}
-      >
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
         {task.role || '–'}
       </span>
       <span style={{ overflow: 'hidden' }}>
@@ -114,50 +106,25 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
           : <span style={{ color: 'var(--color-text-muted)' }}>–</span>
         }
       </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.6875rem',
-          fontWeight: 600,
-          color: taskOutcomeColor(task.status),
-        }}
-      >
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: taskOutcomeColor(task.status) }}>
         {task.status}
       </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.6875rem',
-          color: 'var(--color-neon-cyan)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {task.assignee || '–'}
+      {/* Assigned to — intended recipient from work package */}
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: task.assignee ? 'var(--color-neon-cyan)' : 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {task.assignee || <span style={{ opacity: 0.45 }}>broadcast</span>}
       </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.6875rem',
-          color: 'var(--color-text-muted)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {bridgeId(task)}
+      {/* Claimed by — bridge/agent that actually executed */}
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: claimedBy !== '–' ? 'var(--color-neon-green)' : 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {claimedBy !== '–' ? claimedBy : <span style={{ opacity: 0.45 }}>{task.status === 'superseded' ? 'never claimed' : '–'}</span>}
+      </span>
+      {/* Bridge ID */}
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: bridge !== '–' ? 'var(--color-text-muted)' : 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: bridge !== '–' ? 1 : 0.45 }}>
+        {bridge}
       </span>
       <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
         {relativeTime(task.created_at)}
       </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.6875rem',
-          color: 'var(--color-text-muted)',
-        }}
-      >
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
         {duration(task.created_at, task.finished_at)}
       </span>
     </div>
