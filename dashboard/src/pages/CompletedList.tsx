@@ -49,7 +49,7 @@ function taskOutcomeColor(status: string): string {
 }
 
 // 8 columns: step | role | status | outcome | assigned to | bridge | created | duration
-const SUB_COLS = '40px 90px minmax(0,1fr) 100px 120px 90px 78px 74px';
+const SUB_COLS = '40px 90px 1fr 100px 120px 90px 78px 74px';
 
 function SubTableHeader() {
   return (
@@ -103,7 +103,7 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
         {task.role || '–'}
       </span>
-      <span style={{ overflow: 'hidden' }}>
+      <span>
         {task.current_status
           ? <StatusChip status={task.current_status} />
           : <span style={{ color: 'var(--color-text-muted)' }}>–</span>
@@ -167,11 +167,13 @@ function ExpandedDetail({ issueNumber }: { issueNumber: number }) {
   }
 
   return (
-    <div>
-      <SubTableHeader />
-      {tasks.map((task, idx) => (
-        <SubTaskRow key={task.id} task={task} step={idx + 1} />
-      ))}
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ minWidth: '780px' }}>
+        <SubTableHeader />
+        {tasks.map((task, idx) => (
+          <SubTaskRow key={task.id} task={task} step={idx + 1} />
+        ))}
+      </div>
     </div>
   );
 }
