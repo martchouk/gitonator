@@ -35,7 +35,6 @@ export function CodeBlock({ code, language }: Props) {
           lineHeight: 1.5,
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',
-          color: 'var(--md-sys-color-on-surface)',
           paddingRight: '40px',
         }}
       >

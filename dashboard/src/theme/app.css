@@ -317,6 +317,11 @@
 
 /* ── Code block syntax coloring ─────────────────────────────── */
 
+/* default color when no language class is applied */
+pre:not([class]) {
+  color: var(--md-sys-color-on-surface);
+}
+
 /* JSON response schemas — amber */
 [data-theme='dark'] pre.lang-json {
   color: var(--color-neon-amber);
