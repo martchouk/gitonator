@@ -80,21 +80,24 @@ export function LiveView() {
             <>
               <div
                 style={{
-                  width: '10px',
-                  height: '10px',
+                  width: '8px',
+                  height: '8px',
                   borderRadius: '50%',
-                  background: 'var(--md-sys-color-tertiary)',
+                  background: 'var(--color-neon-green)',
+                  boxShadow: '0 0 8px var(--color-neon-green)',
                 }}
               />
               <span
                 style={{
                   fontSize: '0.75rem',
-                  color: 'var(--md-sys-color-on-surface-variant)',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--color-neon-green)',
+                  letterSpacing: '0.05em',
                 }}
                 role="status"
                 aria-live="polite"
               >
-                Live
+                LIVE
               </span>
             </>
           ) : sseStatus === 'disconnected' ? (
@@ -255,7 +258,7 @@ export function LiveView() {
                     style={{
                       fontFamily: 'var(--font-mono)',
                       fontSize: '0.875rem',
-                      color: 'var(--md-sys-color-primary)',
+                      color: 'var(--color-neon-amber)',
                       textDecoration: 'none',
                     }}
                   >
@@ -281,7 +284,8 @@ export function LiveView() {
                   <span
                     style={{
                       fontSize: '0.75rem',
-                      color: 'var(--md-sys-color-on-surface-variant)',
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--color-neon-cyan)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                     }}
@@ -291,7 +295,8 @@ export function LiveView() {
                   <span
                     style={{
                       fontSize: '0.6875rem',
-                      color: 'var(--md-sys-color-on-surface-variant)',
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--color-text-muted)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                     }}
@@ -364,7 +369,7 @@ function Detail({ label, value }: { label: string; value: string }) {
       >
         {label}
       </div>
-      <div style={{ fontSize: '0.875rem' }}>{value}</div>
+      <div style={{ fontSize: '0.875rem', fontFamily: 'var(--font-mono)' }}>{value}</div>
     </div>
   );
 }

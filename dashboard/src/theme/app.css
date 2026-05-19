@@ -39,9 +39,9 @@
 }
 
 [data-theme='light'] .top-nav {
-  background: rgba(255, 255, 255, 0.82);
-  border-bottom: 1px solid rgba(79, 70, 229, 0.1);
-  box-shadow: 0 1px 0 rgba(79, 70, 229, 0.06), 0 2px 16px rgba(79, 70, 229, 0.05);
+  background: rgba(255, 255, 255, 0.88);
+  border-bottom: 1px solid rgba(22, 163, 74, 0.12);
+  box-shadow: 0 1px 0 rgba(22, 163, 74, 0.06), 0 2px 16px rgba(22, 163, 74, 0.05);
 }
 
 /* ── Logo ───────────────────────────────────────────────────── */
@@ -60,11 +60,11 @@
 }
 
 [data-theme='dark'] .nav-logo-icon {
-  filter: drop-shadow(0 0 8px rgba(129, 140, 248, 0.55));
+  filter: drop-shadow(0 0 10px rgba(0, 255, 136, 0.7));
 }
 
 [data-theme='light'] .nav-logo-icon {
-  filter: drop-shadow(0 0 4px rgba(79, 70, 229, 0.35));
+  filter: drop-shadow(0 0 5px rgba(22, 163, 74, 0.45));
 }
 
 .nav-logo-text {
@@ -76,14 +76,14 @@
 }
 
 [data-theme='dark'] .nav-logo-text {
-  background: linear-gradient(120deg, #818cf8 0%, #22d3ee 100%);
+  background: linear-gradient(120deg, #00ff88 0%, #00e5ff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 [data-theme='light'] .nav-logo-text {
-  background: linear-gradient(120deg, #4f46e5 0%, #0891b2 100%);
+  background: linear-gradient(120deg, #16a34a 0%, #0077aa 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -105,8 +105,8 @@
 }
 
 [data-theme='light'] .nav-links {
-  background: rgba(79, 70, 229, 0.04);
-  border: 1px solid rgba(79, 70, 229, 0.1);
+  background: rgba(22, 163, 74, 0.03);
+  border: 1px solid rgba(22, 163, 74, 0.12);
 }
 
 /* ── Nav link pills ─────────────────────────────────────────── */
@@ -147,13 +147,13 @@
 
 [data-theme='light'] .nav-link:hover {
   color: #0f172a;
-  background: rgba(79, 70, 229, 0.06);
+  background: rgba(22, 163, 74, 0.07);
 }
 
 [data-theme='light'] .nav-link--active {
-  color: #4f46e5 !important;
-  background: rgba(79, 70, 229, 0.1) !important;
-  box-shadow: 0 0 10px rgba(79, 70, 229, 0.14), 0 0 0 1px rgba(79, 70, 229, 0.22);
+  color: #16a34a !important;
+  background: rgba(22, 163, 74, 0.1) !important;
+  box-shadow: 0 0 10px rgba(22, 163, 74, 0.15), 0 0 0 1px rgba(22, 163, 74, 0.25);
 }
 
 /* ── Nav right actions ──────────────────────────────────────── */
@@ -191,14 +191,14 @@
 
 [data-theme='light'] .theme-toggle {
   color: #64748b;
-  border: 1px solid rgba(79, 70, 229, 0.15);
+  border: 1px solid rgba(22, 163, 74, 0.2);
 }
 
 [data-theme='light'] .theme-toggle:hover {
-  color: #4f46e5;
-  background: rgba(79, 70, 229, 0.06);
-  border-color: rgba(79, 70, 229, 0.32);
-  box-shadow: 0 0 10px rgba(79, 70, 229, 0.14);
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.07);
+  border-color: rgba(22, 163, 74, 0.35);
+  box-shadow: 0 0 10px rgba(22, 163, 74, 0.14);
 }
 
 /* ── Lucide icon utilities ──────────────────────────────────── */
@@ -211,6 +211,53 @@
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
+/* ── Page headings — neon terminal style (dark) ──────────────── */
+
+[data-theme='dark'] .page-main h2 {
+  color: var(--color-neon-green);
+  text-shadow: 0 0 22px rgba(0, 255, 136, 0.28);
+}
+
+[data-theme='dark'] .page-main h3 {
+  color: var(--color-neon-cyan);
+  text-shadow: 0 0 14px rgba(0, 229, 255, 0.22);
+}
+
+/* ── Section title bar (horizontal rule style, like puzzpool) ── */
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+/* ── Neon data cell utilities ────────────────────────────────── */
+
+.data-amber  { color: var(--color-neon-amber);   }
+.data-cyan   { color: var(--color-neon-cyan);    }
+.data-green  { color: var(--color-neon-green);   }
+.data-yellow { color: var(--color-neon-yellow);  }
+.data-magenta{ color: var(--color-neon-magenta); }
+
+[data-theme='dark'] .data-amber  { text-shadow: 0 0 10px rgba(255, 184, 0, 0.4);   }
+[data-theme='dark'] .data-cyan   { text-shadow: 0 0 10px rgba(0, 229, 255, 0.38);  }
+[data-theme='dark'] .data-green  { text-shadow: 0 0 10px rgba(0, 255, 136, 0.38);  }
+[data-theme='dark'] .data-yellow { text-shadow: 0 0 10px rgba(245, 230, 66, 0.32); }
 
 /* ── Page content area ──────────────────────────────────────── */
 

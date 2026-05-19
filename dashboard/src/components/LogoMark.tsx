@@ -33,8 +33,8 @@ const FallbackSvg = ({ size }: { size: number }) => (
   >
     <defs>
       <linearGradient id="logo-g" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#818cf8" />
-        <stop offset="100%" stopColor="#22d3ee" />
+        <stop offset="0%" stopColor="#00ff88" />
+        <stop offset="100%" stopColor="#00e5ff" />
       </linearGradient>
     </defs>
     <g transform="translate(0,576) scale(0.1,-0.1)" fill="url(#logo-g)">

@@ -392,7 +392,7 @@ export function CompletedRun() {
               flexShrink: 0,
             }}
           >
-            <Clock size={14} style={{ color: 'var(--md-sys-color-primary)' }} />
+            <Clock size={14} style={{ color: 'var(--color-neon-green)' }} />
             Transitions
             <span
               style={{
@@ -436,7 +436,8 @@ export function CompletedRun() {
                       style={{
                         fontSize: '0.6875rem',
                         fontWeight: 600,
-                        color: 'var(--md-sys-color-primary)',
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--color-neon-amber)',
                       }}
                     >
                       step {idx + 1}
@@ -474,7 +475,7 @@ export function CompletedRun() {
                   {/* Actor + trigger */}
                   {row.actor && (
                     <div
-                      style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}
+                      style={{ fontSize: '0.6875rem', fontFamily: 'var(--font-mono)', color: 'var(--color-neon-cyan)' }}
                     >
                       {row.actor}
                       {row.trigger_type && (

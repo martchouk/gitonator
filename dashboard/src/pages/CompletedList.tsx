@@ -137,7 +137,7 @@ export function CompletedList() {
                 style={{
                   fontFamily: 'var(--font-mono)',
                   fontSize: '0.875rem',
-                  color: 'var(--md-sys-color-primary)',
+                  color: 'var(--color-neon-amber)',
                 }}
               >
                 #{run.issueNumber}
@@ -158,7 +158,7 @@ export function CompletedList() {
               <span
                 style={{
                   fontSize: '0.75rem',
-                  color: 'var(--color-text-muted)',
+                  color: 'var(--color-neon-cyan)',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
@@ -167,7 +167,7 @@ export function CompletedList() {
               >
                 {run.workflowKey || '–'}
               </span>
-              <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+              <span style={{ fontSize: '0.875rem', fontFamily: 'var(--font-mono)', color: 'var(--color-neon-amber)' }}>
                 {run.stepCount}
               </span>
               <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
