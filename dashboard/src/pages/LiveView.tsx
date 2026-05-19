@@ -54,12 +54,17 @@ interface IssueDetailResponse {
 }
 
 const RUNNING_WORDS = [
-  'hyperspacing…', 'bebopping…',   'determining…', 'hammering…',
-  'wibbling…',     'pondering…',   'cogitating…',  'calibrating…',
-  'reticulating…', 'manifolding…', 'fluxing…',     'spooling…',
-  'recursing…',    'triangulating…','defragging…',  'synergising…',
-  'oscillating…',  'fuzzing…',     'caffeinating…','processing…',
-  'noodling…',     'wobbling…',    'crunching…',   'compiling…',
+  'hyperspacing…', 'bebopping…',    'determining…',  'hammering…',
+  'wibbling…',     'pondering…',    'cogitating…',   'calibrating…',
+  'reticulating…', 'manifolding…',  'fluxing…',      'spooling…',
+  'recursing…',    'triangulating…','defragging…',   'synergising…',
+  'oscillating…',  'fuzzing…',      'caffeinating…', 'processing…',
+  'noodling…',     'wobbling…',     'crunching…',    'compiling…',
+  'nucleating…',   'crystallizing…','gesticulating…','transforming…',
+  'ebbing…',       'pontificating…','transfiguring…','wrangling…',
+  'enchanting…',   'grooving…',     'scampering…',   'compacting…',
+  'zipping…',      'zigzagging…',   'cascading…',    'thinking…',
+  'imagining…',    'transmuting…',  'computing…',    'churning…',
 ];
 
 const WORD_COLORS = [
@@ -68,13 +73,17 @@ const WORD_COLORS = [
   'var(--color-neon-amber)',
   'var(--color-neon-magenta)',
   'var(--color-neon-yellow)',
+  'var(--color-primary)',
+  'var(--md-sys-color-secondary)',
+  'var(--color-accent)',
   'var(--color-neon-cyan)',
   'var(--color-neon-green)',
   'var(--color-neon-amber)',
   'var(--color-neon-magenta)',
   'var(--color-neon-yellow)',
-  'var(--color-neon-cyan)',
-  'var(--color-neon-green)',
+  'var(--color-primary)',
+  'var(--md-sys-color-secondary)',
+  'var(--color-accent)',
 ];
 
 function RotatingWord() {
