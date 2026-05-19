@@ -57,7 +57,7 @@ export function LogoMark({ size = 28, className }: LogoMarkProps) {
 
   return (
     <img
-      src="/logo.png"
+      src="/logo.svg"
       alt="github.mcp"
       width={size}
       height={size}

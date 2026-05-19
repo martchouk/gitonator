@@ -9,6 +9,7 @@ agents.json
 # Dashboard frontend build artifacts
 dashboard/node_modules/
 dashboard/dist/
+dashboard/.vite/
 
 # Agent role files — applied by apply-role.sh (not for version control)
 CLAUDE.md
