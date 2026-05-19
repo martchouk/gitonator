@@ -18,6 +18,8 @@ type Config struct {
 	BridgeID             string
 	Token                string
 	AgentsFile           string
+	ModelProfile         string
+	ModelPolicyFile      string
 	PollSeconds          int
 	AgentFailureCooldown time.Duration
 	LogLevel             string
@@ -35,6 +37,24 @@ type Agent struct {
 type Roster struct {
 	Agents            []Agent  `json:"agents"`
 	AgentInstructions []string `json:"agent_instructions,omitempty"`
+}
+
+type ModelPolicy struct {
+	DefaultProfile string                          `json:"default_profile"`
+	Fallbacks      map[string][]string             `json:"fallbacks"`
+	Providers      map[string]map[string]ModelSpec `json:"providers"`
+}
+
+type ModelSpec struct {
+	Model string `json:"model"`
+	Args  string `json:"args"`
+}
+
+type ModelSelection struct {
+	RequestedProfile string
+	MatchedProfile   string
+	Model            string
+	Args             string
 }
 
 type WorkPackage struct {
@@ -84,6 +104,8 @@ func main() {
 		BridgeID:             strings.TrimSpace(os.Getenv("BRIDGE_ID")),
 		Token:                strings.TrimSpace(os.Getenv("AGENT_SHARED_TOKEN")),
 		AgentsFile:           strings.TrimSpace(os.Getenv("AGENTS_CONFIG")),
+		ModelProfile:         strings.TrimSpace(os.Getenv("MODEL")),
+		ModelPolicyFile:      strings.TrimSpace(os.Getenv("MODEL_POLICY")),
 		PollSeconds:          envInt("POLL_SECONDS", 5),
 		AgentFailureCooldown: time.Duration(envInt("AGENT_FAILURE_COOLDOWN_SECONDS", 300)) * time.Second,
 		LogLevel:             strings.ToUpper(strings.TrimSpace(os.Getenv("LOG_LEVEL"))),
@@ -116,6 +138,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	var modelPolicy *ModelPolicy
+	if cfg.ModelPolicyFile != "" {
+		policy, err := loadModelPolicy(cfg.ModelPolicyFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "failed to load model policy:", err)
+			os.Exit(1)
+		}
+		modelPolicy = &policy
+		if cfg.ModelProfile == "" {
+			cfg.ModelProfile = strings.TrimSpace(modelPolicy.DefaultProfile)
+		}
+	}
+	if err := validateModelPolicyForRoster(roster, modelPolicy, cfg.ModelProfile); err != nil {
+		fmt.Fprintln(os.Stderr, "model policy validation failed:", err)
+		os.Exit(1)
+	}
+
 	logger := log.New(os.Stderr, fmt.Sprintf("[bridge/%s] ", cfg.BridgeID), log.LstdFlags|log.LUTC)
 	debug := cfg.LogLevel == "DEBUG"
 
@@ -130,6 +169,13 @@ func main() {
 					keys = append(keys, k)
 				}
 				logger.Printf("DEBUG agent env configured: agent=%s keys=%s", a.Name, strings.Join(keys, ","))
+			}
+			if strings.Contains(a.LaunchTemplate, "{model_args}") {
+				selection, err := resolveModelSelection(modelPolicy, a.LLMProvider, cfg.ModelProfile)
+				if err == nil {
+					logger.Printf("DEBUG agent model configured: agent=%s provider=%s profile=%s matched_profile=%s model=%s",
+						a.Name, providerKey(a.LLMProvider), selection.RequestedProfile, selection.MatchedProfile, selection.Model)
+				}
 			}
 		}
 	}
@@ -184,7 +230,7 @@ func main() {
 			continue
 		}
 
-		result, err := runAgent(logger, agent, worktree, *pkg, roster.AgentInstructions)
+		result, err := runAgent(logger, agent, worktree, *pkg, roster.AgentInstructions, modelPolicy, cfg.ModelProfile)
 		if err != nil {
 			logger.Printf("agent run error: agent=%s issue=%d err=%v", agent.Name, pkg.IssueID, err)
 		}
@@ -375,7 +421,7 @@ WORK PACKAGE JSON:
 	return []byte(prompt), nil
 }
 
-func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage, instructions []string) (AgentResult, error) {
+func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage, instructions []string, modelPolicy *ModelPolicy, modelProfile string) (AgentResult, error) {
 	pkgData, err := buildAgentPackageJSON(pkg, instructions)
 	if err != nil {
 		return AgentResult{ExitCode: -1, ErrorText: err.Error()}, fmt.Errorf("marshal work package: %w", err)
@@ -394,9 +440,10 @@ func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage
 	}
 	tmpFile.Close()
 
-	cmdLine := agent.LaunchTemplate
-	cmdLine = strings.ReplaceAll(cmdLine, "{worktree}", shellQuote(worktree))
-	cmdLine = strings.ReplaceAll(cmdLine, "{package_file}", shellQuote(tmpPath))
+	cmdLine, err := buildAgentCommandLine(agent, worktree, tmpPath, modelPolicy, modelProfile)
+	if err != nil {
+		return AgentResult{ExitCode: -1, ErrorText: err.Error()}, err
+	}
 
 	output := boundedBuffer{limit: 4000}
 	cmd := exec.Command("sh", "-c", cmdLine)
@@ -434,6 +481,20 @@ func runAgent(logger *log.Logger, agent *Agent, worktree string, pkg WorkPackage
 		}
 	}
 	return result, nil
+}
+
+func buildAgentCommandLine(agent *Agent, worktree, packageFile string, modelPolicy *ModelPolicy, modelProfile string) (string, error) {
+	cmdLine := agent.LaunchTemplate
+	if strings.Contains(cmdLine, "{model_args}") {
+		selection, err := resolveModelSelection(modelPolicy, agent.LLMProvider, modelProfile)
+		if err != nil {
+			return "", fmt.Errorf("resolve model args for agent %q provider %q: %w", agent.Name, agent.LLMProvider, err)
+		}
+		cmdLine = strings.ReplaceAll(cmdLine, "{model_args}", strings.TrimSpace(selection.Args))
+	}
+	cmdLine = strings.ReplaceAll(cmdLine, "{worktree}", shellQuote(worktree))
+	cmdLine = strings.ReplaceAll(cmdLine, "{package_file}", shellQuote(packageFile))
+	return cmdLine, nil
 }
 
 func fetchNextWork(client *http.Client, cfg Config, roles []string) (*WorkPackage, error) {
@@ -605,6 +666,80 @@ func buildEnv(agentEnv map[string]string) []string {
 		result = append(result, k+"="+v)
 	}
 	return result
+}
+
+func loadModelPolicy(path string) (ModelPolicy, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ModelPolicy{}, err
+	}
+	var policy ModelPolicy
+	if err := json.Unmarshal(data, &policy); err != nil {
+		return ModelPolicy{}, err
+	}
+	return policy, nil
+}
+
+func validateModelPolicyForRoster(roster Roster, policy *ModelPolicy, profile string) error {
+	for _, agent := range roster.Agents {
+		if !strings.Contains(agent.LaunchTemplate, "{model_args}") {
+			continue
+		}
+		if policy == nil {
+			return fmt.Errorf("agent %q uses {model_args}, but MODEL_POLICY is not configured", agent.Name)
+		}
+		if _, err := resolveModelSelection(policy, agent.LLMProvider, profile); err != nil {
+			return fmt.Errorf("agent %q: %w", agent.Name, err)
+		}
+	}
+	return nil
+}
+
+func resolveModelSelection(policy *ModelPolicy, provider, requestedProfile string) (ModelSelection, error) {
+	if policy == nil {
+		return ModelSelection{}, fmt.Errorf("MODEL_POLICY is required when launch_template uses {model_args}")
+	}
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return ModelSelection{}, fmt.Errorf("llm_provider is required")
+	}
+	profile := strings.TrimSpace(requestedProfile)
+	if profile == "" {
+		profile = strings.TrimSpace(policy.DefaultProfile)
+	}
+	if profile == "" {
+		return ModelSelection{}, fmt.Errorf("MODEL or default_profile is required")
+	}
+
+	providerModels := policy.Providers[provider]
+	if providerModels == nil {
+		providerModels = policy.Providers[strings.ToLower(provider)]
+	}
+	if providerModels == nil {
+		return ModelSelection{}, fmt.Errorf("provider %q has no model policy", provider)
+	}
+
+	profiles := policy.Fallbacks[profile]
+	if len(profiles) == 0 {
+		profiles = []string{profile}
+	}
+	for _, candidate := range profiles {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		spec, ok := providerModels[candidate]
+		if !ok {
+			continue
+		}
+		return ModelSelection{
+			RequestedProfile: profile,
+			MatchedProfile:   candidate,
+			Model:            spec.Model,
+			Args:             spec.Args,
+		}, nil
+	}
+	return ModelSelection{}, fmt.Errorf("provider %q has no model for profile %q or fallbacks %v", provider, profile, profiles)
 }
 
 func loadRoster(path string) (Roster, error) {

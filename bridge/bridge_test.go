@@ -271,6 +271,107 @@ func TestBuildEnvEmptyAgentEnvReturnsHostEnv(t *testing.T) {
 	}
 }
 
+func TestResolveModelSelectionUsesRequestedProfile(t *testing.T) {
+	policy := testModelPolicy()
+	selection, err := resolveModelSelection(&policy, "openai", "standard")
+	if err != nil {
+		t.Fatalf("resolveModelSelection: %v", err)
+	}
+	if selection.Model != "gpt-5.3-codex" {
+		t.Fatalf("model=%q, want gpt-5.3-codex", selection.Model)
+	}
+	if selection.Args != "--model gpt-5.3-codex" {
+		t.Fatalf("args=%q", selection.Args)
+	}
+	if selection.MatchedProfile != "standard" {
+		t.Fatalf("matched profile=%q, want standard", selection.MatchedProfile)
+	}
+}
+
+func TestResolveModelSelectionFallsBackWhenProviderLacksProfile(t *testing.T) {
+	policy := testModelPolicy()
+	selection, err := resolveModelSelection(&policy, "anthropic", "premium")
+	if err != nil {
+		t.Fatalf("resolveModelSelection: %v", err)
+	}
+	if selection.Model != "opus" {
+		t.Fatalf("model=%q, want opus", selection.Model)
+	}
+	if selection.MatchedProfile != "advanced" {
+		t.Fatalf("matched profile=%q, want advanced", selection.MatchedProfile)
+	}
+}
+
+func TestResolveModelSelectionUsesDefaultProfile(t *testing.T) {
+	policy := testModelPolicy()
+	selection, err := resolveModelSelection(&policy, "anthropic", "")
+	if err != nil {
+		t.Fatalf("resolveModelSelection: %v", err)
+	}
+	if selection.Model != "sonnet" {
+		t.Fatalf("model=%q, want sonnet", selection.Model)
+	}
+}
+
+func TestResolveModelSelectionMissingProviderErrors(t *testing.T) {
+	policy := testModelPolicy()
+	_, err := resolveModelSelection(&policy, "unknown-provider", "standard")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown-provider") {
+		t.Fatalf("error should name provider, got %v", err)
+	}
+}
+
+func TestBuildAgentCommandLineInjectsModelArgs(t *testing.T) {
+	policy := testModelPolicy()
+	agent := &Agent{
+		Name:           "elza-dev",
+		LLMProvider:    "openai",
+		LaunchTemplate: "codex exec {model_args} -C {worktree} - < {package_file}",
+	}
+	cmd, err := buildAgentCommandLine(agent, "/tmp/work tree", "/tmp/pkg file", &policy, "advanced")
+	if err != nil {
+		t.Fatalf("buildAgentCommandLine: %v", err)
+	}
+	for _, want := range []string{"--model gpt-5.4", "-C '/tmp/work tree'", "< '/tmp/pkg file'"} {
+		if !strings.Contains(cmd, want) {
+			t.Fatalf("command missing %q: %s", want, cmd)
+		}
+	}
+	if strings.Contains(cmd, "{model_args}") {
+		t.Fatalf("command still has placeholder: %s", cmd)
+	}
+}
+
+func TestBuildAgentCommandLineErrorsWhenPolicyMissingForModelPlaceholder(t *testing.T) {
+	agent := &Agent{
+		Name:           "elza-dev",
+		LLMProvider:    "openai",
+		LaunchTemplate: "codex exec {model_args} -C {worktree} - < {package_file}",
+	}
+	_, err := buildAgentCommandLine(agent, "/tmp/work", "/tmp/pkg", nil, "standard")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestValidateModelPolicyForRosterRequiresPolicyWhenPlaceholderUsed(t *testing.T) {
+	roster := Roster{Agents: []Agent{{
+		Name:           "elza-dev",
+		LLMProvider:    "openai",
+		LaunchTemplate: "codex exec {model_args} -C {worktree} - < {package_file}",
+	}}}
+	err := validateModelPolicyForRoster(roster, nil, "standard")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "MODEL_POLICY") {
+		t.Fatalf("error should mention MODEL_POLICY, got %v", err)
+	}
+}
+
 func TestBuildAgentPackageJSON_WithInstructions(t *testing.T) {
 	pkg := WorkPackage{IssueID: 42, Role: "developer"}
 	instructions := []string{"Step 1: do X", "Step 2: do Y"}
@@ -418,6 +519,31 @@ func TestLoadRosterParsesAgentInstructions(t *testing.T) {
 	}
 	if roster.AgentInstructions[0] != "Step A" {
 		t.Errorf("instruction[0]=%q, want %q", roster.AgentInstructions[0], "Step A")
+	}
+}
+
+func testModelPolicy() ModelPolicy {
+	return ModelPolicy{
+		DefaultProfile: "standard",
+		Fallbacks: map[string][]string{
+			"basic":    {"basic"},
+			"standard": {"standard", "basic"},
+			"advanced": {"advanced", "standard", "basic"},
+			"premium":  {"premium", "advanced", "standard", "basic"},
+		},
+		Providers: map[string]map[string]ModelSpec{
+			"anthropic": {
+				"basic":    {Model: "haiku", Args: "--model haiku"},
+				"standard": {Model: "sonnet", Args: "--model sonnet"},
+				"advanced": {Model: "opus", Args: "--model opus"},
+			},
+			"openai": {
+				"basic":    {Model: "gpt-5.4-mini", Args: "--model gpt-5.4-mini"},
+				"standard": {Model: "gpt-5.3-codex", Args: "--model gpt-5.3-codex"},
+				"advanced": {Model: "gpt-5.4", Args: "--model gpt-5.4"},
+				"premium":  {Model: "gpt-5.5", Args: "--model gpt-5.5"},
+			},
+		},
 	}
 }
 

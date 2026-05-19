@@ -1,0 +1,43 @@
+{
+  "default_profile": "standard",
+  "fallbacks": {
+    "basic": ["basic"],
+    "standard": ["standard", "basic"],
+    "advanced": ["advanced", "standard", "basic"],
+    "premium": ["premium", "advanced", "standard", "basic"]
+  },
+  "providers": {
+    "anthropic": {
+      "basic": {
+        "model": "haiku",
+        "args": "--model haiku"
+      },
+      "standard": {
+        "model": "sonnet",
+        "args": "--model sonnet"
+      },
+      "advanced": {
+        "model": "opus",
+        "args": "--model opus"
+      }
+    },
+    "openai": {
+      "basic": {
+        "model": "gpt-5.4-mini",
+        "args": "--model gpt-5.4-mini"
+      },
+      "standard": {
+        "model": "gpt-5.3-codex",
+        "args": "--model gpt-5.3-codex"
+      },
+      "advanced": {
+        "model": "gpt-5.4",
+        "args": "--model gpt-5.4"
+      },
+      "premium": {
+        "model": "gpt-5.5",
+        "args": "--model gpt-5.5"
+      }
+    }
+  }
+}

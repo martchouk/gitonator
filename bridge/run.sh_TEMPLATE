@@ -7,6 +7,8 @@ export ORCH_BASE_URL='https://YOUR_MCP_SERVER_URL'
 export AGENT_SHARED_TOKEN='YOUR_AGENT_SHARED_TOKEN'
 export BRIDGE_ID='YOUR_BRIDGE_ID'            # unique name for this Bridge instance
 export AGENTS_CONFIG="$HOME/agents.json"     # path to agents roster JSON file
+export MODEL="standard"                      # basic, standard, advanced, premium
+export MODEL_POLICY="$HOME/model-policy.json"
 export POLL_SECONDS=5
 export LOG_LEVEL=DEBUG
 

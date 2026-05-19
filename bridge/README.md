@@ -61,6 +61,8 @@ go build -o agent-bridge .
 | Variable | Default | Meaning |
 |---|---|---|
 | `ORCH_BASE_URL` | `https://mcp.singularia.de` | Base URL of the central orchestrator |
+| `MODEL` | `MODEL_POLICY.default_profile` | Semantic model profile to resolve for every agent, e.g. `basic`, `standard`, `advanced`, `premium` |
+| `MODEL_POLICY` | _(empty)_ | Path to a model-policy JSON file used to fill `{model_args}` in launch templates |
 | `POLL_SECONDS` | `5` | Seconds to sleep between poll cycles when no work is available |
 | `AGENT_FAILURE_COOLDOWN_SECONDS` | `300` | Seconds to pause a provider after transient failures such as quota exhaustion, rate limits, provider overload, or network errors |
 | `LOG_LEVEL` | _(empty)_ | Set to `DEBUG` for verbose per-cycle logging |
@@ -84,7 +86,7 @@ go build -o agent-bridge .
       "name": "bud-dev",
       "role": "developer",
       "llm_provider": "anthropic",
-      "launch_template": "cd {worktree} && claude --dangerously-skip-permissions --print < {package_file}",
+      "launch_template": "cd {worktree} && claude {model_args} --dangerously-skip-permissions --print < {package_file}",
       "env": {
         "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
       },
@@ -96,7 +98,7 @@ go build -o agent-bridge .
       "name": "mud-rev",
       "role": "reviewer",
       "llm_provider": "anthropic",
-      "launch_template": "cd {worktree} && claude --dangerously-skip-permissions --print < {package_file}",
+      "launch_template": "cd {worktree} && claude {model_args} --dangerously-skip-permissions --print < {package_file}",
       "env": {
         "GH_TOKEN": "$MUD_REV_GH_TOKEN"
       },
@@ -121,6 +123,46 @@ go build -o agent-bridge .
 | `launch_template` | Shell command template (run via `sh -c`) to start the agent |
 | `env` | _(optional)_ Per-agent environment variables injected into the agent subprocess |
 | `worktrees` | Map of `"owner/repo"` → absolute path to the local working directory for that repo |
+
+### Model policy and `{model_args}`
+
+If an agent `launch_template` contains `{model_args}`, the Bridge resolves it at startup from `MODEL_POLICY` and `MODEL`.
+
+Example:
+
+```bash
+export MODEL="standard"
+export MODEL_POLICY="$HOME/model-policy.json"
+```
+
+```json
+{
+  "default_profile": "standard",
+  "fallbacks": {
+    "basic": ["basic"],
+    "standard": ["standard", "basic"],
+    "advanced": ["advanced", "standard", "basic"],
+    "premium": ["premium", "advanced", "standard", "basic"]
+  },
+  "providers": {
+    "anthropic": {
+      "basic": { "model": "haiku", "args": "--model haiku" },
+      "standard": { "model": "sonnet", "args": "--model sonnet" },
+      "advanced": { "model": "opus", "args": "--model opus" }
+    },
+    "openai": {
+      "basic": { "model": "gpt-5.4-mini", "args": "--model gpt-5.4-mini" },
+      "standard": { "model": "gpt-5.3-codex", "args": "--model gpt-5.3-codex" },
+      "advanced": { "model": "gpt-5.4", "args": "--model gpt-5.4" },
+      "premium": { "model": "gpt-5.5", "args": "--model gpt-5.5" }
+    }
+  }
+}
+```
+
+Provider model counts do not need to match. The selected profile is resolved through the configured fallback chain. For example, `MODEL=premium` uses OpenAI `premium` if present; Anthropic has no `premium`, so it falls back to `advanced`.
+
+The Bridge validates all `{model_args}` templates at startup. If a provider/profile cannot be resolved, it exits before polling work.
 
 ### Per-agent env variables (`env`)
 
@@ -296,6 +338,8 @@ export ORCH_BASE_URL="https://mcp.singularia.de"
 export AGENT_SHARED_TOKEN="supersecret"
 export BRIDGE_ID="home-bridge"
 export AGENTS_CONFIG="$PWD/agents.json"
+export MODEL="standard"
+export MODEL_POLICY="$PWD/model-policy.json"
 export POLL_SECONDS=5
 export AGENT_FAILURE_COOLDOWN_SECONDS=300
 export LOG_LEVEL=DEBUG
