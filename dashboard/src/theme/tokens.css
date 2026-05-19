@@ -2,6 +2,13 @@
   --font-sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
+  /* ── Neon accent tokens (light — readable, desaturated) ──────── */
+  --color-neon-cyan:    #0077aa;
+  --color-neon-green:   #16a34a;
+  --color-neon-amber:   #b45309;
+  --color-neon-magenta: #be185d;
+  --color-neon-yellow:  #854d0e;
+
   /* Radii */
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -82,53 +89,61 @@
 }
 
 [data-theme='dark'] {
-  /* ── Dark palette ──────────────────────────────────────────── */
-  --color-bg: #08090f;
-  --color-surface: #0e0f1a;
-  --color-surface-raised: rgba(255, 255, 255, 0.04);
-  --color-border: rgba(129, 140, 248, 0.1);
-  --color-border-strong: rgba(129, 140, 248, 0.28);
-  --color-text: #e2e8f0;
-  --color-text-muted: #94a3b8;
+  /* ── Dark palette — near-pure black, hacker/terminal ─────────── */
+  --color-bg: #090909;
+  --color-surface: #111113;
+  --color-surface-raised: rgba(255, 255, 255, 0.03);
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.15);
+  --color-text: #e0e0e0;
+  --color-text-muted: #888;
   --color-primary: #818cf8;
-  --color-primary-subtle: rgba(129, 140, 248, 0.1);
-  --color-primary-glow: rgba(129, 140, 248, 0.3);
+  --color-primary-subtle: rgba(0, 255, 136, 0.08);
+  --color-primary-glow: rgba(0, 255, 136, 0.25);
   --color-accent: #22d3ee;
 
-  --glow-primary: 0 0 16px rgba(129, 140, 248, 0.28), 0 0 4px rgba(129, 140, 248, 0.15);
-  --glow-primary-strong: 0 0 28px rgba(129, 140, 248, 0.45), 0 0 12px rgba(129, 140, 248, 0.25);
-  --glow-accent: 0 0 16px rgba(34, 211, 238, 0.28);
+  /* ── Neon accent tokens (dark — vivid terminal palette) ──────── */
+  --color-neon-cyan:    #00e5ff;
+  --color-neon-green:   #00ff88;
+  --color-neon-amber:   #ffb800;
+  --color-neon-magenta: #ff2d78;
+  --color-neon-yellow:  #f5e642;
+
+  /* ── Interactive glows — green, not blue ─────────────────────── */
+  --glow-primary:        0 0 14px rgba(0, 255, 136, 0.25), 0 0 4px rgba(0, 255, 136, 0.12);
+  --glow-primary-strong: 0 0 24px rgba(0, 255, 136, 0.4),  0 0 8px rgba(0, 255, 136, 0.2);
+  --glow-accent:         0 0 14px rgba(0, 229, 255, 0.28);
 
   /* ── MD3 compat tokens (dark) ──────────────────────────────── */
   --md-sys-color-primary: #818cf8;
-  --md-sys-color-primary-container: rgba(129, 140, 248, 0.1);
-  --md-sys-color-on-primary: #0e0f1a;
+  --md-sys-color-primary-container: rgba(0, 255, 136, 0.08);
+  --md-sys-color-on-primary: #090909;
   --md-sys-color-on-primary-container: #818cf8;
 
   --md-sys-color-secondary: #c084fc;
   --md-sys-color-secondary-container: rgba(192, 132, 252, 0.1);
-  --md-sys-color-on-secondary: #0e0f1a;
+  --md-sys-color-on-secondary: #090909;
   --md-sys-color-on-secondary-container: #c084fc;
 
   --md-sys-color-tertiary: #22d3ee;
   --md-sys-color-tertiary-container: rgba(34, 211, 238, 0.1);
-  --md-sys-color-on-tertiary: #0e0f1a;
+  --md-sys-color-on-tertiary: #090909;
   --md-sys-color-on-tertiary-container: #22d3ee;
 
   --md-sys-color-error: #f87171;
   --md-sys-color-error-container: rgba(248, 113, 113, 0.1);
-  --md-sys-color-on-error: #0e0f1a;
+  --md-sys-color-on-error: #090909;
   --md-sys-color-on-error-container: #f87171;
 
-  --md-sys-color-background: #08090f;
-  --md-sys-color-surface: #0e0f1a;
+  --md-sys-color-background: #090909;
+  --md-sys-color-surface: #111113;
   --md-sys-color-surface-variant: rgba(255, 255, 255, 0.04);
-  --md-sys-color-on-background: #e2e8f0;
-  --md-sys-color-on-surface: #e2e8f0;
-  --md-sys-color-on-surface-variant: #94a3b8;
+  --md-sys-color-on-background: #e0e0e0;
+  --md-sys-color-on-surface: #e0e0e0;
+  --md-sys-color-on-surface-variant: #888;
 
-  --md-sys-color-outline: rgba(129, 140, 248, 0.28);
-  --md-sys-color-outline-variant: rgba(129, 140, 248, 0.1);
+  --md-sys-color-outline: rgba(255, 255, 255, 0.15);
+  --md-sys-color-outline-variant: rgba(255, 255, 255, 0.07);
 
   --md-sys-color-inverse-surface: #e0e7ff;
   --md-sys-color-inverse-on-surface: #1e1b4b;

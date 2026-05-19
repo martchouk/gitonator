@@ -41,43 +41,44 @@
 }
 
 [data-theme='dark'] {
-  --status-color-intake: #22d3ee;
-  --status-color-intake-container: rgba(34, 211, 238, 0.1);
-  --status-color-intake-on-container: #22d3ee;
+  /* neon terminal palette — vivid but not garish */
+  --status-color-intake: #00e5ff;
+  --status-color-intake-container: rgba(0, 229, 255, 0.1);
+  --status-color-intake-on-container: #00e5ff;
 
-  --status-color-design: #c084fc;
-  --status-color-design-container: rgba(192, 132, 252, 0.1);
-  --status-color-design-on-container: #c084fc;
+  --status-color-design: #f5e642;
+  --status-color-design-container: rgba(245, 230, 66, 0.08);
+  --status-color-design-on-container: #f5e642;
 
-  --status-color-requirements: #c084fc;
-  --status-color-requirements-container: rgba(192, 132, 252, 0.1);
-  --status-color-requirements-on-container: #c084fc;
+  --status-color-requirements: #f5e642;
+  --status-color-requirements-container: rgba(245, 230, 66, 0.08);
+  --status-color-requirements-on-container: #f5e642;
 
-  --status-color-planning: #c084fc;
-  --status-color-planning-container: rgba(192, 132, 252, 0.1);
-  --status-color-planning-on-container: #c084fc;
+  --status-color-planning: #f5e642;
+  --status-color-planning-container: rgba(245, 230, 66, 0.08);
+  --status-color-planning-on-container: #f5e642;
 
   --status-color-implementation: #818cf8;
   --status-color-implementation-container: rgba(129, 140, 248, 0.1);
   --status-color-implementation-on-container: #818cf8;
 
-  --status-color-review: #a78bfa;
-  --status-color-review-container: rgba(167, 139, 250, 0.1);
-  --status-color-review-on-container: #a78bfa;
+  --status-color-review: #c084fc;
+  --status-color-review-container: rgba(192, 132, 252, 0.1);
+  --status-color-review-on-container: #c084fc;
 
-  --status-color-acceptance: #34d399;
-  --status-color-acceptance-container: rgba(52, 211, 153, 0.1);
-  --status-color-acceptance-on-container: #34d399;
+  --status-color-acceptance: #00ff88;
+  --status-color-acceptance-container: rgba(0, 255, 136, 0.1);
+  --status-color-acceptance-on-container: #00ff88;
 
-  --status-color-terminal: #94a3b8;
-  --status-color-terminal-container: rgba(148, 163, 184, 0.08);
-  --status-color-terminal-on-container: #94a3b8;
+  --status-color-terminal: #555;
+  --status-color-terminal-container: rgba(255, 255, 255, 0.05);
+  --status-color-terminal-on-container: #888;
 
-  --status-color-exception: #f87171;
-  --status-color-exception-container: rgba(248, 113, 113, 0.1);
-  --status-color-exception-on-container: #f87171;
+  --status-color-exception: #ff2d78;
+  --status-color-exception-container: rgba(255, 45, 120, 0.1);
+  --status-color-exception-on-container: #ff2d78;
 
-  --status-color-blocked: #f87171;
-  --status-color-blocked-container: rgba(248, 113, 113, 0.1);
-  --status-color-blocked-on-container: #f87171;
+  --status-color-blocked: #ff2d78;
+  --status-color-blocked-container: rgba(255, 45, 120, 0.1);
+  --status-color-blocked-on-container: #ff2d78;
 }

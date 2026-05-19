@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
 
 interface Props {
   code: string;
@@ -50,7 +51,7 @@ export function CodeBlock({ code }: Props) {
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          color: 'var(--md-sys-color-on-surface-variant)',
+          color: copied ? 'var(--color-neon-green)' : 'var(--md-sys-color-on-surface-variant)',
           padding: '4px',
           borderRadius: '4px',
           minWidth: '32px',
@@ -58,11 +59,10 @@ export function CodeBlock({ code }: Props) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          transition: 'color 150ms ease',
         }}
       >
-        <span className="material-icons" style={{ fontSize: '18px' }}>
-          {copied ? 'check' : 'content_copy'}
-        </span>
+        {copied ? <Check size={15} /> : <Copy size={15} />}
       </button>
     </div>
   );

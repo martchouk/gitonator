@@ -6,14 +6,14 @@
   min-height: 100vh;
 }
 
-/* ── Deep space background (dark only) ──────────────────────── */
+/* ── Dark background — near-black with subtle terminal grid ──── */
 
 [data-theme='dark'] body {
   background-color: var(--color-bg);
   background-image:
-    radial-gradient(ellipse 70% 55% at 12% 25%, rgba(29, 17, 72, 0.55) 0%, transparent 60%),
-    radial-gradient(ellipse 55% 45% at 88% 75%, rgba(14, 20, 70, 0.45) 0%, transparent 55%),
-    radial-gradient(ellipse 45% 60% at 55% 0%,  rgba(88, 40, 160, 0.07) 0%, transparent 45%);
+    linear-gradient(rgba(0, 255, 136, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 136, 0.022) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
 
 /* ── Top navigation bar ──────────────────────────────────────── */
@@ -33,9 +33,9 @@
 }
 
 [data-theme='dark'] .top-nav {
-  background: rgba(8, 9, 15, 0.72);
-  border-bottom: 1px solid rgba(129, 140, 248, 0.1);
-  box-shadow: 0 1px 0 rgba(129, 140, 248, 0.06), 0 4px 40px rgba(0, 0, 0, 0.5);
+  background: rgba(9, 9, 9, 0.82);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 1px 0 rgba(0, 255, 136, 0.06), 0 4px 40px rgba(0, 0, 0, 0.6);
 }
 
 [data-theme='light'] .top-nav {
@@ -100,7 +100,7 @@
 }
 
 [data-theme='dark'] .nav-links {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -136,9 +136,9 @@
 }
 
 [data-theme='dark'] .nav-link--active {
-  color: #818cf8 !important;
-  background: rgba(129, 140, 248, 0.12) !important;
-  box-shadow: 0 0 14px rgba(129, 140, 248, 0.28), 0 0 0 1px rgba(129, 140, 248, 0.25);
+  color: #00ff88 !important;
+  background: rgba(0, 255, 136, 0.1) !important;
+  box-shadow: 0 0 14px rgba(0, 255, 136, 0.22), 0 0 0 1px rgba(0, 255, 136, 0.2);
 }
 
 [data-theme='light'] .nav-link {
@@ -178,15 +178,15 @@
 }
 
 [data-theme='dark'] .theme-toggle {
-  color: #94a3b8;
-  border: 1px solid rgba(129, 140, 248, 0.14);
+  color: #888;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 [data-theme='dark'] .theme-toggle:hover {
-  color: #818cf8;
-  background: rgba(129, 140, 248, 0.1);
-  border-color: rgba(129, 140, 248, 0.32);
-  box-shadow: 0 0 12px rgba(129, 140, 248, 0.22);
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.08);
+  border-color: rgba(0, 255, 136, 0.3);
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.18);
 }
 
 [data-theme='light'] .theme-toggle {
@@ -222,28 +222,28 @@
   margin: 0 auto;
 }
 
-/* ── Status chip glows (dark only) ──────────────────────────── */
+/* ── Status chip glows (dark only) — vivid neon ──────────────── */
 
 [data-theme='dark'] .status-chip[data-category='implementation'] {
-  box-shadow: 0 0 8px rgba(129, 140, 248, 0.35);
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.35);
 }
 [data-theme='dark'] .status-chip[data-category='review'] {
-  box-shadow: 0 0 8px rgba(167, 139, 250, 0.35);
+  box-shadow: 0 0 8px rgba(192, 132, 252, 0.38);
 }
 [data-theme='dark'] .status-chip[data-category='acceptance'] {
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.35);
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.4);
 }
 [data-theme='dark'] .status-chip[data-category='intake'] {
-  box-shadow: 0 0 8px rgba(34, 211, 238, 0.35);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.38);
 }
 [data-theme='dark'] .status-chip[data-category='design'],
 [data-theme='dark'] .status-chip[data-category='planning'],
 [data-theme='dark'] .status-chip[data-category='requirements'] {
-  box-shadow: 0 0 8px rgba(192, 132, 252, 0.35);
+  box-shadow: 0 0 8px rgba(245, 230, 66, 0.3);
 }
 [data-theme='dark'] .status-chip[data-category='exception'],
 [data-theme='dark'] .status-chip[data-category='blocked'] {
-  box-shadow: 0 0 8px rgba(248, 113, 113, 0.35);
+  box-shadow: 0 0 8px rgba(255, 45, 120, 0.4);
 }
 
 /* ── Scrollbar (dark only) ──────────────────────────────────── */
@@ -256,11 +256,11 @@
   background: transparent;
 }
 [data-theme='dark'] ::-webkit-scrollbar-thumb {
-  background: rgba(129, 140, 248, 0.18);
+  background: rgba(0, 255, 136, 0.15);
   border-radius: 3px;
 }
 [data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(129, 140, 248, 0.38);
+  background: rgba(0, 255, 136, 0.32);
 }
 
 /* ── Responsive ─────────────────────────────────────────────── */
