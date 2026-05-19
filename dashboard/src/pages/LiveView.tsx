@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Loader2, ClipboardList } from 'lucide-react';
+import { ServerCrash, RotateCcw, Loader2, ClipboardList } from 'lucide-react';
 import useSWR from 'swr';
 import type { Issue } from '../api/types';
 import { get } from '../api/client';
@@ -60,30 +60,39 @@ export function LiveView() {
       {error && (
         <div
           style={{
-            border: '1px solid var(--md-sys-color-error)',
-            borderRadius: 'var(--md-shape-medium)',
-            padding: 'var(--spacing-md)',
-            color: 'var(--md-sys-color-error)',
-            marginBottom: 'var(--spacing-lg)',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            gap: '8px',
+            justifyContent: 'center',
+            padding: 'var(--spacing-2xl)',
+            color: 'var(--color-text-muted)',
+            gap: 'var(--spacing-sm)',
           }}
         >
-          <AlertCircle size={20} />
-          {error.message || 'Failed to load issues'}
+          <ServerCrash size={40} style={{ opacity: 0.5 }} />
+          <span style={{ fontWeight: 500, fontSize: '1rem' }}>Service is offline</span>
+          <span style={{ fontSize: '0.875rem' }}>The backend could not be reached</span>
           <button
             onClick={() => void mutate()}
+            aria-label="Retry"
+            title="Retry"
             style={{
-              marginLeft: 'auto',
+              marginTop: 'var(--spacing-xs)',
               background: 'none',
               border: 'none',
-              color: 'var(--md-sys-color-primary)',
               cursor: 'pointer',
-              fontWeight: 500,
+              color: 'var(--color-text-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '6px',
+              borderRadius: 'var(--radius-md)',
+              transition: 'color 150ms ease',
             }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-neon-green)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
           >
-            Retry
+            <RotateCcw size={20} />
           </button>
         </div>
       )}
