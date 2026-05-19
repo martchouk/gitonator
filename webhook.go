@@ -332,6 +332,19 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		deliveryID, eventType, env.Action, env.Issue.Number,
 	)
 
+	// Capture the real worker from issue_comment webhooks. When an agent posts its
+	// completion comment, comment.user.login is GitHub's own authenticated identity —
+	// more reliable than parsing the "Author:" header from the comment body.
+	if eventType == "issue_comment" && env.Action == "created" &&
+		env.Comment.User.Login != "" && s.store != nil {
+		if err := s.store.SetTaskClaimedBy(env.Issue.Number, env.Comment.User.Login); err != nil {
+			s.debugf("SetTaskClaimedBy: issue=%d login=%s err=%v",
+				env.Issue.Number, env.Comment.User.Login, err)
+		} else {
+			s.debugf("SetTaskClaimedBy: issue=%d login=%s", env.Issue.Number, env.Comment.User.Login)
+		}
+	}
+
 	// Persist an explicit workflow key so future webhooks without ?workflow= reuse it.
 	// If no explicit key was given, look up the stored one and override wd.
 	if s.store != nil && s.workflows != nil {

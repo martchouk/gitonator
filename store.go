@@ -292,12 +292,13 @@ func (s *Store) listPastWorkersTx(tx *sql.Tx, issueNumber int) ([]string, error)
 }
 
 func (s *Store) listPastWorkers(q queryer, issueNumber int) ([]string, error) {
+	// Prefer claimed_by (GitHub-authenticated commenter) over assignee (issue-level assignment).
 	rows, err := q.Query(
-		`SELECT assignee
+		`SELECT COALESCE(NULLIF(claimed_by,''), NULLIF(assignee,''))
 		 FROM tasks
 		 WHERE issue_number = ?
 		   AND status = 'completed'
-		   AND COALESCE(assignee, '') <> ''
+		   AND COALESCE(NULLIF(claimed_by,''), NULLIF(assignee,'')) IS NOT NULL
 		 ORDER BY id ASC`,
 		issueNumber,
 	)
@@ -319,6 +320,31 @@ func (s *Store) listPastWorkers(q queryer, issueNumber int) ([]string, error) {
 		}
 	}
 	return workers, rows.Err()
+}
+
+// SetTaskClaimedBy records the GitHub-authenticated login of the agent who posted a
+// completion comment as the confirmed worker on the most recent active or completed
+// task for the issue. Prioritises dispatched tasks (agent still running) over recently
+// completed ones, and never overwrites an already-set claimed_by.
+func (s *Store) SetTaskClaimedBy(issueNumber int, login string) error {
+	_, err := s.db.Exec(
+		`UPDATE tasks SET claimed_by = ?
+		 WHERE id = (
+		     SELECT id FROM tasks
+		     WHERE issue_number = ?
+		       AND COALESCE(claimed_by, '') = ''
+		       AND status IN ('dispatched', 'completed', 'queued')
+		     ORDER BY CASE status
+		                WHEN 'dispatched' THEN 0
+		                WHEN 'completed'  THEN 1
+		                ELSE 2
+		              END ASC,
+		              id DESC
+		     LIMIT 1
+		 )`,
+		login, issueNumber,
+	)
+	return err
 }
 
 func mergeUniqueStrings(values ...[]string) []string {

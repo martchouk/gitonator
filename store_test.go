@@ -558,6 +558,79 @@ func TestGetNextWorkPackageIncludesPastWorkers(t *testing.T) {
 	}
 }
 
+// TestSetTaskClaimedBy verifies that SetTaskClaimedBy writes the login to the most
+// recent dispatched/completed task and that listPastWorkers prefers it over assignee.
+func TestSetTaskClaimedBy(t *testing.T) {
+	s := tempStore(t)
+
+	pkg := testPkg(42, "developer")
+	pkg.Assignee = "issue-assignee"
+	if _, err := s.QueueTask(pkg); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	if _, err := s.GetNextWorkPackage("bridge-1", []string{"developer"}); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+
+	// Record the real worker before the task is completed.
+	if err := s.SetTaskClaimedBy(42, "real-worker"); err != nil {
+		t.Fatalf("SetTaskClaimedBy: %v", err)
+	}
+	// A second call must not overwrite the already-set value.
+	if err := s.SetTaskClaimedBy(42, "interloper"); err != nil {
+		t.Fatalf("SetTaskClaimedBy second: %v", err)
+	}
+
+	if err := s.CompleteDispatchedTask(42); err != nil {
+		t.Fatalf("CompleteDispatchedTask: %v", err)
+	}
+
+	next := testPkg(42, "reviewer")
+	if _, err := s.QueueTask(next); err != nil {
+		t.Fatalf("QueueTask next: %v", err)
+	}
+	got, err := s.GetNextWorkPackage("bridge-1", []string{"reviewer"})
+	if err != nil || got == nil {
+		t.Fatalf("GetNextWorkPackage: %v %v", got, err)
+	}
+
+	// PastWorkers must contain the claimed_by value, not the issue-level assignee.
+	if len(got.PastWorkers) != 1 || got.PastWorkers[0] != "real-worker" {
+		t.Errorf("PastWorkers: got %v, want [real-worker]", got.PastWorkers)
+	}
+}
+
+// TestSetTaskClaimedByCompletedFirst verifies that SetTaskClaimedBy still works
+// when the task is already completed before the comment webhook arrives.
+func TestSetTaskClaimedByCompletedFirst(t *testing.T) {
+	s := tempStore(t)
+
+	pkg := testPkg(55, "developer")
+	pkg.Assignee = "issue-assignee"
+	if _, err := s.QueueTask(pkg); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	if _, err := s.GetNextWorkPackage("bridge-1", []string{"developer"}); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if err := s.CompleteDispatchedTask(55); err != nil {
+		t.Fatalf("CompleteDispatchedTask: %v", err)
+	}
+
+	// Comment webhook arrives after the task is already completed.
+	if err := s.SetTaskClaimedBy(55, "late-commenter"); err != nil {
+		t.Fatalf("SetTaskClaimedBy: %v", err)
+	}
+
+	workers, err := s.ListPastWorkers(55)
+	if err != nil {
+		t.Fatalf("ListPastWorkers: %v", err)
+	}
+	if len(workers) != 1 || workers[0] != "late-commenter" {
+		t.Errorf("ListPastWorkers: got %v, want [late-commenter]", workers)
+	}
+}
+
 // TestIssueWorkflowKeyPersistAndLookup verifies SetIssueWorkflowKey and
 // GetIssueWorkflowKey round-trip (Finding 3 from issue #46).
 func TestIssueWorkflowKeyPersistAndLookup(t *testing.T) {

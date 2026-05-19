@@ -81,6 +81,10 @@ function SubTableHeader() {
 
 function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
   const bridge = nullStr(task.bridge_id);
+  // Prefer GitHub-authenticated commenter (claimed_by) over issue assignee over role.
+  const workerLogin = (task.claimed_by?.Valid && task.claimed_by?.String)
+    ? task.claimed_by.String
+    : task.assignee || null;
 
   return (
     <div
@@ -108,16 +112,16 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: taskOutcomeColor(task.status) }}>
         {task.status}
       </span>
-      {/* Assigned to: real assignee in cyan, role fallback in yellow */}
+      {/* Assigned to: real worker (claimed_by) in cyan, role fallback in yellow */}
       <span style={{
         fontFamily: 'var(--font-mono)',
         fontSize: '0.6875rem',
-        color: task.assignee ? 'var(--color-neon-cyan)' : 'var(--color-neon-yellow)',
+        color: workerLogin ? 'var(--color-neon-cyan)' : 'var(--color-neon-yellow)',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
       }}>
-        {task.assignee || task.role || '–'}
+        {workerLogin || task.role || '–'}
       </span>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: bridge !== '–' ? 1 : 0.4 }}>
         {bridge}
