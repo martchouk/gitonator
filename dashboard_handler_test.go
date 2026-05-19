@@ -617,6 +617,216 @@ func TestHandleDashboardStream_NoFlusherSupport(t *testing.T) {
 	}
 }
 
+// --- /api/v1/dashboard/completed ---
+
+func TestHandleCompletedList_Empty(t *testing.T) {
+	d := newTestDashboardServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed", nil)
+	w := httptest.NewRecorder()
+	d.handleCompletedList(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var body map[string]interface{}
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	completed, ok := body["completed"].([]interface{})
+	if !ok {
+		t.Fatalf("completed is not an array: %v", body["completed"])
+	}
+	if len(completed) != 0 {
+		t.Fatalf("expected 0 completed runs, got %d", len(completed))
+	}
+}
+
+func TestHandleCompletedList_WithData(t *testing.T) {
+	d := newTestDashboardServer(t)
+	_ = d.store.RecordTransitionAudit(42, "status:open", "status:done",
+		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed", nil)
+	w := httptest.NewRecorder()
+	d.handleCompletedList(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var body map[string]interface{}
+	_ = json.NewDecoder(w.Body).Decode(&body)
+	completed := body["completed"].([]interface{})
+	if len(completed) != 1 {
+		t.Fatalf("expected 1 completed run, got %d", len(completed))
+	}
+	run := completed[0].(map[string]interface{})
+	if int(run["issueNumber"].(float64)) != 42 {
+		t.Errorf("issueNumber: want 42, got %v", run["issueNumber"])
+	}
+	if run["finalStatus"].(string) != "status:done" {
+		t.Errorf("finalStatus: want status:done, got %s", run["finalStatus"])
+	}
+}
+
+func TestHandleCompletedList_MethodNotAllowed(t *testing.T) {
+	d := newTestDashboardServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/completed", nil)
+	w := httptest.NewRecorder()
+	d.handleCompletedList(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", w.Code)
+	}
+}
+
+func TestHandleCompletedIssue_Valid(t *testing.T) {
+	d := newTestDashboardServer(t)
+	_ = d.store.RecordTransitionAudit(55, "status:open", "status:done",
+		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed/55", nil)
+	w := httptest.NewRecorder()
+	d.handleCompletedIssue(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var detail CompletedRunDetail
+	if err := json.NewDecoder(w.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if detail.IssueNumber != 55 {
+		t.Errorf("issueNumber: want 55, got %d", detail.IssueNumber)
+	}
+	if detail.FinalStatus != "status:done" {
+		t.Errorf("finalStatus: want status:done, got %s", detail.FinalStatus)
+	}
+	if len(detail.Audit) != 1 {
+		t.Errorf("audit entries: want 1, got %d", len(detail.Audit))
+	}
+	if detail.StepCount != 1 {
+		t.Errorf("stepCount: want 1, got %d", detail.StepCount)
+	}
+}
+
+func TestHandleCompletedIssue_NotFound(t *testing.T) {
+	d := newTestDashboardServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed/999", nil)
+	w := httptest.NewRecorder()
+	d.handleCompletedIssue(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestHandleCompletedIssue_InvalidNumber(t *testing.T) {
+	d := newTestDashboardServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed/xyz", nil)
+	w := httptest.NewRecorder()
+	d.handleCompletedIssue(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandleCompletedIssue_AttachesWorkflowGraph(t *testing.T) {
+	d := newTestDashboardServer(t)
+	_ = d.store.SetIssueWorkflowKey(77, "lean")
+	_ = d.store.RecordTransitionAudit(77, "status:open", "status:done",
+		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed/77", nil)
+	w := httptest.NewRecorder()
+	d.handleCompletedIssue(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var detail CompletedRunDetail
+	if err := json.NewDecoder(w.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if detail.Workflow == nil {
+		t.Fatal("expected workflow graph to be attached when workflow key is known")
+	}
+	if detail.Workflow.Key != "lean" {
+		t.Errorf("workflow key: want lean, got %s", detail.Workflow.Key)
+	}
+}
+
+// --- store: ListCompletedIssues ---
+
+func TestListCompletedIssues_Empty(t *testing.T) {
+	store, err := OpenStore(":memory:")
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer store.Close()
+
+	runs, err := store.ListCompletedIssues(0)
+	if err != nil {
+		t.Fatalf("ListCompletedIssues: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected 0, got %d", len(runs))
+	}
+}
+
+func TestListCompletedIssues_FiltersByTerminalStatus(t *testing.T) {
+	store, err := OpenStore(":memory:")
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer store.Close()
+
+	// Issue 1: ends with "done" → should appear.
+	_ = store.RecordTransitionAudit(1, "status:open", "status:done",
+		"a", "", "a", "webhook", nil, "success", "", nil, nil)
+	// Issue 2: still active → should NOT appear.
+	_ = store.RecordTransitionAudit(2, "status:new", "status:in-progress",
+		"b", "", "b", "webhook", nil, "success", "", nil, nil)
+
+	runs, err := store.ListCompletedIssues(100)
+	if err != nil {
+		t.Fatalf("ListCompletedIssues: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected 1 completed run, got %d", len(runs))
+	}
+	if runs[0].IssueNumber != 1 {
+		t.Errorf("expected issue 1, got %d", runs[0].IssueNumber)
+	}
+	if runs[0].FinalStatus != "status:done" {
+		t.Errorf("finalStatus: want status:done, got %s", runs[0].FinalStatus)
+	}
+	if runs[0].StepCount != 1 {
+		t.Errorf("stepCount: want 1, got %d", runs[0].StepCount)
+	}
+}
+
+func TestListCompletedIssues_StepCountIncludesAllTransitions(t *testing.T) {
+	store, err := OpenStore(":memory:")
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer store.Close()
+
+	_ = store.RecordTransitionAudit(10, "status:new", "status:open",
+		"a", "", "a", "webhook", nil, "success", "", nil, nil)
+	_ = store.RecordTransitionAudit(10, "status:open", "status:in-review",
+		"a", "", "a", "webhook", nil, "success", "", nil, nil)
+	_ = store.RecordTransitionAudit(10, "status:in-review", "status:done",
+		"a", "", "a", "webhook", nil, "success", "", nil, nil)
+
+	runs, err := store.ListCompletedIssues(100)
+	if err != nil {
+		t.Fatalf("ListCompletedIssues: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected 1, got %d", len(runs))
+	}
+	if runs[0].StepCount != 3 {
+		t.Errorf("stepCount: want 3, got %d", runs[0].StepCount)
+	}
+}
+
 // --- setCORSHeaders ---
 
 func TestSetCORSHeaders(t *testing.T) {

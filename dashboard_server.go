@@ -31,6 +31,10 @@ func (s *Server) runDashboard(ctx context.Context, hub *SSEHub) error {
 	mux.HandleFunc("/api/v1/dashboard/tasks", d.handleDashboardTasks)
 	mux.HandleFunc("/api/v1/dashboard/audit", d.handleDashboardAudit)
 
+	// Completed workflow runs
+	mux.HandleFunc("/api/v1/dashboard/completed/", d.handleCompletedOrDetail)
+	mux.HandleFunc("/api/v1/dashboard/completed", d.handleCompletedList)
+
 	// SSE live stream
 	mux.HandleFunc("/api/v1/dashboard/stream", d.handleDashboardStream)
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ChevronUp, ChevronDown } from 'lucide-react';
 import { CodeBlock } from '../components/CodeBlock';
 
 const BASE = 'http://127.0.0.1:6666';
@@ -222,9 +223,10 @@ export function DocsApi() {
                 >
                   {ep.description}
                 </span>
-                <span className="material-icons" style={{ color: 'var(--md-sys-color-on-surface-variant)', fontSize: '20px' }}>
-                  {isOpen ? 'expand_less' : 'expand_more'}
-                </span>
+                {isOpen
+                  ? <ChevronUp size={18} style={{ color: 'var(--md-sys-color-on-surface-variant)', flexShrink: 0 }} />
+                  : <ChevronDown size={18} style={{ color: 'var(--md-sys-color-on-surface-variant)', flexShrink: 0 }} />
+                }
               </button>
 
               {/* Expanded content */}

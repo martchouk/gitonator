@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { WifiOff, AlertCircle, Loader2, ClipboardList } from 'lucide-react';
 import useSWR from 'swr';
 import type { Issue } from '../api/types';
 import { get } from '../api/client';
@@ -98,12 +99,7 @@ export function LiveView() {
             </>
           ) : sseStatus === 'disconnected' ? (
             <>
-              <span
-                className="material-icons"
-                style={{ fontSize: '18px', color: 'var(--md-sys-color-error)' }}
-              >
-                wifi_off
-              </span>
+              <WifiOff size={18} style={{ color: 'var(--md-sys-color-error)' }} />
               <span style={{ fontSize: '0.75rem', color: 'var(--md-sys-color-error)' }}>
                 Disconnected
               </span>
@@ -130,7 +126,7 @@ export function LiveView() {
             gap: '8px',
           }}
         >
-          <span className="material-icons">error_outline</span>
+          <AlertCircle size={20} />
           {error.message || 'Failed to load issues'}
           <button
             onClick={() => void mutate()}
@@ -161,9 +157,7 @@ export function LiveView() {
             gap: 'var(--spacing-sm)',
           }}
         >
-          <span className="material-icons" style={{ fontSize: '48px' }}>
-            hourglass_empty
-          </span>
+          <Loader2 size={40} style={{ opacity: 0.5, animation: 'spin 1.2s linear infinite' }} />
           <span>Loading…</span>
         </div>
       )}
@@ -180,9 +174,7 @@ export function LiveView() {
             gap: 'var(--spacing-sm)',
           }}
         >
-          <span className="material-icons" style={{ fontSize: '48px' }}>
-            checklist
-          </span>
+          <ClipboardList size={40} style={{ opacity: 0.4 }} />
           <span style={{ fontWeight: 500 }}>No active workflows</span>
           <span style={{ fontSize: '0.875rem' }}>
             Issues will appear here as work packages arrive.

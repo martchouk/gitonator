@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { X, ArrowRight } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import useSWR from 'swr';
 import ReactFlow, {
@@ -207,7 +208,7 @@ export function WorkflowGraph() {
                 justifyContent: 'center',
               }}
             >
-              <span className="material-icons">close</span>
+              <X size={18} />
             </button>
           </div>
 
@@ -253,9 +254,7 @@ export function WorkflowGraph() {
                       fontSize: '0.875rem',
                     }}
                   >
-                    <span className="material-icons" style={{ fontSize: '16px', color: 'var(--md-sys-color-on-surface-variant)' }}>
-                      arrow_forward
-                    </span>
+                    <ArrowRight size={14} style={{ color: 'var(--md-sys-color-on-surface-variant)', flexShrink: 0 }} />
                     <StatusChip status={e.target} />
                   </div>
                 ))}

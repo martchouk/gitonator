@@ -78,6 +78,27 @@ export interface WorkflowSummary {
   edgeCount: number;
 }
 
+export interface CompletedIssueSummary {
+  issueNumber: number;
+  repo: string;
+  finalStatus: string;
+  workflowKey: string;
+  completedAt: string;
+  stepCount: number;
+}
+
+export interface CompletedRunDetail {
+  issueNumber: number;
+  repo: string;
+  workflowKey: string;
+  finalStatus: string;
+  completedAt: string;
+  stepCount: number;
+  audit: AuditRow[];
+  tasks: TaskRow[];
+  workflow?: WorkflowGraph;
+}
+
 export interface SSEEventData {
   issue_number?: number;
   task_id?: number;
