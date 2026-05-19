@@ -120,7 +120,7 @@ function RunningTimer({ createdAt }: { createdAt: string }) {
 }
 
 // 8 columns: step | role | status | outcome | assigned to | bridge | created | duration
-const SUB_COLS = '40px 90px 1fr 100px 120px 110px 78px 74px';
+const SUB_COLS = '40px 90px minmax(0,1fr) 100px 120px 90px 78px 74px';
 
 function SubTableHeader() {
   return (
@@ -178,7 +178,7 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
         {task.role || '–'}
       </span>
-      <span>
+      <span style={{ overflow: 'hidden' }}>
         {task.current_status
           ? <StatusChip status={task.current_status} />
           : <span style={{ color: 'var(--color-text-muted)' }}>–</span>
