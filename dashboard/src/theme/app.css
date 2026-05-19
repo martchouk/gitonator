@@ -64,7 +64,8 @@
 }
 
 [data-theme='light'] .nav-logo-icon {
-  filter: drop-shadow(0 0 5px rgba(22, 163, 74, 0.45));
+  /* recolor the SVG icon to dark forest green on white bg */
+  filter: brightness(0) saturate(1) invert(22%) sepia(72%) saturate(700%) hue-rotate(118deg) brightness(82%);
 }
 
 .nav-logo-text {
@@ -313,6 +314,88 @@
 [data-theme='dark'] .page-main h3 {
   color: var(--color-neon-cyan);
   text-shadow: 0 0 14px rgba(0, 229, 255, 0.22);
+}
+
+/* ── HTTP method badges (API docs) ──────────────────────────── */
+
+.http-method {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  min-width: 48px;
+  text-align: center;
+  display: inline-block;
+}
+
+/* GET — amber */
+.http-method--get {
+  color: var(--color-neon-amber);
+  background: rgba(255, 184, 0, 0.10);
+  border: 1px solid rgba(255, 184, 0, 0.28);
+}
+
+/* POST — cyan */
+.http-method--post {
+  color: var(--color-neon-cyan);
+  background: rgba(0, 229, 255, 0.08);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+}
+
+/* PUT — green */
+.http-method--put {
+  color: var(--color-neon-green);
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.25);
+}
+
+/* DELETE — magenta/red */
+.http-method--delete {
+  color: var(--color-neon-magenta);
+  background: rgba(255, 45, 120, 0.08);
+  border: 1px solid rgba(255, 45, 120, 0.25);
+}
+
+/* PATCH — yellow */
+.http-method--patch {
+  color: var(--color-neon-yellow);
+  background: rgba(245, 230, 66, 0.08);
+  border: 1px solid rgba(245, 230, 66, 0.22);
+}
+
+/* Light theme: use readable solid colors, keep badge shape */
+[data-theme='light'] .http-method--get {
+  color: #92400e;
+  background: rgba(180, 83, 9, 0.08);
+  border-color: rgba(180, 83, 9, 0.25);
+}
+
+[data-theme='light'] .http-method--post {
+  color: #0e7490;
+  background: rgba(14, 116, 144, 0.08);
+  border-color: rgba(14, 116, 144, 0.25);
+}
+
+[data-theme='light'] .http-method--put {
+  color: #166534;
+  background: rgba(22, 101, 52, 0.08);
+  border-color: rgba(22, 101, 52, 0.22);
+}
+
+[data-theme='light'] .http-method--delete {
+  color: #9d174d;
+  background: rgba(157, 23, 77, 0.08);
+  border-color: rgba(157, 23, 77, 0.22);
+}
+
+[data-theme='light'] .http-method--patch {
+  color: #713f12;
+  background: rgba(113, 63, 18, 0.08);
+  border-color: rgba(113, 63, 18, 0.22);
 }
 
 /* ── Code block syntax coloring ─────────────────────────────── */

@@ -159,9 +159,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <section style={{ marginBottom: 'var(--spacing-xl)' }}>
       <h3
         style={{
-          fontFamily: 'var(--font-sans)',
+          fontFamily: 'var(--font-mono)',
           fontSize: '1.375rem',
-          fontWeight: 500,
+          fontWeight: 700,
           marginBottom: 'var(--spacing-md)',
           paddingBottom: 'var(--spacing-sm)',
           borderBottom: '1px solid var(--md-sys-color-outline-variant)',

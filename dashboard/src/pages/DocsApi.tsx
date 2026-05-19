@@ -144,11 +144,6 @@ data: {"type":"task_queued","data":{"issue_number":59,"task_id":42,"role":"devel
   },
 ];
 
-const methodColors: Record<string, string> = {
-  GET: 'var(--md-sys-color-primary)',
-  POST: 'var(--md-sys-color-secondary)',
-  DELETE: 'var(--md-sys-color-error)',
-};
 
 export function DocsApi() {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -190,15 +185,7 @@ export function DocsApi() {
                 }}
                 aria-expanded={isOpen}
               >
-                <span
-                  style={{
-                    fontFamily: 'var(--font-sans)',
-                    fontWeight: 700,
-                    fontSize: '0.75rem',
-                    color: methodColors[ep.method] ?? 'var(--md-sys-color-primary)',
-                    minWidth: '40px',
-                  }}
-                >
+                <span className={`http-method http-method--${ep.method.toLowerCase()}`}>
                   {ep.method}
                 </span>
                 <code
