@@ -559,8 +559,16 @@ func (s *Store) ListTransitionAudit(issueNumber int, limit int) ([]TransitionAud
 		); err != nil {
 			return nil, err
 		}
-		r.Validation = json.RawMessage(r.ValidationRaw)
-		r.Metadata = json.RawMessage(r.MetadataRaw)
+		if r.ValidationRaw == "" {
+			r.Validation = json.RawMessage("null")
+		} else {
+			r.Validation = json.RawMessage(r.ValidationRaw)
+		}
+		if r.MetadataRaw == "" {
+			r.Metadata = json.RawMessage("null")
+		} else {
+			r.Metadata = json.RawMessage(r.MetadataRaw)
+		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -739,8 +747,16 @@ func (s *Store) ListRecentAudit(limit int) ([]TransitionAuditRow, error) {
 		); err != nil {
 			return nil, err
 		}
-		r.Validation = json.RawMessage(r.ValidationRaw)
-		r.Metadata = json.RawMessage(r.MetadataRaw)
+		if r.ValidationRaw == "" {
+			r.Validation = json.RawMessage("null")
+		} else {
+			r.Validation = json.RawMessage(r.ValidationRaw)
+		}
+		if r.MetadataRaw == "" {
+			r.Metadata = json.RawMessage("null")
+		} else {
+			r.Metadata = json.RawMessage(r.MetadataRaw)
+		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -763,6 +779,80 @@ func scanTaskRows(rows *sql.Rows) ([]TaskRow, error) {
 			t.Payload = json.RawMessage(t.PayloadRaw)
 		}
 		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// CompletedIssueSummary is a row returned by ListCompletedIssues.
+type CompletedIssueSummary struct {
+	IssueNumber int    `json:"issueNumber"`
+	Repo        string `json:"repo"`
+	FinalStatus string `json:"finalStatus"`
+	WorkflowKey string `json:"workflowKey"`
+	CompletedAt string `json:"completedAt"`
+	StepCount   int    `json:"stepCount"`
+}
+
+// ListCompletedIssues returns issues whose most recent audit transition ended in a
+// recognised terminal status (done, closed, complete, merged, rejected, cancelled).
+func (s *Store) ListCompletedIssues(limit int) ([]CompletedIssueSummary, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`
+		SELECT
+			a.issue_number,
+			a.to_status,
+			a.created_at,
+			COALESCE(t.repo, '')   AS repo,
+			COALESCE(im.value, '') AS workflow_key,
+			COALESCE(sc.cnt, 0)    AS step_count
+		FROM transition_audit a
+		JOIN (
+			SELECT issue_number, MAX(id) AS max_id
+			FROM transition_audit
+			GROUP BY issue_number
+		) last_a ON a.issue_number = last_a.issue_number AND a.id = last_a.max_id
+		LEFT JOIN (
+			SELECT issue_number, repo
+			FROM tasks
+			WHERE id IN (SELECT MAX(id) FROM tasks GROUP BY issue_number)
+		) t ON t.issue_number = a.issue_number
+		LEFT JOIN issue_metadata im
+			ON im.issue_id = a.issue_number AND im.key = '_workflow_key'
+		LEFT JOIN (
+			SELECT issue_number, COUNT(*) AS cnt
+			FROM transition_audit
+			GROUP BY issue_number
+		) sc ON sc.issue_number = a.issue_number
+		WHERE a.to_status LIKE '%done%'
+		   OR a.to_status LIKE '%closed%'
+		   OR a.to_status LIKE '%complete%'
+		   OR a.to_status LIKE '%merged%'
+		   OR a.to_status LIKE '%rejected%'
+		   OR a.to_status LIKE '%cancelled%'
+		   OR a.to_status LIKE '%canceled%'
+		ORDER BY a.created_at DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CompletedIssueSummary
+	for rows.Next() {
+		var cs CompletedIssueSummary
+		if err := rows.Scan(
+			&cs.IssueNumber, &cs.FinalStatus, &cs.CompletedAt,
+			&cs.Repo, &cs.WorkflowKey, &cs.StepCount,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, cs)
+	}
+	if out == nil {
+		out = []CompletedIssueSummary{}
 	}
 	return out, rows.Err()
 }

@@ -365,6 +365,128 @@ func (d *DashboardServer) handleWorkflowGet(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, buildWorkflowGraph(wd))
 }
 
+// CompletedRunDetail contains the full history of a completed workflow run.
+type CompletedRunDetail struct {
+	IssueNumber int                    `json:"issueNumber"`
+	Repo        string                 `json:"repo"`
+	WorkflowKey string                 `json:"workflowKey"`
+	FinalStatus string                 `json:"finalStatus"`
+	CompletedAt string                 `json:"completedAt"`
+	StepCount   int                    `json:"stepCount"`
+	Audit       []TransitionAuditRow   `json:"audit"`
+	Tasks       []TaskRow              `json:"tasks"`
+	Workflow    *WorkflowGraphResponse `json:"workflow,omitempty"`
+}
+
+func (d *DashboardServer) handleCompletedList(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 100
+	if limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+
+	runs, err := d.store.ListCompletedIssues(limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"completed": runs})
+}
+
+func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Request) {
+	setCORSHeaders(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	parts := strings.Split(strings.TrimSuffix(r.URL.Path, "/"), "/")
+	numberStr := parts[len(parts)-1]
+	number, err := strconv.Atoi(numberStr)
+	if err != nil || number <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid issue number")
+		return
+	}
+
+	audit, err := d.store.ListTransitionAudit(number, 200)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if len(audit) == 0 {
+		writeError(w, http.StatusNotFound, "no completed run found for this issue")
+		return
+	}
+
+	tasks, err := d.store.ListTasksByIssue(number, 100)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if tasks == nil {
+		tasks = []TaskRow{}
+	}
+
+	repo := ""
+	if len(tasks) > 0 {
+		repo = tasks[0].Repo
+	}
+	workflowKey, _, _ := d.store.GetIssueWorkflowKey(number)
+
+	// Audit is ordered DESC; index 0 is the most recent entry.
+	finalStatus := audit[0].ToStatus
+	completedAt := audit[0].CreatedAt
+
+	detail := CompletedRunDetail{
+		IssueNumber: number,
+		Repo:        repo,
+		WorkflowKey: workflowKey,
+		FinalStatus: finalStatus,
+		CompletedAt: completedAt,
+		StepCount:   len(audit),
+		Audit:       audit,
+		Tasks:       tasks,
+	}
+
+	if workflowKey != "" && d.workflows != nil {
+		for _, k := range d.workflows.Keys() {
+			candidate := d.workflows.Get(k)
+			if candidate.Workflow.Key == workflowKey || candidate.Workflow.ID == workflowKey {
+				graph := buildWorkflowGraph(candidate)
+				detail.Workflow = &graph
+				break
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (d *DashboardServer) handleCompletedOrDetail(w http.ResponseWriter, r *http.Request) {
+	tail := r.URL.Path[len("/api/v1/dashboard/completed/"):]
+	if tail == "" {
+		d.handleCompletedList(w, r)
+		return
+	}
+	d.handleCompletedIssue(w, r)
+}
+
 func buildWorkflowGraph(wd *WorkflowDef) WorkflowGraphResponse {
 	nodes := make([]GraphNode, 0, len(wd.Statuses))
 	for _, s := range wd.Statuses {

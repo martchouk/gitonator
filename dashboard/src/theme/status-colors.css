@@ -1,47 +1,83 @@
 :root {
-  --status-color-intake: var(--md-sys-color-tertiary);
-  --status-color-intake-container: var(--md-sys-color-tertiary-container);
-  --status-color-intake-on-container: var(--md-sys-color-on-tertiary-container);
+  --status-color-intake: #0891b2;
+  --status-color-intake-container: rgba(8, 145, 178, 0.1);
+  --status-color-intake-on-container: #0e7490;
 
-  --status-color-design: var(--md-sys-color-secondary);
-  --status-color-design-container: var(--md-sys-color-secondary-container);
-  --status-color-design-on-container: var(--md-sys-color-on-secondary-container);
+  --status-color-design: #7c3aed;
+  --status-color-design-container: rgba(124, 58, 237, 0.1);
+  --status-color-design-on-container: #5b21b6;
 
-  --status-color-implementation: var(--md-sys-color-primary);
-  --status-color-implementation-container: var(--md-sys-color-primary-container);
-  --status-color-implementation-on-container: var(--md-sys-color-on-primary-container);
+  --status-color-requirements: #7c3aed;
+  --status-color-requirements-container: rgba(124, 58, 237, 0.1);
+  --status-color-requirements-on-container: #5b21b6;
 
-  --status-color-review: #6750a4;
-  --status-color-review-container: #eaddff;
-  --status-color-review-on-container: #21005d;
+  --status-color-planning: #7c3aed;
+  --status-color-planning-container: rgba(124, 58, 237, 0.1);
+  --status-color-planning-on-container: #5b21b6;
 
-  --status-color-terminal: var(--md-sys-color-on-surface-variant);
-  --status-color-terminal-container: var(--md-sys-color-surface-variant);
-  --status-color-terminal-on-container: var(--md-sys-color-on-surface);
+  --status-color-implementation: #4f46e5;
+  --status-color-implementation-container: rgba(79, 70, 229, 0.1);
+  --status-color-implementation-on-container: #3730a3;
 
-  --status-color-requirements: var(--md-sys-color-secondary);
-  --status-color-requirements-container: var(--md-sys-color-secondary-container);
-  --status-color-requirements-on-container: var(--md-sys-color-on-secondary-container);
+  --status-color-review: #6d28d9;
+  --status-color-review-container: rgba(109, 40, 217, 0.1);
+  --status-color-review-on-container: #4c1d95;
 
-  --status-color-planning: var(--md-sys-color-secondary);
-  --status-color-planning-container: var(--md-sys-color-secondary-container);
-  --status-color-planning-on-container: var(--md-sys-color-on-secondary-container);
+  --status-color-acceptance: #059669;
+  --status-color-acceptance-container: rgba(5, 150, 105, 0.1);
+  --status-color-acceptance-on-container: #065f46;
 
-  --status-color-acceptance: var(--md-sys-color-primary);
-  --status-color-acceptance-container: var(--md-sys-color-primary-container);
-  --status-color-acceptance-on-container: var(--md-sys-color-on-primary-container);
+  --status-color-terminal: #64748b;
+  --status-color-terminal-container: rgba(100, 116, 139, 0.1);
+  --status-color-terminal-on-container: #475569;
 
-  --status-color-exception: var(--md-sys-color-error);
-  --status-color-exception-container: var(--md-sys-color-error-container);
-  --status-color-exception-on-container: var(--md-sys-color-on-error-container);
+  --status-color-exception: #dc2626;
+  --status-color-exception-container: rgba(220, 38, 38, 0.1);
+  --status-color-exception-on-container: #991b1b;
 
-  --status-color-blocked: var(--md-sys-color-error);
-  --status-color-blocked-container: var(--md-sys-color-error-container);
-  --status-color-blocked-on-container: var(--md-sys-color-on-error-container);
+  --status-color-blocked: #dc2626;
+  --status-color-blocked-container: rgba(220, 38, 38, 0.1);
+  --status-color-blocked-on-container: #991b1b;
 }
 
 [data-theme='dark'] {
-  --status-color-review: #d0bcff;
-  --status-color-review-container: #4f378b;
-  --status-color-review-on-container: #eaddff;
+  --status-color-intake: #22d3ee;
+  --status-color-intake-container: rgba(34, 211, 238, 0.1);
+  --status-color-intake-on-container: #22d3ee;
+
+  --status-color-design: #c084fc;
+  --status-color-design-container: rgba(192, 132, 252, 0.1);
+  --status-color-design-on-container: #c084fc;
+
+  --status-color-requirements: #c084fc;
+  --status-color-requirements-container: rgba(192, 132, 252, 0.1);
+  --status-color-requirements-on-container: #c084fc;
+
+  --status-color-planning: #c084fc;
+  --status-color-planning-container: rgba(192, 132, 252, 0.1);
+  --status-color-planning-on-container: #c084fc;
+
+  --status-color-implementation: #818cf8;
+  --status-color-implementation-container: rgba(129, 140, 248, 0.1);
+  --status-color-implementation-on-container: #818cf8;
+
+  --status-color-review: #a78bfa;
+  --status-color-review-container: rgba(167, 139, 250, 0.1);
+  --status-color-review-on-container: #a78bfa;
+
+  --status-color-acceptance: #34d399;
+  --status-color-acceptance-container: rgba(52, 211, 153, 0.1);
+  --status-color-acceptance-on-container: #34d399;
+
+  --status-color-terminal: #94a3b8;
+  --status-color-terminal-container: rgba(148, 163, 184, 0.08);
+  --status-color-terminal-on-container: #94a3b8;
+
+  --status-color-exception: #f87171;
+  --status-color-exception-container: rgba(248, 113, 113, 0.1);
+  --status-color-exception-on-container: #f87171;
+
+  --status-color-blocked: #f87171;
+  --status-color-blocked-container: rgba(248, 113, 113, 0.1);
+  --status-color-blocked-on-container: #f87171;
 }

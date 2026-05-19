@@ -4,6 +4,7 @@ import { App } from './App';
 import './theme/tokens.css';
 import './theme/status-colors.css';
 import './theme/typography.css';
+import './theme/app.css';
 
 // Apply theme before first render to avoid flash of wrong theme.
 const stored = localStorage.getItem('theme');

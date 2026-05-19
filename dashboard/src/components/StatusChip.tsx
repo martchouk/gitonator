@@ -1,5 +1,4 @@
 
-
 const categoryVars: Record<string, { bg: string; color: string }> = {
   intake: {
     bg: 'var(--status-color-intake-container)',
@@ -37,6 +36,10 @@ const categoryVars: Record<string, { bg: string; color: string }> = {
     bg: 'var(--status-color-exception-container)',
     color: 'var(--status-color-exception-on-container)',
   },
+  blocked: {
+    bg: 'var(--status-color-blocked-container)',
+    color: 'var(--status-color-blocked-on-container)',
+  },
 };
 
 function inferCategory(status: string): string {
@@ -66,16 +69,18 @@ export function StatusChip({ status, category }: Props) {
 
   return (
     <span
+      className="status-chip"
+      data-category={cat}
       style={{
         display: 'inline-block',
         padding: '2px 10px',
-        borderRadius: 'var(--md-shape-small)',
+        borderRadius: 'var(--radius-sm)',
         background: colors.bg,
         color: colors.color,
-        fontFamily: 'Roboto, sans-serif',
+        fontFamily: 'var(--font-sans)',
         fontSize: '0.75rem',
         fontWeight: 500,
-        letterSpacing: '0.03125rem',
+        letterSpacing: '0.01em',
         lineHeight: '1.33',
         whiteSpace: 'nowrap',
       }}
