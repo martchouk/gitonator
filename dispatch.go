@@ -22,17 +22,19 @@ type WorkPackage struct {
 }
 
 // processIssue processes an issue using the default (lean) workflow.
-func (s *Server) processIssue(ctx context.Context, issueNumber int) (interface{}, error) {
-	return s.processIssueWith(ctx, issueNumber, s.workflowDef(""))
+// repo is the "owner/repo" string for the issue.
+func (s *Server) processIssue(ctx context.Context, issueNumber int, repo string) (interface{}, error) {
+	return s.processIssueWith(ctx, issueNumber, repo, s.workflowDef(""))
 }
 
 // processIssueWith processes an issue using the supplied YAML WorkflowDef.
+// repo is the "owner/repo" string for the issue.
 // wd must not be nil; use s.workflowDef("") to get the default (lean) workflow.
-func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *WorkflowDef) (interface{}, error) {
+func (s *Server) processIssueWith(ctx context.Context, issueNumber int, repo string, wd *WorkflowDef) (interface{}, error) {
 	if wd == nil {
 		return nil, fmt.Errorf("processIssueWith: workflow definition required (registry not loaded)")
 	}
-	issue, comments, err := s.loadIssueAndComments(ctx, issueNumber, 100)
+	issue, comments, err := s.loadIssueAndComments(ctx, repo, issueNumber, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -57,10 +59,10 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 		}
 		s.debugf("processIssue: issue=%d no status label — bootstrapping to status:new", issueNumber)
 		bootstrapLabels := append(labelsToStrings(issue.Labels), "status:new")
-		if _, err := s.gh.SetIssueLabels(ctx, issueNumber, bootstrapLabels); err != nil {
+		if _, err := s.ghFor(repo).SetIssueLabels(ctx, issueNumber, bootstrapLabels); err != nil {
 			return nil, fmt.Errorf("bootstrap status:new label: %w", err)
 		}
-		issue, comments, err = s.loadIssueAndComments(ctx, issueNumber, 100)
+		issue, comments, err = s.loadIssueAndComments(ctx, repo, issueNumber, 100)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +86,7 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 			lastCommentID = comments[len(comments)-1].ID
 		}
 		pkg = WorkPackage{
-			Repo:          fmt.Sprintf("%s/%s", s.cfg.Owner, s.cfg.Repo),
+			Repo:          repo,
 			IssueID:       issue.Number,
 			Role:          footerRole,
 			Assignee:      currentAssigneeOfIssue(issue),
@@ -98,7 +100,7 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, wd *Work
 
 	if !routed {
 		var ok bool
-		pkg, ok = decideNextActionFromDef(wd, s.cfg, issue, state, comments)
+		pkg, ok = decideNextActionFromDef(wd, repo, issue, state, comments)
 		if !ok {
 			if state.StatusLabel != "" && !wd.HasStatus(state.StatusLabel) {
 				s.logger.Printf("WARN processIssue: issue=%d unrecognized status label %q — not in workflow %q; no action will be queued",

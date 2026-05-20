@@ -16,8 +16,6 @@ import (
 
 type Config struct {
 	GitHubToken         string
-	Owner               string
-	Repo                string
 	HTTPAddr            string
 	DashboardAddr       string
 	WebhookSecret       string
@@ -30,7 +28,7 @@ type Config struct {
 
 type Server struct {
 	cfg       Config
-	gh        GitHubAPI
+	ghFor     GitHubClientFactory
 	store     *Store
 	logger    *log.Logger
 	debug     bool
@@ -76,11 +74,18 @@ func main() {
 
 	server := &Server{
 		cfg: cfg,
-		gh: &GitHubClient{
-			baseURL: "https://api.github.com",
-			token:   cfg.GitHubToken,
-			owner:   cfg.Owner,
-			repo:    cfg.Repo,
+		ghFor: func(repo string) GitHubAPI {
+			parts := strings.SplitN(repo, "/", 2)
+			var owner, repoName string
+			if len(parts) == 2 {
+				owner, repoName = parts[0], parts[1]
+			}
+			return &GitHubClient{
+				baseURL: "https://api.github.com",
+				token:   cfg.GitHubToken,
+				owner:   owner,
+				repo:    repoName,
+			}
 		},
 		store:     store,
 		logger:    logger,
@@ -89,8 +94,7 @@ func main() {
 		hub:       hub,
 	}
 
-	logger.Printf("started: repo=%s/%s addr=%s sqlite=%s",
-		cfg.Owner, cfg.Repo, cfg.HTTPAddr, cfg.SQLitePath)
+	logger.Printf("started: addr=%s sqlite=%s", cfg.HTTPAddr, cfg.SQLitePath)
 	if debug {
 		logger.Printf("DEBUG config: stale_after=%ds recover_every=%ds agent_auth=%v webhook_secret=%v",
 			cfg.StaleAfterSeconds, cfg.RecoverEverySeconds,
@@ -144,8 +148,6 @@ func main() {
 func loadConfig() (Config, error) {
 	cfg := Config{
 		GitHubToken:         strings.TrimSpace(os.Getenv("GITHUB_TOKEN")),
-		Owner:               strings.TrimSpace(os.Getenv("GITHUB_OWNER")),
-		Repo:                strings.TrimSpace(os.Getenv("GITHUB_REPO")),
 		HTTPAddr:            defaultString(os.Getenv("HTTP_ADDR"), "127.0.0.1:7777"),
 		DashboardAddr:       strings.TrimSpace(os.Getenv("DASHBOARD_ADDR")),
 		WebhookSecret:       strings.TrimSpace(os.Getenv("WEBHOOK_SECRET")),
@@ -157,9 +159,6 @@ func loadConfig() (Config, error) {
 	}
 	if cfg.GitHubToken == "" {
 		return cfg, fmt.Errorf("GITHUB_TOKEN is required")
-	}
-	if cfg.Owner == "" || cfg.Repo == "" {
-		return cfg, fmt.Errorf("GITHUB_OWNER and GITHUB_REPO are required")
 	}
 	return cfg, nil
 }

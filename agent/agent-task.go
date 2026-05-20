@@ -120,7 +120,7 @@ func openIssue(pkg WorkPackage) error {
 }
 
 // postGitHubComment posts a comment to the issue using the agent's own GitHub token.
-// Requires env vars: GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO (or derives owner/repo from pkg.Repo).
+// Requires env var GITHUB_TOKEN and pkg.Repo in "owner/repo" format.
 func postGitHubComment(pkg WorkPackage, body string) error {
 	token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
 	if token == "" {
@@ -135,12 +135,7 @@ func postGitHubComment(pkg WorkPackage, body string) error {
 
 	repo := pkg.Repo
 	if repo == "" {
-		owner := strings.TrimSpace(os.Getenv("GITHUB_OWNER"))
-		repoName := strings.TrimSpace(os.Getenv("GITHUB_REPO"))
-		if owner == "" || repoName == "" {
-			return errors.New("pkg.Repo is empty and GITHUB_OWNER/GITHUB_REPO are not set")
-		}
-		repo = owner + "/" + repoName
+		return errors.New("work package has no repo (owner/repo)")
 	}
 
 	u := fmt.Sprintf("https://api.github.com/repos/%s/issues/%d/comments", repo, pkg.IssueID)

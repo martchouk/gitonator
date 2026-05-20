@@ -193,6 +193,7 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			IssueNumber  int    `json:"issue_number"`
 			CommentLimit int    `json:"comment_limit"`
 			Workflow     string `json:"workflow"`
+			Repo         string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
@@ -200,7 +201,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if args.CommentLimit <= 0 {
 			args.CommentLimit = 20
 		}
-		issue, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, args.CommentLimit)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		issue, comments, err := s.loadIssueAndComments(ctx, repo, args.IssueNumber, args.CommentLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -213,8 +218,9 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 
 	case "list_issue_comments":
 		var args struct {
-			IssueNumber int `json:"issue_number"`
-			Limit       int `json:"limit"`
+			IssueNumber int    `json:"issue_number"`
+			Limit       int    `json:"limit"`
+			Repo        string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
@@ -222,7 +228,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if args.Limit <= 0 {
 			args.Limit = 50
 		}
-		comments, err := s.gh.ListIssueComments(ctx, args.IssueNumber, args.Limit)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		comments, err := s.ghFor(repo).ListIssueComments(ctx, args.IssueNumber, args.Limit)
 		if err != nil {
 			return nil, err
 		}
@@ -232,11 +242,16 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		var args struct {
 			IssueNumber int    `json:"issue_number"`
 			Body        string `json:"body"`
+			Repo        string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		comment, err := s.gh.PostIssueComment(ctx, args.IssueNumber, args.Body)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		comment, err := s.ghFor(repo).PostIssueComment(ctx, args.IssueNumber, args.Body)
 		if err != nil {
 			return nil, err
 		}
@@ -246,11 +261,16 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		var args struct {
 			IssueNumber int      `json:"issue_number"`
 			Assignees   []string `json:"assignees"`
+			Repo        string   `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		issue, err := s.gh.AssignIssue(ctx, args.IssueNumber, args.Assignees)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		issue, err := s.ghFor(repo).AssignIssue(ctx, args.IssueNumber, args.Assignees)
 		if err != nil {
 			return nil, err
 		}
@@ -260,11 +280,16 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		var args struct {
 			IssueNumber int      `json:"issue_number"`
 			Labels      []string `json:"labels"`
+			Repo        string   `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		labels, err := s.gh.SetIssueLabels(ctx, args.IssueNumber, args.Labels)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		labels, err := s.ghFor(repo).SetIssueLabels(ctx, args.IssueNumber, args.Labels)
 		if err != nil {
 			return nil, err
 		}
@@ -274,11 +299,16 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		var args struct {
 			IssueNumber int      `json:"issue_number"`
 			Labels      []string `json:"labels"`
+			Repo        string   `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		labels, err := s.gh.AddIssueLabels(ctx, args.IssueNumber, args.Labels)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		labels, err := s.ghFor(repo).AddIssueLabels(ctx, args.IssueNumber, args.Labels)
 		if err != nil {
 			return nil, err
 		}
@@ -288,11 +318,16 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		var args struct {
 			IssueNumber int    `json:"issue_number"`
 			Label       string `json:"label"`
+			Repo        string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		if err := s.gh.RemoveIssueLabel(ctx, args.IssueNumber, args.Label); err != nil {
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.ghFor(repo).RemoveIssueLabel(ctx, args.IssueNumber, args.Label); err != nil {
 			return nil, err
 		}
 		return map[string]interface{}{"removed": args.Label}, nil
@@ -301,11 +336,16 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		var args struct {
 			IssueNumber int    `json:"issue_number"`
 			Workflow    string `json:"workflow"`
+			Repo        string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		issue, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, 100)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		issue, comments, err := s.loadIssueAndComments(ctx, repo, args.IssueNumber, 100)
 		if err != nil {
 			return nil, err
 		}
@@ -313,12 +353,17 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 
 	case "find_stakeholder_approvals":
 		var args struct {
-			IssueNumber int `json:"issue_number"`
+			IssueNumber int    `json:"issue_number"`
+			Repo        string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		issue, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, 100)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		issue, comments, err := s.loadIssueAndComments(ctx, repo, args.IssueNumber, 100)
 		if err != nil {
 			return nil, err
 		}
@@ -341,11 +386,16 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			ToStatus    string `json:"to_status"`
 			ActorRole   string `json:"actor_role"`
 			Workflow    string `json:"workflow"`
+			Repo        string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
 		}
-		issue, err := s.gh.GetIssue(ctx, args.IssueNumber)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		issue, err := s.ghFor(repo).GetIssue(ctx, args.IssueNumber)
 		if err != nil {
 			return nil, err
 		}
@@ -361,15 +411,20 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 			Comment     string `json:"comment"`
 			ActorRole   string `json:"actor_role"`
 			Workflow    string `json:"workflow"`
+			Repo        string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
+			return nil, err
+		}
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
 			return nil, err
 		}
 		wd := s.workflowDef(args.Workflow)
 		if args.Workflow != "" && s.store != nil {
 			_ = s.store.SetIssueWorkflowKey(args.IssueNumber, wd.Workflow.Key)
 		}
-		return s.transitionIssue(ctx, args.IssueNumber, args.Status, args.Assignee, args.Comment, args.ActorRole, "mcp_tool", nil, nil, wd)
+		return s.transitionIssue(ctx, args.IssueNumber, repo, args.Status, args.Assignee, args.Comment, args.ActorRole, "mcp_tool", nil, nil, wd)
 
 	case "get_transition_matrix":
 		var args struct {
@@ -383,15 +438,20 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		var args struct {
 			IssueNumber int    `json:"issue_number"`
 			Workflow    string `json:"workflow"`
+			Repo        string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
+			return nil, err
+		}
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
 			return nil, err
 		}
 		wd := s.workflowDef(args.Workflow)
 		if args.Workflow != "" && s.store != nil {
 			_ = s.store.SetIssueWorkflowKey(args.IssueNumber, wd.Workflow.Key)
 		}
-		return s.processIssueWith(ctx, args.IssueNumber, wd)
+		return s.processIssueWith(ctx, args.IssueNumber, repo, wd)
 
 	case "get_transition_audit":
 		var args struct {
@@ -409,8 +469,9 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 
 	case "get_issue_timeline":
 		var args struct {
-			IssueNumber int `json:"issue_number"`
-			Limit       int `json:"limit"`
+			IssueNumber int    `json:"issue_number"`
+			Limit       int    `json:"limit"`
+			Repo        string `json:"repo"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return nil, err
@@ -418,7 +479,11 @@ func (s *Server) callTool(ctx context.Context, name string, raw json.RawMessage)
 		if args.Limit <= 0 {
 			args.Limit = 100
 		}
-		issue, comments, err := s.loadIssueAndComments(ctx, args.IssueNumber, args.Limit)
+		repo, err := s.resolveRepo(args.Repo, args.IssueNumber)
+		if err != nil {
+			return nil, err
+		}
+		issue, comments, err := s.loadIssueAndComments(ctx, repo, args.IssueNumber, args.Limit)
 		if err != nil {
 			return nil, err
 		}
@@ -467,15 +532,36 @@ func (s *Server) workflowDef(key string) *WorkflowDef {
 	return s.workflows.Get(key)
 }
 
-func (s *Server) loadIssueAndComments(ctx context.Context, issueNumber, limit int) (Issue, []IssueComment, error) {
-	issue, err := s.gh.GetIssue(ctx, issueNumber)
+// repoForIssue looks up the "owner/repo" string stored by the webhook for a given issue.
+// Returns an error when the issue has never been processed by the webhook handler.
+func (s *Server) repoForIssue(issueNumber int) (string, error) {
+	repo, ok, err := s.store.GetRepoForIssue(issueNumber)
+	if err != nil {
+		return "", fmt.Errorf("repo lookup for issue %d: %w", issueNumber, err)
+	}
+	if !ok || repo == "" {
+		return "", fmt.Errorf("repo unknown for issue %d: issue must be processed via webhook first, or supply 'repo' in the tool args", issueNumber)
+	}
+	return repo, nil
+}
+
+// resolveRepo returns explicit when non-empty; otherwise looks up the repo stored for issueNumber.
+func (s *Server) resolveRepo(explicit string, issueNumber int) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	return s.repoForIssue(issueNumber)
+}
+
+func (s *Server) loadIssueAndComments(ctx context.Context, repo string, issueNumber, limit int) (Issue, []IssueComment, error) {
+	issue, err := s.ghFor(repo).GetIssue(ctx, issueNumber)
 	if err != nil {
 		return Issue{}, nil, err
 	}
 	if limit <= 0 {
 		return issue, nil, nil
 	}
-	comments, err := s.gh.ListIssueComments(ctx, issueNumber, limit)
+	comments, err := s.ghFor(repo).ListIssueComments(ctx, issueNumber, limit)
 	if err != nil {
 		return Issue{}, nil, err
 	}
@@ -492,6 +578,7 @@ func currentAssigneeOfIssue(issue Issue) string {
 func (s *Server) transitionIssue(
 	ctx context.Context,
 	issueNumber int,
+	repo string,
 	toStatus string,
 	assignee string,
 	comment string,
@@ -501,7 +588,7 @@ func (s *Server) transitionIssue(
 	triggerMetadata interface{},
 	wd *WorkflowDef,
 ) (interface{}, error) {
-	issue, _, err := s.loadIssueAndComments(ctx, issueNumber, 100)
+	issue, _, err := s.loadIssueAndComments(ctx, repo, issueNumber, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -544,7 +631,8 @@ func (s *Server) transitionIssue(
 	}
 	nextLabels = append(nextLabels, toStatus)
 
-	if _, err := s.gh.SetIssueLabels(ctx, issueNumber, nextLabels); err != nil {
+	ghRepo := s.ghFor(repo)
+	if _, err := ghRepo.SetIssueLabels(ctx, issueNumber, nextLabels); err != nil {
 		_ = s.store.RecordTransitionAudit(
 			issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
 			triggerType, triggerCommentID, "failed", "set labels failed: "+err.Error(), validation, triggerMetadata,
@@ -553,7 +641,7 @@ func (s *Server) transitionIssue(
 	}
 
 	if strings.TrimSpace(assignee) != "" {
-		if _, err := s.gh.AssignIssue(ctx, issueNumber, []string{assignee}); err != nil {
+		if _, err := ghRepo.AssignIssue(ctx, issueNumber, []string{assignee}); err != nil {
 			_ = s.store.RecordTransitionAudit(
 				issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
 				triggerType, triggerCommentID, "failed", "assign issue failed: "+err.Error(), validation, triggerMetadata,
@@ -564,7 +652,7 @@ func (s *Server) transitionIssue(
 
 	var posted *IssueComment
 	if strings.TrimSpace(comment) != "" {
-		c, err := s.gh.PostIssueComment(ctx, issueNumber, comment)
+		c, err := ghRepo.PostIssueComment(ctx, issueNumber, comment)
 		if err != nil {
 			_ = s.store.RecordTransitionAudit(
 				issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
@@ -575,7 +663,7 @@ func (s *Server) transitionIssue(
 		posted = &c
 	}
 
-	updated, err := s.gh.GetIssue(ctx, issueNumber)
+	updated, err := ghRepo.GetIssue(ctx, issueNumber)
 	if err != nil {
 		_ = s.store.RecordTransitionAudit(
 			issueNumber, fromStatus, toStatus, fromAssignee, assignee, actorRole,
@@ -589,12 +677,12 @@ func (s *Server) transitionIssue(
 	if matchedDef != nil {
 		s.applyTransitionMetadata(issueNumber, fromStatus, matchedDef)
 		if matchedDef.CloseIssue {
-			if err := s.gh.CloseIssue(ctx, issueNumber); err != nil {
+			if err := ghRepo.CloseIssue(ctx, issueNumber); err != nil {
 				sideEffectErr = fmt.Errorf("close_issue failed: %w", err)
 			}
 		}
 		if matchedDef.ReopenIssue && sideEffectErr == nil {
-			if err := s.gh.ReopenIssue(ctx, issueNumber); err != nil {
+			if err := ghRepo.ReopenIssue(ctx, issueNumber); err != nil {
 				sideEffectErr = fmt.Errorf("reopen_issue failed: %w", err)
 			}
 		}

@@ -14,7 +14,6 @@ type DashboardServer struct {
 	store     *Store
 	workflows *WorkflowRegistry
 	hub       *SSEHub
-	gh        GitHubAPI
 	logger    interface{ Printf(string, ...interface{}) }
 }
 

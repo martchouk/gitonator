@@ -158,7 +158,7 @@ func evaluateGuard(gd GuardDef, issue Issue) bool {
 
 // decideNextActionFromDef derives the next WorkPackage using a YAML WorkflowDef.
 // Returns (WorkPackage{}, false) when the current status is terminal or does not queue work.
-func decideNextActionFromDef(wd *WorkflowDef, cfg Config, issue Issue, state WorkflowState, comments []IssueComment) (WorkPackage, bool) {
+func decideNextActionFromDef(wd *WorkflowDef, repo string, issue Issue, state WorkflowState, comments []IssueComment) (WorkPackage, bool) {
 	sd := wd.StatusByID(state.StatusLabel)
 	if sd == nil || !sd.QueuesWork {
 		return WorkPackage{}, false
@@ -170,7 +170,7 @@ func decideNextActionFromDef(wd *WorkflowDef, cfg Config, issue Issue, state Wor
 	}
 
 	return WorkPackage{
-		Repo:          fmt.Sprintf("%s/%s", cfg.Owner, cfg.Repo),
+		Repo:          repo,
 		IssueID:       issue.Number,
 		Role:          sd.Role,
 		Assignee:      currentAssigneeOfIssue(issue),

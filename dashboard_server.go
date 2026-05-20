@@ -17,7 +17,6 @@ func (s *Server) runDashboard(ctx context.Context, hub *SSEHub) error {
 		store:     s.store,
 		workflows: s.workflows,
 		hub:       hub,
-		gh:        s.gh,
 		logger:    s.logger,
 	}
 

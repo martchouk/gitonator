@@ -318,6 +318,9 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 			Body string     `json:"body"`
 			User GitHubUser `json:"user"`
 		} `json:"comment"`
+		Repository struct {
+			FullName string `json:"full_name"`
+		} `json:"repository"`
 	}
 
 	if err := json.Unmarshal(payload, &env); err != nil {
@@ -345,9 +348,14 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		}
 	}
 
-	// Store issue title for dashboard display.
-	if env.Issue.Title != "" && s.store != nil {
-		_ = s.store.SetIssueMetadata(env.Issue.Number, "_title", env.Issue.Title)
+	// Store issue title and repo for dashboard display and future event processing.
+	if s.store != nil {
+		if env.Issue.Title != "" {
+			_ = s.store.SetIssueMetadata(env.Issue.Number, "_title", env.Issue.Title)
+		}
+		if env.Repository.FullName != "" {
+			_ = s.store.SetIssueMetadata(env.Issue.Number, "_repo", env.Repository.FullName)
+		}
 	}
 
 	// Persist an explicit workflow key so future webhooks without ?workflow= reuse it.
@@ -362,7 +370,7 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		}
 	}
 
-	_, err := s.processIssueWith(ctx, env.Issue.Number, wd)
+	_, err := s.processIssueWith(ctx, env.Issue.Number, env.Repository.FullName, wd)
 	return err
 }
 

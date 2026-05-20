@@ -651,6 +651,12 @@ func (s *Store) GetIssueMetadata(issueID int, key string) (string, bool, error) 
 	return value, true, nil
 }
 
+// GetRepoForIssue returns the "owner/repo" string stored for an issue via the _repo metadata key.
+// Returns ("", false, nil) when the issue has not yet been seen by a webhook.
+func (s *Store) GetRepoForIssue(issueNumber int) (string, bool, error) {
+	return s.GetIssueMetadata(issueNumber, "_repo")
+}
+
 // GetIssueMetadataMap returns all metadata entries for an issue as a key→value map.
 func (s *Store) GetIssueMetadataMap(issueID int) (map[string]string, error) {
 	rows, err := s.db.Query(
