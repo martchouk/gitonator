@@ -79,8 +79,8 @@ function SubTableHeader() {
         borderBottom: '1px solid var(--md-sys-color-outline-variant)',
       }}
     >
-      <span>#</span>
-      <span style={{ display: 'flex', alignItems: 'center' }}><GithubIcon size={12} color="var(--color-text-muted)" /></span>
+      <span />
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><GithubIcon size={12} color="var(--color-text-muted)" /></span>
       <span>Role</span>
       <span>Status at Dispatch</span>
       <span>Outcome</span>
@@ -109,20 +109,19 @@ function StepNode({ step, isFirst, isLast }: { step: number; isFirst: boolean; i
         <div style={{
           position: 'absolute',
           top: 0,
-          bottom: 'calc(50% + 11px)',
+          bottom: 'calc(50% + 8.5px)',
           left: '50%',
           transform: 'translateX(-50%)',
           width: '1.5px',
           background: 'var(--color-neon-amber)',
-          opacity: 0.35,
         }} />
       )}
-      {/* circle */}
+      {/* circle — 17px (25% smaller than original 22px) */}
       <div style={{
         position: 'relative',
         zIndex: 1,
-        width: '22px',
-        height: '22px',
+        width: '17px',
+        height: '17px',
         borderRadius: '50%',
         border: '1.5px solid var(--color-neon-amber)',
         background: filled ? 'var(--color-neon-amber)' : 'transparent',
@@ -130,7 +129,7 @@ function StepNode({ step, isFirst, isLast }: { step: number; isFirst: boolean; i
         alignItems: 'center',
         justifyContent: 'center',
         fontFamily: 'var(--font-mono)',
-        fontSize: '0.625rem',
+        fontSize: '0.5rem',
         fontWeight: 700,
         color: filled ? 'var(--md-sys-color-surface)' : 'var(--color-neon-amber)',
         flexShrink: 0,
@@ -141,13 +140,12 @@ function StepNode({ step, isFirst, isLast }: { step: number; isFirst: boolean; i
       {!isLast && (
         <div style={{
           position: 'absolute',
-          top: 'calc(50% + 11px)',
+          top: 'calc(50% + 8.5px)',
           bottom: 0,
           left: '50%',
           transform: 'translateX(-50%)',
           width: '1.5px',
           background: 'var(--color-neon-amber)',
-          opacity: 0.35,
         }} />
       )}
     </div>
@@ -196,7 +194,7 @@ function SubTaskRow({ task, step, isFirst, isLast }: { task: TaskRow; step: numb
 
       <StepNode step={step} isFirst={isFirst} isLast={isLast} />
 
-      <div style={cell()}>
+      <div style={cell({ justifyContent: 'center' })}>
         {commentUrl ? (
           <a
             href={commentUrl}
