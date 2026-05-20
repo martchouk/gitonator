@@ -12,7 +12,7 @@ Author: rita-rev
 APPROVED
 
 ### Summary
-This is a workflow-only review of the synthetic roundtrip issue. There is no linked pull request or production code change to inspect, and the existing repository test suite passes cleanly. The current plan-review handoff is consistent with the issue's process-only intent, so the issue can move forward to the developer role.
+This is a workflow-only review of the synthetic roundtrip issue. There is no linked pull request or production code change to inspect, and the existing repository test suite passes cleanly. The current code-review handoff is consistent with the issue's process-only intent, so the issue can move forward to the PO role.
 
 ### Documentation Check
 - `README.md` — not needed; no functional or setup changes
