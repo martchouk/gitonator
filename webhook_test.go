@@ -104,6 +104,56 @@ func TestProcessWebhookPayload_LooksUpStoredWorkflowKey(t *testing.T) {
 	// If the stored key was used, the issue was processed successfully (no error).
 }
 
+// TestProcessWebhookPayload_IgnoresWorkflowParamForStartedIssue verifies that
+// when an issue already has a stored workflow key, a different ?workflow= param
+// on a later webhook is ignored — in-flight issues must not switch workflow mid-run.
+func TestProcessWebhookPayload_IgnoresWorkflowParamForStartedIssue(t *testing.T) {
+	reg := leanRegistry(t)
+	store := tempStore(t)
+
+	// Issue 202 was started with "lean".
+	if err := store.SetIssueWorkflowKey(202, "lean"); err != nil {
+		t.Fatalf("SetIssueWorkflowKey: %v", err)
+	}
+
+	issue := Issue{
+		Number:    202,
+		User:      GitHubUser{Login: "creator"},
+		Assignees: []GitHubUser{{Login: "ada-pow"}},
+		Labels:    []GitHubLabel{{Name: "status:new"}},
+	}
+
+	var logBuf bytes.Buffer
+	mock := &mockGitHub{issues: []Issue{issue}}
+	s := &Server{
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return mock },
+		store:     store,
+		logger:    log.New(&logBuf, "", 0),
+		workflows: reg,
+	}
+
+	payload := makeWebhookPayload(t, 202, "labeled")
+
+	// Simulate a webhook arriving with ?workflow=full — a different key from the stored one.
+	if err := s.processWebhookPayload(context.Background(), "issues", "d3", payload, reg.Get("full"), "full"); err != nil {
+		// processIssueWith may return an error because "full" workflow doesn't exist in leanRegistry;
+		// what matters is that the stored key was NOT overwritten.
+		_ = err
+	}
+
+	key, ok, err := store.GetIssueWorkflowKey(202)
+	if err != nil {
+		t.Fatalf("GetIssueWorkflowKey: %v", err)
+	}
+	if !ok || key != "lean" {
+		t.Errorf("stored workflow key must stay %q, got ok=%v key=%q", "lean", ok, key)
+	}
+	if !strings.Contains(logBuf.String(), "workflow already locked") {
+		t.Errorf("expected lock warning in log output, got: %s", logBuf.String())
+	}
+}
+
 func TestHandleWorkFailRequeuesDispatchedTask(t *testing.T) {
 	store := tempStore(t)
 	if _, err := store.QueueTask(WorkPackage{

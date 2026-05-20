@@ -358,15 +358,20 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		}
 	}
 
-	// Persist an explicit workflow key so future webhooks without ?workflow= reuse it.
-	// If no explicit key was given, look up the stored one and override wd.
+	// Workflow key selection:
+	// - If the issue already has a stored key (workflow was started), lock in to that
+	//   key regardless of the ?workflow= param — in-flight issues must not switch workflow.
+	// - If no stored key exists and an explicit key was given, persist it now so future
+	//   webhooks without ?workflow= continue with the same workflow.
 	if s.store != nil && s.workflows != nil {
-		if wfKey != "" {
-			_ = s.store.SetIssueWorkflowKey(env.Issue.Number, wfKey)
-		} else {
-			if stored, ok, _ := s.store.GetIssueWorkflowKey(env.Issue.Number); ok && stored != "" {
-				wd = s.workflows.Get(stored)
+		if stored, ok, _ := s.store.GetIssueWorkflowKey(env.Issue.Number); ok && stored != "" {
+			if wfKey != "" && wfKey != stored {
+				s.logger.Printf("webhook: ignoring ?workflow=%s for issue=%d — workflow already locked to %q",
+					wfKey, env.Issue.Number, stored)
 			}
+			wd = s.workflows.Get(stored)
+		} else if wfKey != "" {
+			_ = s.store.SetIssueWorkflowKey(env.Issue.Number, wfKey)
 		}
 	}
 
