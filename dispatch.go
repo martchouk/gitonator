@@ -108,6 +108,9 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, repo str
 			} else {
 				s.debugf("processIssue: issue=%d no action — terminal or wait state", issueNumber)
 				if sd := wd.StatusByID(state.StatusLabel); sd != nil && !sd.QueuesWork {
+					if state.StatusLabel != "" {
+						_ = s.store.SetIssueMetadata(issueNumber, "_final_status", state.StatusLabel)
+					}
 					if err := s.clearActiveTasksForIssue(issueNumber); err != nil {
 						return nil, err
 					}
