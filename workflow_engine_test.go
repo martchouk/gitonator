@@ -564,6 +564,22 @@ func TestValidTransitionsFrom_InDevelopment(t *testing.T) {
 	}
 }
 
+func TestValidTransitionsFrom_ReadyForDevelopmentCanSubmitCodeReview(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	targets := wd.ValidTransitionsFrom("status:ready-for-development")
+	if !containsString(targets, "status:code-review") {
+		t.Errorf("expected status:code-review in ValidTransitionsFrom(status:ready-for-development), got %v", targets)
+	}
+}
+
+func TestValidTransitionsFrom_FullReadyForDevCanSubmitCodeReview(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	targets := wd.ValidTransitionsFrom("status:ready-for-dev")
+	if !containsString(targets, "status:code-review") {
+		t.Errorf("expected status:code-review in ValidTransitionsFrom(status:ready-for-dev), got %v", targets)
+	}
+}
+
 func TestValidTransitionsFrom_BlockedExcludesDynamic(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	targets := wd.ValidTransitionsFrom("status:blocked")
@@ -735,6 +751,22 @@ func TestNextRolesFrom_InDevelopment(t *testing.T) {
 	}
 	if containsString(roles, "po") {
 		t.Errorf("expected NextRolesFrom(status:in-development) NOT to include %q (exception path), got %v", "po", roles)
+	}
+}
+
+func TestNextRolesFrom_ReadyForDevelopmentIncludesReviewer(t *testing.T) {
+	wd := leanWorkflowForTest(t)
+	roles := wd.NextRolesFrom("status:ready-for-development")
+	if !containsString(roles, "reviewer") {
+		t.Errorf("expected NextRolesFrom(status:ready-for-development) to include %q, got %v", "reviewer", roles)
+	}
+}
+
+func TestNextRolesFrom_FullReadyForDevIncludesReviewer(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	roles := wd.NextRolesFrom("status:ready-for-dev")
+	if !containsString(roles, "reviewer") {
+		t.Errorf("expected NextRolesFrom(status:ready-for-dev) to include %q, got %v", "reviewer", roles)
 	}
 }
 

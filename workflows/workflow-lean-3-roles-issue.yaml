@@ -229,6 +229,7 @@ transitions:
 
   - id: developer_submit_code_review
     from:
+      - status:ready-for-development
       - status:in-development
     to: status:code-review
     allowed_roles:

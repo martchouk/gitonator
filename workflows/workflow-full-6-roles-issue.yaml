@@ -307,6 +307,7 @@ transitions:
 
   - id: developer_submit_code_review
     from:
+      - status:ready-for-dev
       - status:in-development
       - status:architecture-review
       - status:ui-review
