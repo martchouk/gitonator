@@ -207,14 +207,22 @@ func main() {
 				pkg.ID, pkg.IssueID, pkg.Role, pkg.Assignee, pkg.CurrentStatus)
 		}
 
-		agent := selectAgent(roster, pkg, cooldowns, selector, time.Now())
+		now := time.Now()
+		agent := selectAgent(roster, pkg, cooldowns, selector, now)
 		if agent == nil {
+			errText := "no available bridge agent for role/assignee; matching agent may be cooling down"
+			if debug {
+				logger.Printf("DEBUG requeue: no agent available role=%s assignee=%s agents=[%s]",
+					pkg.Role, pkg.Assignee, agentRoleSummary(roster, pkg.Role, cooldowns, now))
+				logger.Printf("DEBUG work/fail payload: task=%d issue=%d bridge=%s agent= exit=-1 error=%q",
+					pkg.ID, pkg.IssueID, cfg.BridgeID, errText)
+			}
 			logger.Printf("warning: no available agent for role=%s assignee=%s — requeueing", pkg.Role, pkg.Assignee)
-			result := AgentResult{ExitCode: -1, ErrorText: "no available bridge agent for role/assignee; matching agent may be cooling down"}
+			result := AgentResult{ExitCode: -1, ErrorText: errText}
 			if reportErr := reportWorkFailure(client, cfg, *pkg, Agent{}, result); reportErr != nil {
 				logger.Printf("work/fail report error: issue=%d err=%v", pkg.IssueID, reportErr)
 			}
-			time.Sleep(cooldowns.sleepDurationFor(pkg, roster, time.Now(), time.Duration(cfg.PollSeconds)*time.Second))
+			time.Sleep(cooldowns.sleepDurationFor(pkg, roster, now, time.Duration(cfg.PollSeconds)*time.Second))
 			continue
 		}
 
@@ -243,6 +251,12 @@ func main() {
 				until := cooldowns.mark(agent.LLMProvider, class, result.ErrorText, time.Now())
 				logger.Printf("provider cooling down: provider=%s agent=%s until=%s reason=%s",
 					providerKey(agent.LLMProvider), agent.Name, until.Format(time.RFC3339), result.ErrorText)
+			}
+			if debug {
+				logger.Printf("DEBUG requeue: agent failed agent=%s agents=[%s]",
+					agent.Name, agentRoleSummary(roster, pkg.Role, cooldowns, time.Now()))
+				logger.Printf("DEBUG work/fail payload: task=%d issue=%d bridge=%s agent=%s exit=%d error=%q",
+					pkg.ID, pkg.IssueID, cfg.BridgeID, agent.Name, result.ExitCode, result.ErrorText)
 			}
 			if reportErr := reportWorkFailure(client, cfg, *pkg, *agent, result); reportErr != nil {
 				logger.Printf("work/fail report error: agent=%s issue=%d err=%v", agent.Name, pkg.IssueID, reportErr)
@@ -315,6 +329,27 @@ func (s *agentSelector) next(role string, n int) int {
 
 func agentAvailable(cooldowns *providerCooldowns, agent *Agent, now time.Time) bool {
 	return cooldowns == nil || agent == nil || !cooldowns.isCooling(agent.LLMProvider, now)
+}
+
+// agentRoleSummary returns a human-readable list of all agents for role,
+// annotating each with "available" or "cooling" — used in debug log lines.
+func agentRoleSummary(roster Roster, role string, cooldowns *providerCooldowns, now time.Time) string {
+	var parts []string
+	for i := range roster.Agents {
+		a := &roster.Agents[i]
+		if a.Role != role {
+			continue
+		}
+		status := "available"
+		if !agentAvailable(cooldowns, a, now) {
+			status = "cooling"
+		}
+		parts = append(parts, a.Name+"("+status+")")
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, " ")
 }
 
 func providerKey(provider string) string {
