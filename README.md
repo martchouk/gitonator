@@ -517,9 +517,9 @@ Audit fields include:
 
 ```bash
 GITHUB_TOKEN=...       # GitHub personal access token or app token
-GITHUB_OWNER=martchouk
-GITHUB_REPO=github.mcp
 ```
+
+The server is multi-repo: `owner/repo` is derived from each incoming webhook payload (`repository.full_name`), so no static owner/repo configuration is needed.
 
 ### Core server config
 
@@ -629,8 +629,6 @@ go build -o github-issue-orchestrator .
 
 ```bash
 export GITHUB_TOKEN=ghp_xxx
-export GITHUB_OWNER=martchouk
-export GITHUB_REPO=github.mcp
 export HTTP_ADDR=127.0.0.1:7777
 export SQLITE_PATH=orchestrator.db
 export AGENT_SHARED_TOKEN=supersecret
@@ -798,7 +796,7 @@ ORDER BY id ASC;
 
 ## Minimal startup checklist
 
-1. Set `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`
+1. Set `GITHUB_TOKEN`
 2. Set `WEBHOOK_SECRET`
 3. Set `AGENT_SHARED_TOKEN`
 4. Start the service

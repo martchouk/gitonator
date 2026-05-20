@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+// GitHubClientFactory creates a GitHubAPI client for the given "owner/repo" string.
+type GitHubClientFactory func(repo string) GitHubAPI
+
 // GitHubAPI is the interface for all GitHub operations used by the server.
 // *GitHubClient satisfies this interface; tests substitute a mock.
 type GitHubAPI interface {

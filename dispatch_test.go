@@ -98,14 +98,14 @@ func TestProcessIssueLabelBootstrap(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{unlabeled, labeled}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        mock,
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return mock },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: leanRegistry(t),
 	}
 
-	result, err := s.processIssue(context.Background(), 11)
+	result, err := s.processIssue(context.Background(), 11, "owner/repo")
 	if err != nil {
 		t.Fatalf("processIssue returned error: %v", err)
 	}
@@ -153,14 +153,14 @@ func TestProcessIssueLabelBootstrapSetLabelsError(t *testing.T) {
 	}
 	store := tempStore(t)
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        mock,
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return mock },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: leanRegistry(t),
 	}
 
-	_, err := s.processIssue(context.Background(), 11)
+	_, err := s.processIssue(context.Background(), 11, "owner/repo")
 	if err == nil {
 		t.Fatal("expected an error when SetIssueLabels fails, got nil")
 	}
@@ -191,13 +191,13 @@ func TestProcessIssueBootstrap_SkipsWhenTaskHistoryExists(t *testing.T) {
 		t.Fatalf("QueueTask: %v", err)
 	}
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 12, wd)
+	result, err := s.processIssueWith(context.Background(), 12, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -229,8 +229,8 @@ func TestProcessIssueRoleTransitionSupersedes(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{issue}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        mock,
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return mock },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: leanRegistry(t),
@@ -246,7 +246,7 @@ func TestProcessIssueRoleTransitionSupersedes(t *testing.T) {
 		t.Fatalf("seed stale task: %v", err)
 	}
 
-	result, err := s.processIssue(context.Background(), 20)
+	result, err := s.processIssue(context.Background(), 20, "owner/repo")
 	if err != nil {
 		t.Fatalf("processIssue returned error: %v", err)
 	}
@@ -286,18 +286,18 @@ func TestProcessIssueSameRoleDeduplicates(t *testing.T) {
 
 	store := tempStore(t)
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        &mockGitHub{issues: []Issue{issue, issue}},
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return &mockGitHub{issues: []Issue{issue, issue}} },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: leanRegistry(t),
 	}
 
-	if _, err := s.processIssue(context.Background(), 30); err != nil {
+	if _, err := s.processIssue(context.Background(), 30, "owner/repo"); err != nil {
 		t.Fatalf("first processIssue: %v", err)
 	}
 
-	result2, err := s.processIssue(context.Background(), 30)
+	result2, err := s.processIssue(context.Background(), 30, "owner/repo")
 	if err != nil {
 		t.Fatalf("second processIssue: %v", err)
 	}
@@ -327,8 +327,8 @@ func TestProcessIssueSameRoleDifferentAssigneeSupersedes(t *testing.T) {
 
 	store := tempStore(t)
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        &mockGitHub{issues: []Issue{issueWithNewAssignee}},
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return &mockGitHub{issues: []Issue{issueWithNewAssignee}} },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: leanRegistry(t),
@@ -345,7 +345,7 @@ func TestProcessIssueSameRoleDifferentAssigneeSupersedes(t *testing.T) {
 		t.Fatalf("seed stale task: %v", err)
 	}
 
-	result, err := s.processIssue(context.Background(), 50)
+	result, err := s.processIssue(context.Background(), 50, "owner/repo")
 	if err != nil {
 		t.Fatalf("processIssue returned error: %v", err)
 	}
@@ -389,8 +389,8 @@ func TestProcessIssueSameRoleEmptyToNonEmptyAssigneeSupersedes(t *testing.T) {
 
 	store := tempStore(t)
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        &mockGitHub{issues: []Issue{issueWithAssignee}},
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return &mockGitHub{issues: []Issue{issueWithAssignee}} },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: leanRegistry(t),
@@ -407,7 +407,7 @@ func TestProcessIssueSameRoleEmptyToNonEmptyAssigneeSupersedes(t *testing.T) {
 		t.Fatalf("seed stale task: %v", err)
 	}
 
-	result, err := s.processIssue(context.Background(), 51)
+	result, err := s.processIssue(context.Background(), 51, "owner/repo")
 	if err != nil {
 		t.Fatalf("processIssue returned error: %v", err)
 	}
@@ -451,14 +451,14 @@ func TestProcessIssueAlreadyLabeledSkipsBootstrap(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{issue}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        mock,
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return mock },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: leanRegistry(t),
 	}
 
-	_, err := s.processIssue(context.Background(), 42)
+	_, err := s.processIssue(context.Background(), 42, "owner/repo")
 	if err != nil {
 		t.Fatalf("processIssue returned error: %v", err)
 	}
@@ -482,13 +482,13 @@ func TestProcessIssueWith_YAMLWorkflow_QueuesDevTask(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{issue}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 55, wd)
+	result, err := s.processIssueWith(context.Background(), 55, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -531,13 +531,13 @@ func TestProcessIssueWith_UnknownStatusLabel_LogsWarning(t *testing.T) {
 	store := tempStore(t)
 	var logBuf bytes.Buffer
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&logBuf, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 99, wd)
+	result, err := s.processIssueWith(context.Background(), 99, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith returned unexpected error: %v", err)
 	}
@@ -586,13 +586,13 @@ func TestProcessIssueWith_CommentFooter_KnownStatus_IgnoresFooter(t *testing.T) 
 	}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 101, wd)
+	result, err := s.processIssueWith(context.Background(), 101, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -637,13 +637,13 @@ func TestProcessIssueWith_CommentFooter_UnknownLabel_Routes(t *testing.T) {
 	}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 102, wd)
+	result, err := s.processIssueWith(context.Background(), 102, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -692,13 +692,13 @@ func TestProcessIssueWith_CommentFooter_UnknownLabelOutOfWorkflowRole_Routes(t *
 	}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 106, wd)
+	result, err := s.processIssueWith(context.Background(), 106, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -743,13 +743,13 @@ func TestProcessIssueWith_CommentFooter_InvalidRole_FallsBackToLabel(t *testing.
 	}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 103, wd)
+	result, err := s.processIssueWith(context.Background(), 103, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -789,13 +789,13 @@ func TestProcessIssueWith_CommentFooter_TerminalState(t *testing.T) {
 		},
 	}
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  tempStore(t),
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 104, wd)
+	result, err := s.processIssueWith(context.Background(), 104, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -822,13 +822,13 @@ func TestProcessIssueWith_NextAssigneeRolesPopulated(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{issue}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 105, wd)
+	result, err := s.processIssueWith(context.Background(), 105, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -871,13 +871,13 @@ func TestProcessIssueWith_PopulatesWorkflowContext(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{issue}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), 77, wd)
+	result, err := s.processIssueWith(context.Background(), 77, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -966,8 +966,8 @@ func TestProcessIssueConcurrent_NoDuplicateTasks(t *testing.T) {
 
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     &safeGitHub{issue: issue},
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return &safeGitHub{issue: issue} },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
@@ -981,7 +981,7 @@ func TestProcessIssueConcurrent_NoDuplicateTasks(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-ready
-			_, _ = s.processIssueWith(context.Background(), issueNumber, wd)
+			_, _ = s.processIssueWith(context.Background(), issueNumber, "owner/repo", wd)
 		}()
 	}
 	close(ready)
@@ -1032,13 +1032,13 @@ func TestProcessIssueWith_DispatchedSameStateDeduplicates(t *testing.T) {
 	}
 
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     &safeGitHub{issue: issue},
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return &safeGitHub{issue: issue} },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), issueNumber, wd)
+	result, err := s.processIssueWith(context.Background(), issueNumber, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -1097,13 +1097,13 @@ func TestProcessIssueWith_TerminalStateCompletesDispatchedTask(t *testing.T) {
 	}
 
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     &safeGitHub{issue: issue},
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return &safeGitHub{issue: issue} },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), issueNumber, wd)
+	result, err := s.processIssueWith(context.Background(), issueNumber, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}
@@ -1160,13 +1160,13 @@ func TestProcessIssueWith_DispatchedStatusChangeQueuesReplacement(t *testing.T) 
 	}
 
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     &safeGitHub{issue: issue},
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return &safeGitHub{issue: issue} },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
-	result, err := s.processIssueWith(context.Background(), issueNumber, wd)
+	result, err := s.processIssueWith(context.Background(), issueNumber, "owner/repo", wd)
 	if err != nil {
 		t.Fatalf("processIssueWith: %v", err)
 	}

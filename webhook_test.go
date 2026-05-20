@@ -16,8 +16,9 @@ import (
 func makeWebhookPayload(t *testing.T, issueNumber int, action string) []byte {
 	t.Helper()
 	body, err := json.Marshal(map[string]interface{}{
-		"action": action,
-		"issue":  map[string]interface{}{"number": issueNumber},
+		"action":     action,
+		"issue":      map[string]interface{}{"number": issueNumber},
+		"repository": map[string]interface{}{"full_name": "owner/repo"},
 	})
 	if err != nil {
 		t.Fatalf("marshal webhook payload: %v", err)
@@ -43,8 +44,8 @@ func TestProcessWebhookPayload_PersistsExplicitWorkflowKey(t *testing.T) {
 
 	mock := &mockGitHub{issues: []Issue{issue, labeled}}
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        mock,
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return mock },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: reg,
@@ -87,8 +88,8 @@ func TestProcessWebhookPayload_LooksUpStoredWorkflowKey(t *testing.T) {
 
 	mock := &mockGitHub{issues: []Issue{issue}}
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        mock,
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return mock },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: reg,
@@ -250,14 +251,14 @@ func TestTransitionIssue_CloseIssue(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{issue, afterTransition}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
 	_, err := s.transitionIssue(
-		context.Background(), 300, "status:done", "", "", "po",
+		context.Background(), 300, "owner/repo", "status:done", "", "", "po",
 		"mcp_tool", nil, nil, wd,
 	)
 	if err != nil {
@@ -291,14 +292,14 @@ func TestTransitionIssue_ReopenIssue(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{issue, afterTransition}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
 	_, err := s.transitionIssue(
-		context.Background(), 301, "status:story-definition", "", "", "po",
+		context.Background(), 301, "owner/repo", "status:story-definition", "", "", "po",
 		"mcp_tool", nil, nil, wd,
 	)
 	if err != nil {
@@ -337,14 +338,14 @@ func TestTransitionIssue_CloseIssueFailureReturnsPartialError(t *testing.T) {
 	store := tempStore(t)
 	var logBuf bytes.Buffer
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&logBuf, "", 0),
 	}
 
 	_, err := s.transitionIssue(
-		context.Background(), 305, "status:done", "", "", "po",
+		context.Background(), 305, "owner/repo", "status:done", "", "", "po",
 		"mcp_tool", nil, nil, wd,
 	)
 	if err == nil {
@@ -387,11 +388,16 @@ func TestCallTool_TransitionIssue_PersistsWorkflowKey(t *testing.T) {
 
 	mock := &mockGitHub{issues: []Issue{issue, afterTransition}}
 	s := &Server{
-		cfg:       Config{Owner: "owner", Repo: "repo"},
-		gh:        mock,
+		cfg:       Config{},
+		ghFor:     func(_ string) GitHubAPI { return mock },
 		store:     store,
 		logger:    log.New(&bytes.Buffer{}, "", 0),
 		workflows: reg,
+	}
+
+	// Pre-seed _repo so the tool can resolve the GitHub client for this issue.
+	if err := store.SetIssueMetadata(400, "_repo", "owner/repo"); err != nil {
+		t.Fatalf("SetIssueMetadata: %v", err)
 	}
 
 	args, _ := json.Marshal(map[string]interface{}{
@@ -432,14 +438,14 @@ func TestTransitionIssue_NoCloseOnNormalTransition(t *testing.T) {
 	mock := &mockGitHub{issues: []Issue{issue, afterTransition}}
 	store := tempStore(t)
 	s := &Server{
-		cfg:    Config{Owner: "owner", Repo: "repo"},
-		gh:     mock,
+		cfg:    Config{},
+		ghFor:  func(_ string) GitHubAPI { return mock },
 		store:  store,
 		logger: log.New(&bytes.Buffer{}, "", 0),
 	}
 
 	_, err := s.transitionIssue(
-		context.Background(), 302, "status:code-review", "", "", "developer",
+		context.Background(), 302, "owner/repo", "status:code-review", "", "", "developer",
 		"mcp_tool", nil, nil, wd,
 	)
 	if err != nil {

@@ -197,8 +197,8 @@ The Bridge may wrap this JSON in a short prompt when passing it to an LLM agent.
 | Variable | Required | Purpose |
 |---|---|---|
 | `GITHUB_TOKEN` | **yes** | Agent's own GitHub token for posting comments |
-| `GITHUB_OWNER` | fallback | Owner portion of `owner/repo`, used if `pkg.repo` is empty |
-| `GITHUB_REPO` | fallback | Repo name, used if `pkg.repo` is empty |
+
+`pkg.Repo` (in `owner/repo` format) is always provided by the orchestrator — no fallback env vars are needed.
 
 `show` and `open` require no environment variables.
 

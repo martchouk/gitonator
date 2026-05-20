@@ -298,10 +298,10 @@ func TestEvaluateGuard_EmptyGuardAlwaysPasses(t *testing.T) {
 
 func TestDecideNextActionFromDef_QueuesWorkForPO(t *testing.T) {
 	wd := leanWorkflowForTest(t)
-	cfg := Config{Owner: "owner", Repo: "repo"}
+	repo := "owner/repo"
 	issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: "status:story-definition"}}}
 	state := computeWorkflowStateFromDef(wd, issue, nil)
-	pkg, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+	pkg, ok := decideNextActionFromDef(wd, repo, issue, state, nil)
 	if !ok {
 		t.Fatal("expected ok=true for queues_work status, got false")
 	}
@@ -315,11 +315,11 @@ func TestDecideNextActionFromDef_QueuesWorkForPO(t *testing.T) {
 
 func TestDecideNextActionFromDef_TerminalStatusNoWork(t *testing.T) {
 	wd := leanWorkflowForTest(t)
-	cfg := Config{Owner: "owner", Repo: "repo"}
+	repo := "owner/repo"
 	for _, label := range []string{"status:done", "status:rejected"} {
 		issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: label}}}
 		state := computeWorkflowStateFromDef(wd, issue, nil)
-		_, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+		_, ok := decideNextActionFromDef(wd, repo, issue, state, nil)
 		if ok {
 			t.Errorf("label=%s: expected ok=false for terminal status, got true", label)
 		}
@@ -328,11 +328,11 @@ func TestDecideNextActionFromDef_TerminalStatusNoWork(t *testing.T) {
 
 func TestDecideNextActionFromDef_DeveloperRoleForImplStatuses(t *testing.T) {
 	wd := leanWorkflowForTest(t)
-	cfg := Config{Owner: "owner", Repo: "repo"}
+	repo := "owner/repo"
 	for _, label := range []string{"status:dev-planning", "status:ready-for-development", "status:in-development"} {
 		issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: label}}}
 		state := computeWorkflowStateFromDef(wd, issue, nil)
-		pkg, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+		pkg, ok := decideNextActionFromDef(wd, repo, issue, state, nil)
 		if !ok {
 			t.Errorf("label=%s: expected ok=true, got false", label)
 		}
@@ -344,11 +344,11 @@ func TestDecideNextActionFromDef_DeveloperRoleForImplStatuses(t *testing.T) {
 
 func TestDecideNextActionFromDef_ReviewerRoleForReviewStatuses(t *testing.T) {
 	wd := leanWorkflowForTest(t)
-	cfg := Config{Owner: "owner", Repo: "repo"}
+	repo := "owner/repo"
 	for _, label := range []string{"status:plan-review", "status:code-review"} {
 		issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: label}}}
 		state := computeWorkflowStateFromDef(wd, issue, nil)
-		pkg, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+		pkg, ok := decideNextActionFromDef(wd, repo, issue, state, nil)
 		if !ok {
 			t.Errorf("label=%s: expected ok=true, got false", label)
 		}
@@ -360,10 +360,10 @@ func TestDecideNextActionFromDef_ReviewerRoleForReviewStatuses(t *testing.T) {
 
 func TestDecideNextActionFromDef_UnknownStatusNoWork(t *testing.T) {
 	wd := leanWorkflowForTest(t)
-	cfg := Config{Owner: "owner", Repo: "repo"}
+	repo := "owner/repo"
 	issue := Issue{Number: 5, Labels: []GitHubLabel{{Name: "status:some-legacy-status"}}}
 	state := computeWorkflowStateFromDef(wd, issue, nil)
-	_, ok := decideNextActionFromDef(wd, cfg, issue, state, nil)
+	_, ok := decideNextActionFromDef(wd, repo, issue, state, nil)
 	if ok {
 		t.Error("expected ok=false for status not in workflow, got true")
 	}
