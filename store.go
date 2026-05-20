@@ -812,6 +812,7 @@ func scanTaskRows(rows *sql.Rows) ([]TaskRow, error) {
 // CompletedIssueSummary is a row returned by ListCompletedIssues.
 type CompletedIssueSummary struct {
 	IssueNumber int    `json:"issueNumber"`
+	Title       string `json:"title"`
 	Repo        string `json:"repo"`
 	FinalStatus string `json:"finalStatus"`
 	WorkflowKey string `json:"workflowKey"`
@@ -833,7 +834,8 @@ func (s *Store) ListCompletedIssues(limit int) ([]CompletedIssueSummary, error) 
 			COALESCE(t.finished_at, t.created_at) AS completed_at,
 			COALESCE(t.repo, '')           AS repo,
 			COALESCE(im.value, '')         AS workflow_key,
-			COALESCE(sc.cnt, 0)            AS step_count
+			COALESCE(sc.cnt, 0)            AS step_count,
+			COALESCE(im_title.value, '')   AS title
 		FROM tasks t
 		JOIN (
 			SELECT issue_number, MAX(id) AS max_id
@@ -842,6 +844,8 @@ func (s *Store) ListCompletedIssues(limit int) ([]CompletedIssueSummary, error) 
 		) last_t ON t.issue_number = last_t.issue_number AND t.id = last_t.max_id
 		LEFT JOIN issue_metadata im
 			ON im.issue_id = t.issue_number AND im.key = '_workflow_key'
+		LEFT JOIN issue_metadata im_title
+			ON im_title.issue_id = t.issue_number AND im_title.key = '_title'
 		LEFT JOIN (
 			SELECT issue_number, COUNT(*) AS cnt
 			FROM tasks
@@ -864,7 +868,7 @@ func (s *Store) ListCompletedIssues(limit int) ([]CompletedIssueSummary, error) 
 		var cs CompletedIssueSummary
 		if err := rows.Scan(
 			&cs.IssueNumber, &cs.FinalStatus, &cs.CompletedAt,
-			&cs.Repo, &cs.WorkflowKey, &cs.StepCount,
+			&cs.Repo, &cs.WorkflowKey, &cs.StepCount, &cs.Title,
 		); err != nil {
 			return nil, err
 		}

@@ -10,6 +10,18 @@ interface CompletedListResponse {
   completed: CompletedIssueSummary[];
 }
 
+function GithubIcon({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill={color} xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+    </svg>
+  );
+}
+
+function truncate64(str: string): string {
+  return str.length > 64 ? str.slice(0, 64) + '…' : str;
+}
+
 function relativeTime(ts: string): string {
   if (!ts) return '–';
   const diff = Date.now() - new Date(ts).getTime();
@@ -48,8 +60,8 @@ function taskOutcomeColor(status: string): string {
   return 'var(--color-text-muted)';
 }
 
-// 8 columns: step | role | status | outcome | assigned to | bridge | created | duration
-const SUB_COLS = '40px 90px 1fr 100px 120px 90px 78px 74px';
+// 9 columns: step | gh-comment | role | status | outcome | assigned to | bridge | created | duration
+const SUB_COLS = '40px 32px 90px 1fr 100px 120px 90px 78px 74px';
 
 function SubTableHeader() {
   return (
@@ -68,6 +80,7 @@ function SubTableHeader() {
       }}
     >
       <span>#</span>
+      <span style={{ display: 'flex', alignItems: 'center' }}><GithubIcon size={12} color="var(--color-text-muted)" /></span>
       <span>Role</span>
       <span>Status at Dispatch</span>
       <span>Outcome</span>
@@ -81,10 +94,13 @@ function SubTableHeader() {
 
 function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
   const bridge = nullStr(task.bridge_id);
-  // Prefer GitHub-authenticated commenter (claimed_by) over issue assignee over role.
   const workerLogin = (task.claimed_by?.Valid && task.claimed_by?.String)
     ? task.claimed_by.String
     : task.assignee || null;
+
+  const commentUrl = task.last_comment_id
+    ? `https://github.com/${task.repo}/issues/${task.issue_number}#issuecomment-${task.last_comment_id}`
+    : null;
 
   return (
     <div
@@ -100,6 +116,24 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-amber)' }}>
         {step}
       </span>
+      <span style={{ display: 'flex', alignItems: 'center' }}>
+        {commentUrl ? (
+          <a
+            href={commentUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="View GitHub comment"
+            style={{ display: 'flex', alignItems: 'center', opacity: 0.7, transition: 'opacity 150ms ease' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+          >
+            <GithubIcon size={13} color="var(--color-neon-cyan)" />
+          </a>
+        ) : (
+          <GithubIcon size={13} color="var(--color-text-muted)" />
+        )}
+      </span>
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
         {task.role || '–'}
       </span>
@@ -112,7 +146,6 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: taskOutcomeColor(task.status) }}>
         {task.status}
       </span>
-      {/* Assigned to: real worker (claimed_by) in cyan, role fallback in yellow */}
       <span style={{
         fontFamily: 'var(--font-mono)',
         fontSize: '0.6875rem',
@@ -177,6 +210,9 @@ function ExpandedDetail({ issueNumber }: { issueNumber: number }) {
     </div>
   );
 }
+
+// 8 columns: arrow | issue | repo | issue-name | final-status | workflow | steps | completed
+const MAIN_COLS = '28px 80px 160px 1fr 160px 160px 80px 110px';
 
 export function CompletedList() {
   const { data, error, mutate } = useSWR<CompletedListResponse>(
@@ -244,7 +280,7 @@ export function CompletedList() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '28px 80px 1fr 160px 160px 80px 110px',
+              gridTemplateColumns: MAIN_COLS,
               padding: '10px 16px',
               background: 'var(--md-sys-color-surface-variant)',
               fontSize: '0.6875rem',
@@ -256,8 +292,9 @@ export function CompletedList() {
             }}
           >
             <span />
-            <span>Issue #</span>
+            <span>Issue</span>
             <span>Repo</span>
+            <span>Issue name</span>
             <span>Final Status</span>
             <span>Workflow</span>
             <span>Steps</span>
@@ -266,6 +303,7 @@ export function CompletedList() {
 
           {runs.map((run) => {
             const isExpanded = expandedIssue === run.issueNumber;
+            const issueUrl = `https://github.com/${run.repo}/issues/${run.issueNumber}`;
             return (
               <React.Fragment key={run.issueNumber}>
                 {/* Summary row */}
@@ -280,7 +318,7 @@ export function CompletedList() {
                   className="completed-row"
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '28px 80px 1fr 160px 160px 80px 110px',
+                    gridTemplateColumns: MAIN_COLS,
                     padding: '11px 16px',
                     alignItems: 'center',
                     borderBottom: isExpanded
@@ -303,11 +341,25 @@ export function CompletedList() {
                       : <ChevronRight size={14} />
                     }
                   </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-amber)' }}>
-                    #{run.issueNumber}
+                  <a
+                    href={issueUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.75rem',
+                      color: 'var(--color-neon-amber)',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    {run.issueNumber}
+                  </a>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {run.repo || '–'}
                   </span>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {run.repo || '–'}
+                    {run.title ? truncate64(run.title) : <span style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}>–</span>}
                   </span>
                   <span>
                     <StatusChip status={run.finalStatus} />

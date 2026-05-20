@@ -82,6 +82,7 @@ export interface WorkflowSummary {
 
 export interface CompletedIssueSummary {
   issueNumber: number;
+  title: string;
   repo: string;
   finalStatus: string;
   workflowKey: string;
