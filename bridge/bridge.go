@@ -731,6 +731,7 @@ func classifyAgentFailure(result AgentResult, err error) failureClass {
 		"quota",
 		"rate limit",
 		"rate-limit",
+		"session limit",
 		"too many requests",
 		"temporarily unavailable",
 		"overloaded",

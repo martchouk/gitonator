@@ -334,6 +334,14 @@ func TestClassifyAgentFailureDetectsQuota(t *testing.T) {
 	}
 }
 
+func TestClassifyAgentFailureDetectsSessionLimit(t *testing.T) {
+	result := AgentResult{ExitCode: 1, ErrorText: "You've hit your session limit · resets 2:30pm (Europe/Berlin)"}
+	class := classifyAgentFailure(result, nil)
+	if class != transientFailure {
+		t.Fatalf("class=%v, want transientFailure", class)
+	}
+}
+
 func TestAgentCooldownUsesConfiguredDuration(t *testing.T) {
 	cooldowns := newProviderCooldowns(5 * time.Minute)
 	now := time.Unix(100, 0)
