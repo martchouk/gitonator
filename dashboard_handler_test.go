@@ -792,6 +792,67 @@ func TestHandleCompletedIssue_AttachesWorkflowGraph(t *testing.T) {
 	}
 }
 
+func TestHandleCompletedIssue_ReturnsNotFoundForActiveTask(t *testing.T) {
+	d := newTestDashboardServer(t)
+	if _, err := d.store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       88,
+		Role:          "developer",
+		CurrentStatus: "status:open",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	_ = d.store.RecordTransitionAudit(88, "status:open", "status:done",
+		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed/88", nil)
+	w := httptest.NewRecorder()
+	d.handleCompletedIssue(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for active workflow, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleCompletedIssue_ReturnsLatestTerminalAuditStatus(t *testing.T) {
+	d := newTestDashboardServer(t)
+	if _, err := d.store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       91,
+		Role:          "developer",
+		CurrentStatus: "status:po-approval",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	task, err := d.store.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected queued task to dispatch")
+	}
+	if err := d.store.CompleteDispatchedTask(91); err != nil {
+		t.Fatalf("CompleteDispatchedTask: %v", err)
+	}
+	_ = d.store.RecordTransitionAudit(91, "status:po-approval", "status:done",
+		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed/91", nil)
+	w := httptest.NewRecorder()
+	d.handleCompletedIssue(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var detail CompletedRunDetail
+	if err := json.NewDecoder(w.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if detail.FinalStatus != "status:done" {
+		t.Fatalf("finalStatus: want status:done, got %s", detail.FinalStatus)
+	}
+}
+
 // --- store: ListCompletedIssues ---
 
 func TestListCompletedIssues_Empty(t *testing.T) {
@@ -865,6 +926,75 @@ func TestListCompletedIssues_StepCountIncludesAllTransitions(t *testing.T) {
 	}
 	if runs[0].StepCount != 3 {
 		t.Errorf("stepCount: want 3, got %d", runs[0].StepCount)
+	}
+}
+
+func TestListCompletedIssues_UsesTerminalAuditStatusWhenTaskStatusIsStale(t *testing.T) {
+	store, err := OpenStore(":memory:")
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer store.Close()
+
+	if _, err := store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       91,
+		Role:          "developer",
+		CurrentStatus: "status:po-approval",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	task, err := store.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected queued task to dispatch")
+	}
+	if err := store.CompleteDispatchedTask(91); err != nil {
+		t.Fatalf("CompleteDispatchedTask: %v", err)
+	}
+	_ = store.RecordTransitionAudit(91, "status:po-approval", "status:done",
+		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+
+	runs, err := store.ListCompletedIssues(100)
+	if err != nil {
+		t.Fatalf("ListCompletedIssues: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected 1 completed run, got %d", len(runs))
+	}
+	if runs[0].FinalStatus != "status:done" {
+		t.Errorf("finalStatus: want status:done, got %s", runs[0].FinalStatus)
+	}
+}
+
+func TestListCompletedIssues_ExcludesActiveTasksAndNonTerminalAudits(t *testing.T) {
+	store, err := OpenStore(":memory:")
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	defer store.Close()
+
+	if _, err := store.QueueTask(WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       1,
+		Role:          "developer",
+		CurrentStatus: "status:open",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	_ = store.RecordTransitionAudit(1, "status:open", "status:done",
+		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+	_ = store.RecordTransitionAudit(2, "status:new", "status:open",
+		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+
+	runs, err := store.ListCompletedIssues(100)
+	if err != nil {
+		t.Fatalf("ListCompletedIssues: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected no completed runs, got %d", len(runs))
 	}
 }
 
