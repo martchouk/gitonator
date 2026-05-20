@@ -54,7 +54,7 @@ func main() {
 	}
 
 	debug := strings.ToUpper(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) == "DEBUG"
-	logger := log.New(os.Stderr, "[github-mcp] ", log.LstdFlags|log.LUTC)
+	logger := log.New(os.Stderr, "[github-mcp] ", log.LstdFlags)
 
 	store, err := OpenStore(cfg.SQLitePath)
 	if err != nil {

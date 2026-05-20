@@ -155,7 +155,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger := log.New(os.Stderr, fmt.Sprintf("[bridge/%s] ", cfg.BridgeID), log.LstdFlags|log.LUTC)
+	logger := log.New(os.Stderr, fmt.Sprintf("[bridge/%s] ", cfg.BridgeID), log.LstdFlags)
 	debug := cfg.LogLevel == "DEBUG"
 
 	roles := collectRoles(roster)
