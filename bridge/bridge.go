@@ -307,11 +307,45 @@ func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *providerCooldowns, 
 	if len(candidates) == 0 {
 		return nil
 	}
+
+	// Prefer agents whose LLM provider differs from providers already used by past
+	// workers — this gives reviewers a different model perspective than the developer.
+	// Fall back to the full candidate list when no cross-provider agent is available.
+	if pastProviders := pastWorkerProviders(roster, pkg.PastWorkers); len(pastProviders) > 0 {
+		var cross []*Agent
+		for _, a := range candidates {
+			if !pastProviders[providerKey(a.LLMProvider)] {
+				cross = append(cross, a)
+			}
+		}
+		if len(cross) > 0 {
+			candidates = cross
+		}
+	}
+
 	if selector == nil {
 		return candidates[0]
 	}
 	idx := selector.next(pkg.Role, len(candidates))
 	return candidates[idx]
+}
+
+// pastWorkerProviders returns the set of LLM provider keys used by the named workers.
+func pastWorkerProviders(roster Roster, workers []string) map[string]bool {
+	if len(workers) == 0 {
+		return nil
+	}
+	workerSet := make(map[string]bool, len(workers))
+	for _, w := range workers {
+		workerSet[strings.TrimSpace(w)] = true
+	}
+	providers := make(map[string]bool)
+	for i := range roster.Agents {
+		if workerSet[roster.Agents[i].Name] {
+			providers[providerKey(roster.Agents[i].LLMProvider)] = true
+		}
+	}
+	return providers
 }
 
 func newAgentSelector() *agentSelector {

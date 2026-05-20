@@ -129,6 +129,66 @@ func TestSelectAgentPrefersPastWorkerWhenAvailable(t *testing.T) {
 	}
 }
 
+// TestSelectAgentPrefersCrossProviderForReviewer verifies that when a past worker used
+// provider A, the reviewer is selected from provider B if one is available.
+func TestSelectAgentPrefersCrossProviderForReviewer(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "mud-rev-anthropic", Role: "reviewer", LLMProvider: "anthropic"},
+		{Name: "mud-rev-openai", Role: "reviewer", LLMProvider: "openai"},
+	}}
+	// bud-dev (anthropic) was the developer; reviewer should prefer openai.
+	pkg := &WorkPackage{Role: "reviewer", PastWorkers: []string{"bud-dev"}}
+	// bud-dev is registered as a developer so the roster lookup resolves its provider.
+	roster.Agents = append(roster.Agents, Agent{Name: "bud-dev", Role: "developer", LLMProvider: "anthropic"})
+
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
+	if agent == nil {
+		t.Fatal("expected agent, got nil")
+	}
+	if agent.Name != "mud-rev-openai" {
+		t.Errorf("expected cross-provider mud-rev-openai, got %s", agent.Name)
+	}
+}
+
+// TestSelectAgentCrossProviderFallsBackWhenAllSameProvider verifies that when every
+// available reviewer uses the same provider as the past workers, the best available
+// reviewer is still returned rather than nil.
+func TestSelectAgentCrossProviderFallsBackWhenAllSameProvider(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev", Role: "developer", LLMProvider: "anthropic"},
+		{Name: "mud-rev", Role: "reviewer", LLMProvider: "anthropic"},
+	}}
+	pkg := &WorkPackage{Role: "reviewer", PastWorkers: []string{"bud-dev"}}
+
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
+	if agent == nil {
+		t.Fatal("expected fallback agent, got nil")
+	}
+	if agent.Name != "mud-rev" {
+		t.Errorf("expected mud-rev as fallback, got %s", agent.Name)
+	}
+}
+
+// TestSelectAgentNoPastWorkersUnchanged verifies that cross-provider logic is skipped
+// entirely when there are no past workers, leaving round-robin behaviour intact.
+func TestSelectAgentNoPastWorkersUnchanged(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "mud-rev-a", Role: "reviewer", LLMProvider: "anthropic"},
+		{Name: "mud-rev-b", Role: "reviewer", LLMProvider: "openai"},
+	}}
+	pkg := &WorkPackage{Role: "reviewer"} // no PastWorkers
+
+	selector := newAgentSelector()
+	first := selectAgent(roster, pkg, nil, selector, time.Now())
+	second := selectAgent(roster, pkg, nil, selector, time.Now())
+	if first == nil || second == nil {
+		t.Fatal("expected two selections")
+	}
+	if first.Name == second.Name {
+		t.Errorf("expected round-robin to alternate, got %s twice", first.Name)
+	}
+}
+
 func TestSelectAgentRoundRobinRolePool(t *testing.T) {
 	roster := Roster{Agents: []Agent{
 		{Name: "bud-dev", Role: "developer", LLMProvider: "anthropic"},
