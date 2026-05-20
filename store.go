@@ -845,7 +845,7 @@ func (s *Store) ListCompletedIssues(limit int) ([]CompletedIssueSummary, error) 
 		JOIN (
 			SELECT issue_number, MAX(id) AS max_id
 			FROM transition_audit
-			WHERE result = 'success'
+			WHERE result IN ('applied', 'partially_applied')
 			GROUP BY issue_number
 		) last_ta ON ta.issue_number = last_ta.issue_number AND ta.id = last_ta.max_id
 		LEFT JOIN (
@@ -864,7 +864,7 @@ func (s *Store) ListCompletedIssues(limit int) ([]CompletedIssueSummary, error) 
 		LEFT JOIN (
 			SELECT issue_number, COUNT(*) AS cnt
 			FROM transition_audit
-			WHERE result = 'success'
+			WHERE result IN ('applied', 'partially_applied')
 			GROUP BY issue_number
 		) sc ON sc.issue_number = ta.issue_number
 		WHERE ta.to_status IN ('status:done', 'status:rejected')
