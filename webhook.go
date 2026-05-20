@@ -345,6 +345,11 @@ func (s *Server) processWebhookPayload(ctx context.Context, eventType, deliveryI
 		}
 	}
 
+	// Store issue title for dashboard display.
+	if env.Issue.Title != "" && s.store != nil {
+		_ = s.store.SetIssueMetadata(env.Issue.Number, "_title", env.Issue.Title)
+	}
+
 	// Persist an explicit workflow key so future webhooks without ?workflow= reuse it.
 	// If no explicit key was given, look up the stored one and override wd.
 	if s.store != nil && s.workflows != nil {

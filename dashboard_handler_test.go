@@ -134,6 +134,47 @@ func TestHandleDashboardIssues_WithActiveTask(t *testing.T) {
 	}
 }
 
+func TestHandleDashboardIssues_TitleAndRepo(t *testing.T) {
+	d := newTestDashboardServer(t)
+
+	pkg := WorkPackage{
+		Repo:          "owner/repo",
+		IssueID:       55,
+		Role:          "developer",
+		CurrentStatus: "status:open",
+	}
+	if _, err := d.store.QueueTask(pkg); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	if err := d.store.SetIssueMetadata(55, "_title", "My Test Issue"); err != nil {
+		t.Fatalf("SetIssueMetadata: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/issues", nil)
+	w := httptest.NewRecorder()
+	d.handleDashboardIssues(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var body struct {
+		Issues []GitHubIssueSummary `json:"issues"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Issues) != 1 {
+		t.Fatalf("expected 1 issue, got %d", len(body.Issues))
+	}
+	got := body.Issues[0]
+	if got.Title != "My Test Issue" {
+		t.Errorf("title: want %q, got %q", "My Test Issue", got.Title)
+	}
+	if got.Repo != "owner/repo" {
+		t.Errorf("repo: want %q, got %q", "owner/repo", got.Repo)
+	}
+}
+
 func TestHandleDashboardIssues_MethodNotAllowed(t *testing.T) {
 	d := newTestDashboardServer(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/dashboard/issues", nil)

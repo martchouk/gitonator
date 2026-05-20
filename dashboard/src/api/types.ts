@@ -9,6 +9,7 @@ export interface ActiveTask {
 export interface Issue {
   number: number;
   title: string;
+  repo: string;
   url: string;
   currentStatus: string;
   assignees: string[];

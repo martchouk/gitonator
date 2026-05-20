@@ -453,7 +453,7 @@ export function LiveView() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {repoFromUrl(issue.url)}
+                    {issue.repo || repoFromUrl(issue.url)}
                   </span>
                   <span
                     style={{

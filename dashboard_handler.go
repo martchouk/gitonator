@@ -24,6 +24,7 @@ type DashboardServer struct {
 type GitHubIssueSummary struct {
 	Number        int          `json:"number"`
 	Title         string       `json:"title"`
+	Repo          string       `json:"repo"`
 	URL           string       `json:"url"`
 	CurrentStatus string       `json:"currentStatus"`
 	Assignees     []string     `json:"assignees"`
@@ -117,8 +118,12 @@ func (d *DashboardServer) handleDashboardIssues(w http.ResponseWriter, r *http.R
 			assignees = append(assignees, t.Assignee)
 		}
 
+		title, _, _ := d.store.GetIssueMetadata(t.IssueNumber, "_title")
+
 		issues = append(issues, GitHubIssueSummary{
 			Number:        t.IssueNumber,
+			Title:         title,
+			Repo:          t.Repo,
 			URL:           fmt.Sprintf("https://github.com/%s/issues/%d", t.Repo, t.IssueNumber),
 			CurrentStatus: t.CurrentStatus,
 			Assignees:     assignees,
