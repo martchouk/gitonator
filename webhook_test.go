@@ -154,6 +154,37 @@ func TestProcessWebhookPayload_IgnoresWorkflowParamForStartedIssue(t *testing.T)
 	}
 }
 
+func TestHandleGitHubWebhook_DebugLoggingDoesNotEmitFullPayload(t *testing.T) {
+	store := tempStore(t)
+	var logBuf bytes.Buffer
+	s := &Server{
+		cfg:    Config{},
+		store:  store,
+		logger: log.New(&logBuf, "", 0),
+		debug:  true,
+	}
+	sentinel := "UNIQUE_FULL_PAYLOAD_SENTINEL_DO_NOT_LOG"
+	payload := []byte(`{"action":"opened","issue":{"number":0},"repository":{"full_name":"owner/repo"},"body":"` +
+		strings.Repeat("x", 600) + sentinel + strings.Repeat("y", 600) + `"}`)
+	req := httptest.NewRequest(http.MethodPost, "/webhook/github", bytes.NewReader(payload))
+	req.Header.Set("X-GitHub-Delivery", "delivery-debug-safe")
+	req.Header.Set("X-GitHub-Event", "issues")
+	rec := httptest.NewRecorder()
+
+	s.handleGitHubWebhook(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	logs := logBuf.String()
+	if !strings.Contains(logs, "payload_bytes=") {
+		t.Fatalf("expected payload byte count in logs, got: %s", logs)
+	}
+	if strings.Contains(logs, sentinel) {
+		t.Fatalf("debug logs exposed full payload sentinel: %s", logs)
+	}
+}
+
 func TestHandleWorkFailRequeuesDispatchedTask(t *testing.T) {
 	store := tempStore(t)
 	if _, err := store.QueueTask(WorkPackage{

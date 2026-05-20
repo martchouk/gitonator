@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",

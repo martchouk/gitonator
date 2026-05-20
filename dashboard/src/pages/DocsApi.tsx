@@ -62,6 +62,50 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: 'GET',
+    path: '/api/v1/dashboard/completed',
+    description: 'List completed workflow runs. A run is completed only when the latest successful audit transition is terminal and no queued/dispatched task remains active.',
+    responseSchema: JSON.stringify({
+      completed: [
+        {
+          issueNumber: 59,
+          title: 'Web dashboard for github.mcp server',
+          repo: 'martchouk/github.mcp',
+          finalStatus: 'status:done',
+          workflowKey: 'lean',
+          completedAt: '2026-05-18T10:30:00Z',
+          stepCount: 4,
+        },
+      ],
+    }, null, 2),
+    curlExample: `curl "${BASE}/api/v1/dashboard/completed?limit=50"`,
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/dashboard/completed/{number}',
+    description: 'Completed workflow detail with audit and task history. Returns 404 when the issue has active queued/dispatched work or its latest successful audit transition is non-terminal.',
+    responseSchema: JSON.stringify({
+      issueNumber: 59,
+      repo: 'martchouk/github.mcp',
+      workflowKey: 'lean',
+      finalStatus: 'status:done',
+      completedAt: '2026-05-18T10:30:00Z',
+      stepCount: 4,
+      audit: [
+        {
+          id: 4,
+          issue_number: 59,
+          from_status: 'status:po-approval',
+          to_status: 'status:done',
+          result: 'success',
+          created_at: '2026-05-18T10:30:00Z',
+        },
+      ],
+      tasks: [{ id: 42, role: 'developer', status: 'completed' }],
+    }, null, 2),
+    curlExample: `curl ${BASE}/api/v1/dashboard/completed/59`,
+  },
+  {
+    method: 'GET',
     path: '/api/v1/dashboard/tasks',
     description: 'Recent tasks from the tasks table (all statuses). Optional ?limit=N (max 500).',
     responseSchema: JSON.stringify({

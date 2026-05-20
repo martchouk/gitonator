@@ -70,6 +70,8 @@ DASHBOARD_ADDR=127.0.0.1:6666
 |--------|------|-------------|
 | `GET` | `/api/v1/dashboard/issues` | Active issues + task-queue state |
 | `GET` | `/api/v1/dashboard/issues/{number}` | Single issue detail + audit history |
+| `GET` | `/api/v1/dashboard/completed` | Completed workflow runs whose latest successful audit transition is terminal |
+| `GET` | `/api/v1/dashboard/completed/{number}` | Completed run detail; returns `404` for active or non-terminal workflows |
 | `GET` | `/api/v1/dashboard/tasks` | Recent tasks (all statuses) |
 | `GET` | `/api/v1/dashboard/audit` | Recent transition audit entries |
 | `GET` | `/api/v1/dashboard/stream` | SSE live event stream |
@@ -563,7 +565,7 @@ LOG_LEVEL=DEBUG   # set to DEBUG for verbose stderr logs
 
 ## Debug logging
 
-Set `LOG_LEVEL=DEBUG` to enable verbose `DEBUG`-prefixed lines on stderr. All log lines — INFO and DEBUG — include a `YYYY/MM/DD HH:MM:SS` UTC timestamp and a component identifier (`[github-mcp]` for the server, `[bridge/<bridge_id>]` for the bridge), making concurrent events from multiple processes easy to correlate.
+Set `LOG_LEVEL=DEBUG` to enable verbose `DEBUG`-prefixed lines on stderr. All log lines — INFO and DEBUG — include a `YYYY/MM/DD HH:MM:SS` timestamp in the process local time zone and a component identifier (`[github-mcp]` for the server, `[bridge/<bridge_id>]` for the bridge), making concurrent events from multiple processes easy to correlate.
 
 Example lines:
 ```
@@ -582,6 +584,7 @@ Example lines:
 |---|---|
 | Startup config summary | `DEBUG config: stale_after=… agent_auth=… webhook_secret=…` |
 | Shutdown drain | `DEBUG cancelling context and waiting for http server to drain` |
+| Webhook received | `DEBUG webhook received: delivery=… event=… query=… payload_bytes=…` plus a bounded payload preview |
 | Webhook — duplicate delivery skipped | `DEBUG webhook: duplicate delivery ignored delivery=… event=…` |
 | Work/next — no task available | `DEBUG work/next: bridge=… roles=… no work available` |
 | Tool call dispatched | `DEBUG tool call: name=…` |

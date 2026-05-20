@@ -21,14 +21,14 @@ type DashboardServer struct {
 // the dashboard. It is populated from the tasks table (not the GitHub API) to
 // avoid rate-limit concerns.
 type GitHubIssueSummary struct {
-	Number        int          `json:"number"`
-	Title         string       `json:"title"`
-	Repo          string       `json:"repo"`
-	URL           string       `json:"url"`
-	CurrentStatus string       `json:"currentStatus"`
-	Assignees     []string     `json:"assignees"`
-	ActiveTask    *ActiveTask  `json:"activeTask,omitempty"`
-	UpdatedAt     string       `json:"updatedAt"`
+	Number        int         `json:"number"`
+	Title         string      `json:"title"`
+	Repo          string      `json:"repo"`
+	URL           string      `json:"url"`
+	CurrentStatus string      `json:"currentStatus"`
+	Assignees     []string    `json:"assignees"`
+	ActiveTask    *ActiveTask `json:"activeTask,omitempty"`
+	UpdatedAt     string      `json:"updatedAt"`
 }
 
 // ActiveTask is the task currently queued or dispatched for an issue.
@@ -42,11 +42,11 @@ type ActiveTask struct {
 
 // WorkflowGraphResponse is the graph-ready representation of a workflow definition.
 type WorkflowGraphResponse struct {
-	ID          string          `json:"id"`
-	Key         string          `json:"key"`
-	Description string          `json:"description,omitempty"`
-	Nodes       []GraphNode     `json:"nodes"`
-	Edges       []GraphEdge     `json:"edges"`
+	ID          string      `json:"id"`
+	Key         string      `json:"key"`
+	Description string      `json:"description,omitempty"`
+	Nodes       []GraphNode `json:"nodes"`
+	Edges       []GraphEdge `json:"edges"`
 }
 
 // GraphNode represents a status node in the workflow graph.
@@ -170,9 +170,9 @@ func (d *DashboardServer) handleDashboardIssue(w http.ResponseWriter, r *http.Re
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"number":     number,
-		"tasks":      tasks,
-		"audit":      audit,
+		"number": number,
+		"tasks":  tasks,
+		"audit":  audit,
 	})
 }
 
@@ -432,7 +432,12 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if len(tasks) == 0 {
+	activeTask, err := d.store.FindActiveTaskByIssue(number)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if activeTask != nil {
 		writeError(w, http.StatusNotFound, "no completed run found for this issue")
 		return
 	}
@@ -445,32 +450,34 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 	if audit == nil {
 		audit = []TransitionAuditRow{}
 	}
+	terminalAudit := latestSuccessfulCompletedAudit(audit)
+	if terminalAudit == nil {
+		writeError(w, http.StatusNotFound, "no completed run found for this issue")
+		return
+	}
 
-	// tasks is ordered DESC; index 0 is the most recent task.
-	mostRecent := tasks[0]
-	repo := mostRecent.Repo
+	repo := ""
+	if len(tasks) > 0 {
+		// tasks is ordered DESC; index 0 is the most recent task.
+		repo = tasks[0].Repo
+	}
+	if repo == "" {
+		if storedRepo, ok, err := d.store.GetRepoForIssue(number); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		} else if ok {
+			repo = storedRepo
+		}
+	}
 	workflowKey, _, _ := d.store.GetIssueWorkflowKey(number)
-
-	finalStatus := mostRecent.CurrentStatus
-	completedAt := mostRecent.CreatedAt
-	if mostRecent.FinishedAt.Valid && mostRecent.FinishedAt.String != "" {
-		completedAt = mostRecent.FinishedAt.String
-	}
-
-	// Step count: prefer audit entries (each represents a real transition);
-	// fall back to task count when audit is empty.
-	stepCount := len(audit)
-	if stepCount == 0 {
-		stepCount = len(tasks)
-	}
 
 	detail := CompletedRunDetail{
 		IssueNumber: number,
 		Repo:        repo,
 		WorkflowKey: workflowKey,
-		FinalStatus: finalStatus,
-		CompletedAt: completedAt,
-		StepCount:   stepCount,
+		FinalStatus: terminalAudit.ToStatus,
+		CompletedAt: terminalAudit.CreatedAt,
+		StepCount:   countSuccessfulAuditRows(audit),
 		Audit:       audit,
 		Tasks:       tasks,
 	}
@@ -487,6 +494,32 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 	}
 
 	writeJSON(w, http.StatusOK, detail)
+}
+
+func latestSuccessfulCompletedAudit(audit []TransitionAuditRow) *TransitionAuditRow {
+	for i := range audit {
+		if audit[i].Result == "success" && isCompletedWorkflowStatus(audit[i].ToStatus) {
+			return &audit[i]
+		}
+		if audit[i].Result == "success" && !isCompletedWorkflowStatus(audit[i].ToStatus) {
+			return nil
+		}
+	}
+	return nil
+}
+
+func countSuccessfulAuditRows(audit []TransitionAuditRow) int {
+	count := 0
+	for _, row := range audit {
+		if row.Result == "success" {
+			count++
+		}
+	}
+	return count
+}
+
+func isCompletedWorkflowStatus(status string) bool {
+	return status == "status:done" || status == "status:rejected"
 }
 
 func (d *DashboardServer) handleCompletedOrDetail(w http.ResponseWriter, r *http.Request) {
