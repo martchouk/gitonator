@@ -92,7 +92,69 @@ function SubTableHeader() {
   );
 }
 
-function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
+// Roadmap node: circle with step number + vertical connector lines.
+// isFirst/isLast circles are color-filled; middle circles are hollow.
+function StepNode({ step, isFirst, isLast }: { step: number; isFirst: boolean; isLast: boolean }) {
+  const filled = isFirst || isLast;
+  return (
+    <div style={{
+      position: 'relative',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'stretch',
+    }}>
+      {/* top connector — hidden for first node */}
+      {!isFirst && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 'calc(50% + 11px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '1.5px',
+          background: 'var(--color-neon-amber)',
+          opacity: 0.35,
+        }} />
+      )}
+      {/* circle */}
+      <div style={{
+        position: 'relative',
+        zIndex: 1,
+        width: '22px',
+        height: '22px',
+        borderRadius: '50%',
+        border: '1.5px solid var(--color-neon-amber)',
+        background: filled ? 'var(--color-neon-amber)' : 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '0.625rem',
+        fontWeight: 700,
+        color: filled ? 'var(--md-sys-color-surface)' : 'var(--color-neon-amber)',
+        flexShrink: 0,
+      }}>
+        {step}
+      </div>
+      {/* bottom connector — hidden for last node */}
+      {!isLast && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(50% + 11px)',
+          bottom: 0,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '1.5px',
+          background: 'var(--color-neon-amber)',
+          opacity: 0.35,
+        }} />
+      )}
+    </div>
+  );
+}
+
+function SubTaskRow({ task, step, isFirst, isLast }: { task: TaskRow; step: number; isFirst: boolean; isLast: boolean }) {
   const bridge = nullStr(task.bridge_id);
   const workerLogin = (task.claimed_by?.Valid && task.claimed_by?.String)
     ? task.claimed_by.String
@@ -102,21 +164,39 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
     ? `https://github.com/${task.repo}/issues/${task.issue_number}#issuecomment-${task.last_comment_id}`
     : null;
 
+  // Cell wrapper: vertically centers content within the stretched row.
+  const cell = (style?: React.CSSProperties): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    padding: '11px 0',
+    ...style,
+  });
+
   return (
     <div
       style={{
         display: 'grid',
         gridTemplateColumns: SUB_COLS,
-        padding: '11px 16px',
-        alignItems: 'center',
-        borderBottom: '1px solid var(--md-sys-color-outline-variant)',
+        padding: '0 16px',
+        minHeight: '44px',
+        alignItems: 'stretch',
+        position: 'relative',
         fontSize: '0.8125rem',
       }}
     >
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-amber)' }}>
-        {step}
-      </span>
-      <span style={{ display: 'flex', alignItems: 'center' }}>
+      {/* Row separator that skips the # column (16px left-padding + 40px # column = 56px) */}
+      <div style={{
+        position: 'absolute',
+        bottom: 0,
+        left: '56px',
+        right: 0,
+        height: '1px',
+        background: 'var(--md-sys-color-outline-variant)',
+      }} />
+
+      <StepNode step={step} isFirst={isFirst} isLast={isLast} />
+
+      <div style={cell()}>
         {commentUrl ? (
           <a
             href={commentUrl}
@@ -133,38 +213,57 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
         ) : (
           <GithubIcon size={13} color="var(--color-text-muted)" />
         )}
-      </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
-        {task.role || '–'}
-      </span>
-      <span>
+      </div>
+
+      <div style={cell()}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
+          {task.role || '–'}
+        </span>
+      </div>
+
+      <div style={cell()}>
         {task.current_status
           ? <StatusChip status={task.current_status} />
           : <span style={{ color: 'var(--color-text-muted)' }}>–</span>
         }
-      </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: taskOutcomeColor(task.status) }}>
-        {task.status}
-      </span>
-      <span style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: '0.6875rem',
-        color: workerLogin ? 'var(--color-neon-cyan)' : 'var(--color-neon-yellow)',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}>
-        {workerLogin || task.role || ''}
-      </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: bridge !== '–' ? 1 : 0.4 }}>
-        {bridge}
-      </span>
-      <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
-        {relativeTime(task.created_at)}
-      </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
-        {duration(task.created_at, task.finished_at)}
-      </span>
+      </div>
+
+      <div style={cell()}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: taskOutcomeColor(task.status) }}>
+          {task.status}
+        </span>
+      </div>
+
+      <div style={cell({ overflow: 'hidden' })}>
+        <span style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '0.6875rem',
+          color: workerLogin ? 'var(--color-neon-cyan)' : 'var(--color-neon-yellow)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {workerLogin || task.role || ''}
+        </span>
+      </div>
+
+      <div style={cell({ overflow: 'hidden' })}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: bridge !== '–' ? 1 : 0.4 }}>
+          {bridge}
+        </span>
+      </div>
+
+      <div style={cell()}>
+        <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+          {relativeTime(task.created_at)}
+        </span>
+      </div>
+
+      <div style={cell()}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+          {duration(task.created_at, task.finished_at)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -204,7 +303,13 @@ function ExpandedDetail({ issueNumber }: { issueNumber: number }) {
       <div style={{ minWidth: '780px' }}>
         <SubTableHeader />
         {tasks.map((task, idx) => (
-          <SubTaskRow key={task.id} task={task} step={idx + 1} />
+          <SubTaskRow
+            key={task.id}
+            task={task}
+            step={idx + 1}
+            isFirst={idx === 0}
+            isLast={idx === tasks.length - 1}
+          />
         ))}
       </div>
     </div>
