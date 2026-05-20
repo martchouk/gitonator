@@ -792,11 +792,19 @@ func resolveRosterEnv(roster *Roster) error {
 }
 
 // resolveEnv resolves a single env map: values starting with "$" are looked up
-// in the host environment; other values are used as literals.
+// in the host environment. Both $VAR and ${VAR} are supported; other values
+// are used as literals.
 func resolveEnv(raw map[string]string) (map[string]string, error) {
 	out := make(map[string]string, len(raw))
 	for k, v := range raw {
-		if strings.HasPrefix(v, "$") {
+		if strings.HasPrefix(v, "${") && strings.HasSuffix(v, "}") && len(v) >= 4 {
+			varName := v[2 : len(v)-1]
+			resolved, ok := os.LookupEnv(varName)
+			if !ok {
+				return nil, fmt.Errorf("env var $%s is not set in host environment", varName)
+			}
+			out[k] = resolved
+		} else if strings.HasPrefix(v, "$") {
 			varName := v[1:]
 			resolved, ok := os.LookupEnv(varName)
 			if !ok {

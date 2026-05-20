@@ -175,9 +175,16 @@ Two value forms are supported:
 | Literal | `"ghp_abc123"` | Used as-is |
 | Host env reference | `"$BUD_DEV_GH_TOKEN"` | Resolved from the bridge process's environment at startup |
 
-If a `$VAR` reference is not set in the host environment, the bridge logs an error and exits rather than passing an empty value.
+If a host environment reference is not set, the bridge logs an error and exits rather than passing an empty value.
 
-Only bare `$VAR` is supported — `${VAR}` is not interpolated and will cause a startup error if used.
+Both of these forms are supported:
+
+| Form | Example | Behaviour |
+|---|---|---|
+| Bare reference | `$BUD_DEV_GH_TOKEN` | Resolved from the bridge process environment |
+| Braced reference | `${BUD_DEV_GH_TOKEN}` | Resolved from the bridge process environment |
+
+Malformed values such as `$BUD_DEV_GH_TOKEN}` or `${BUD_DEV_GH_TOKEN` still fail fast at startup.
 
 **Primary use case — per-agent `GH_TOKEN` for isolated GitHub identities:**
 
