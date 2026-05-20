@@ -180,6 +180,27 @@ func TestResolveEnvDollarVarInterpolatesFromHost(t *testing.T) {
 	}
 }
 
+func TestResolveEnvBraceVarInterpolatesFromHost(t *testing.T) {
+	t.Setenv("TEST_TOKEN_XYZ", "tok-abc123")
+	out, err := resolveEnv(map[string]string{"GH_TOKEN": "${TEST_TOKEN_XYZ}"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out["GH_TOKEN"] != "tok-abc123" {
+		t.Errorf("expected tok-abc123, got %q", out["GH_TOKEN"])
+	}
+}
+
+func TestResolveEnvBraceVarMissingReturnsError(t *testing.T) {
+	_, err := resolveEnv(map[string]string{"GH_TOKEN": "${DEFINITELY_NOT_SET_VAR_XYZ}"})
+	if err == nil {
+		t.Fatal("expected error for unset var, got nil")
+	}
+	if !strings.Contains(err.Error(), "DEFINITELY_NOT_SET_VAR_XYZ") {
+		t.Errorf("error should name the missing var, got: %v", err)
+	}
+}
+
 func TestResolveEnvMissingVarReturnsError(t *testing.T) {
 	_, err := resolveEnv(map[string]string{"GH_TOKEN": "$DEFINITELY_NOT_SET_VAR_XYZ"})
 	if err == nil {
@@ -187,6 +208,26 @@ func TestResolveEnvMissingVarReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "DEFINITELY_NOT_SET_VAR_XYZ") {
 		t.Errorf("error should name the missing var, got: %v", err)
+	}
+}
+
+func TestResolveEnvMalformedBraceVarReturnsError(t *testing.T) {
+	t.Setenv("TEST_TOKEN_XYZ", "tok-abc123")
+
+	_, err := resolveEnv(map[string]string{"GH_TOKEN": "$TEST_TOKEN_XYZ}"})
+	if err == nil {
+		t.Fatal("expected error for malformed var, got nil")
+	}
+	if !strings.Contains(err.Error(), "TEST_TOKEN_XYZ}") {
+		t.Errorf("error should preserve malformed var name, got: %v", err)
+	}
+
+	_, err = resolveEnv(map[string]string{"GH_TOKEN": "${TEST_TOKEN_XYZ"})
+	if err == nil {
+		t.Fatal("expected error for malformed var, got nil")
+	}
+	if !strings.Contains(err.Error(), "${TEST_TOKEN_XYZ") {
+		t.Errorf("error should preserve malformed var name, got: %v", err)
 	}
 }
 
