@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -90,12 +91,48 @@ const (
 )
 
 type providerCooldowns struct {
+	mu              sync.Mutex
 	defaultDuration time.Duration
 	untilByProvider map[string]time.Time
 }
 
 type agentSelector struct {
 	nextByRole map[string]int
+}
+
+// worktreeTracker records which worktree paths are currently occupied by a running agent.
+// It is the authoritative concurrency gate: selectAgent checks isBusy, and the main loop
+// calls tryAcquire (atomic) before spawning a goroutine and release when the agent exits.
+type worktreeTracker struct {
+	mu   sync.Mutex
+	busy map[string]bool
+}
+
+func newWorktreeTracker() *worktreeTracker {
+	return &worktreeTracker{busy: make(map[string]bool)}
+}
+
+// tryAcquire marks path as busy and returns true, or returns false if already busy.
+func (t *worktreeTracker) tryAcquire(path string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.busy[path] {
+		return false
+	}
+	t.busy[path] = true
+	return true
+}
+
+func (t *worktreeTracker) release(path string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.busy, path)
+}
+
+func (t *worktreeTracker) isBusy(path string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.busy[path]
 }
 
 func main() {
@@ -183,6 +220,9 @@ func main() {
 	client := &http.Client{Timeout: 30 * time.Second}
 	cooldowns := newProviderCooldowns(cfg.AgentFailureCooldown)
 	selector := newAgentSelector()
+	wt := newWorktreeTracker()
+	var wg sync.WaitGroup
+	defer wg.Wait()
 
 	for {
 		if debug {
@@ -208,12 +248,12 @@ func main() {
 		}
 
 		now := time.Now()
-		agent := selectAgent(roster, pkg, cooldowns, selector, now)
+		agent := selectAgent(roster, pkg, cooldowns, selector, now, wt)
 		if agent == nil {
-			errText := "no available bridge agent for role/assignee; matching agent may be cooling down"
+			errText := "no available bridge agent for role/assignee; matching agent may be cooling down or worktree busy"
 			if debug {
 				logger.Printf("DEBUG requeue: no agent available role=%s assignee=%s agents=[%s]",
-					pkg.Role, pkg.Assignee, agentRoleSummary(roster, pkg.Role, cooldowns, now))
+					pkg.Role, pkg.Assignee, agentRoleSummary(roster, pkg.Role, cooldowns, wt, pkg.Repo, now))
 				logger.Printf("DEBUG work/fail payload: task=%d issue=%d bridge=%s agent= exit=-1 error=%q",
 					pkg.ID, pkg.IssueID, cfg.BridgeID, errText)
 			}
@@ -238,47 +278,72 @@ func main() {
 			continue
 		}
 
-		result, err := runAgent(logger, agent, worktree, *pkg, roster.AgentInstructions, modelPolicy, cfg.ModelProfile)
-		if err != nil {
-			logger.Printf("agent run error: agent=%s issue=%d err=%v", agent.Name, pkg.IssueID, err)
-		}
-		if err != nil || result.ExitCode != 0 {
-			if result.ErrorText == "" && err != nil {
-				result.ErrorText = err.Error()
-			}
-			class := classifyAgentFailure(result, err)
-			if class == transientFailure {
-				until := cooldowns.mark(agent.LLMProvider, class, result.ErrorText, time.Now())
-				logger.Printf("provider cooling down: provider=%s agent=%s until=%s reason=%s",
-					providerKey(agent.LLMProvider), agent.Name, until.Format(time.RFC3339), result.ErrorText)
-			}
-			if debug {
-				logger.Printf("DEBUG requeue: agent failed agent=%s agents=[%s]",
-					agent.Name, agentRoleSummary(roster, pkg.Role, cooldowns, time.Now()))
-				logger.Printf("DEBUG work/fail payload: task=%d issue=%d bridge=%s agent=%s exit=%d error=%q",
-					pkg.ID, pkg.IssueID, cfg.BridgeID, agent.Name, result.ExitCode, result.ErrorText)
-			}
+		// Atomically acquire the worktree before spawning. selectAgent already checked
+		// isBusy, but tryAcquire is the authoritative gate that prevents the race between
+		// check and acquire when multiple goroutines are running.
+		if !wt.tryAcquire(worktree) {
+			errText := "worktree acquired by concurrent agent between selection and dispatch"
+			logger.Printf("warning: worktree race agent=%s worktree=%s — requeueing", agent.Name, worktree)
+			result := AgentResult{ExitCode: -1, ErrorText: errText}
 			if reportErr := reportWorkFailure(client, cfg, *pkg, *agent, result); reportErr != nil {
 				logger.Printf("work/fail report error: agent=%s issue=%d err=%v", agent.Name, pkg.IssueID, reportErr)
 			}
 			time.Sleep(time.Duration(cfg.PollSeconds) * time.Second)
 			continue
 		}
-		// No sleep — poll immediately after agent exits.
+
+		logger.Printf("agent started: agent=%s issue=%d task=%d worktree=%s", agent.Name, pkg.IssueID, pkg.ID, worktree)
+
+		capturedPkg := *pkg
+		capturedAgent := *agent
+		capturedWorktree := worktree
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer wt.release(capturedWorktree)
+
+			result, runErr := runAgent(logger, &capturedAgent, capturedWorktree, capturedPkg, roster.AgentInstructions, modelPolicy, cfg.ModelProfile)
+			if runErr != nil {
+				logger.Printf("agent run error: agent=%s issue=%d err=%v", capturedAgent.Name, capturedPkg.IssueID, runErr)
+			}
+			if runErr != nil || result.ExitCode != 0 {
+				if result.ErrorText == "" && runErr != nil {
+					result.ErrorText = runErr.Error()
+				}
+				class := classifyAgentFailure(result, runErr)
+				if class == transientFailure {
+					until := cooldowns.mark(capturedAgent.LLMProvider, class, result.ErrorText, time.Now())
+					logger.Printf("provider cooling down: provider=%s agent=%s until=%s reason=%s",
+						providerKey(capturedAgent.LLMProvider), capturedAgent.Name, until.Format(time.RFC3339), result.ErrorText)
+				}
+				if debug {
+					logger.Printf("DEBUG requeue: agent failed agent=%s agents=[%s]",
+						capturedAgent.Name, agentRoleSummary(roster, capturedPkg.Role, cooldowns, wt, capturedPkg.Repo, time.Now()))
+					logger.Printf("DEBUG work/fail payload: task=%d issue=%d bridge=%s agent=%s exit=%d error=%q",
+						capturedPkg.ID, capturedPkg.IssueID, cfg.BridgeID, capturedAgent.Name, result.ExitCode, result.ErrorText)
+				}
+				if reportErr := reportWorkFailure(client, cfg, capturedPkg, capturedAgent, result); reportErr != nil {
+					logger.Printf("work/fail report error: agent=%s issue=%d err=%v", capturedAgent.Name, capturedPkg.IssueID, reportErr)
+				}
+			} else {
+				logger.Printf("agent finished: agent=%s issue=%d task=%d", capturedAgent.Name, capturedPkg.IssueID, capturedPkg.ID)
+			}
+		}()
+		// No sleep — poll immediately so other repos/roles can be picked up while this agent runs.
 	}
 }
 
 // selectAgent finds the agent to use for the work package.
-// Priority 1: match by role AND assignee name when that agent's provider is available.
+// Priority 1: match by role AND assignee name when that agent's provider is available and worktree is free.
 // Priority 2: match by role and past worker, preferring the most recent matching past worker.
-// Priority 3: round-robin over available agents for the required role.
+// Priority 3: round-robin over available agents for the required role, filtered by free worktree.
 // Assignee-only matches across roles are intentionally ignored to prevent a stale
 // assignee from routing work to the wrong agent type.
-func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *providerCooldowns, selector *agentSelector, now time.Time) *Agent {
+func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *providerCooldowns, selector *agentSelector, now time.Time, wt *worktreeTracker) *Agent {
 	if pkg.Assignee != "" {
 		for i := range roster.Agents {
 			if roster.Agents[i].Role == pkg.Role && roster.Agents[i].Name == pkg.Assignee {
-				if agentAvailable(cooldowns, &roster.Agents[i], now) {
+				if agentAvailable(cooldowns, &roster.Agents[i], now) && !worktreeBusy(wt, &roster.Agents[i], pkg.Repo) {
 					return &roster.Agents[i]
 				}
 				break
@@ -292,7 +357,8 @@ func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *providerCooldowns, 
 			continue
 		}
 		for j := range roster.Agents {
-			if roster.Agents[j].Role == pkg.Role && roster.Agents[j].Name == worker && agentAvailable(cooldowns, &roster.Agents[j], now) {
+			if roster.Agents[j].Role == pkg.Role && roster.Agents[j].Name == worker &&
+				agentAvailable(cooldowns, &roster.Agents[j], now) && !worktreeBusy(wt, &roster.Agents[j], pkg.Repo) {
 				return &roster.Agents[j]
 			}
 		}
@@ -300,7 +366,7 @@ func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *providerCooldowns, 
 
 	var candidates []*Agent
 	for i := range roster.Agents {
-		if roster.Agents[i].Role == pkg.Role && agentAvailable(cooldowns, &roster.Agents[i], now) {
+		if roster.Agents[i].Role == pkg.Role && agentAvailable(cooldowns, &roster.Agents[i], now) && !worktreeBusy(wt, &roster.Agents[i], pkg.Repo) {
 			candidates = append(candidates, &roster.Agents[i])
 		}
 	}
@@ -365,18 +431,36 @@ func agentAvailable(cooldowns *providerCooldowns, agent *Agent, now time.Time) b
 	return cooldowns == nil || agent == nil || !cooldowns.isCooling(agent.LLMProvider, now)
 }
 
+// worktreeBusy returns true when the agent's worktree path for repo is currently occupied
+// by a running agent goroutine.
+func worktreeBusy(wt *worktreeTracker, agent *Agent, repo string) bool {
+	if wt == nil || agent == nil {
+		return false
+	}
+	path := strings.TrimSpace(agent.Worktrees[repo])
+	if path == "" {
+		return false
+	}
+	return wt.isBusy(path)
+}
+
 // agentRoleSummary returns a human-readable list of all agents for role,
-// annotating each with "available" or "cooling" — used in debug log lines.
-func agentRoleSummary(roster Roster, role string, cooldowns *providerCooldowns, now time.Time) string {
+// annotating each with "available", "cooling", or "busy" — used in debug log lines.
+func agentRoleSummary(roster Roster, role string, cooldowns *providerCooldowns, wt *worktreeTracker, repo string, now time.Time) string {
 	var parts []string
 	for i := range roster.Agents {
 		a := &roster.Agents[i]
 		if a.Role != role {
 			continue
 		}
-		status := "available"
-		if !agentAvailable(cooldowns, a, now) {
+		var status string
+		switch {
+		case !agentAvailable(cooldowns, a, now):
 			status = "cooling"
+		case worktreeBusy(wt, a, repo):
+			status = "busy"
+		default:
+			status = "available"
 		}
 		parts = append(parts, a.Name+"("+status+")")
 	}
@@ -408,6 +492,8 @@ func (c *providerCooldowns) mark(provider string, class failureClass, reason str
 	if c == nil || class != transientFailure {
 		return time.Time{}
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	until := now.Add(c.defaultDuration)
 	c.untilByProvider[providerKey(provider)] = until
 	return until
@@ -417,6 +503,8 @@ func (c *providerCooldowns) isCooling(provider string, now time.Time) bool {
 	if c == nil {
 		return false
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	key := providerKey(provider)
 	until, ok := c.untilByProvider[key]
 	if !ok {
@@ -433,6 +521,8 @@ func (c *providerCooldowns) sleepDurationFor(pkg *WorkPackage, roster Roster, no
 	if c == nil {
 		return fallback
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	seen := map[string]bool{}
 	var providers []string
 	for _, a := range roster.Agents {
