@@ -61,7 +61,7 @@ function taskOutcomeColor(status: string): string {
 }
 
 // 9 columns: step | gh-comment | role | status | outcome | assigned to | bridge | created | duration
-const SUB_COLS = '40px 32px 90px 1fr 100px 120px 90px 78px 74px';
+const SUB_COLS = '40px 48px 90px 1fr 100px 120px 90px 78px 74px';
 
 function SubTableHeader() {
   return (
