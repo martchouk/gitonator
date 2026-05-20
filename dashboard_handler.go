@@ -441,6 +441,10 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusNotFound, "no completed run found for this issue")
 		return
 	}
+	if len(tasks) == 0 {
+		writeError(w, http.StatusNotFound, "no completed run found for this issue")
+		return
+	}
 
 	audit, err := d.store.ListTransitionAudit(number, 200)
 	if err != nil {
@@ -450,15 +454,30 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 	if audit == nil {
 		audit = []TransitionAuditRow{}
 	}
-	terminalAudit := latestSuccessfulCompletedAudit(audit)
-	if terminalAudit == nil {
-		writeError(w, http.StatusNotFound, "no completed run found for this issue")
-		return
+
+	// Resolve final status: prefer _final_status metadata (written by processIssue
+	// when it observes a terminal label), then the best audit row, then task status.
+	finalStatus, _, _ := d.store.GetIssueMetadata(number, "_final_status")
+	completedAt := ""
+	if finalStatus == "" {
+		if ta := latestSuccessfulCompletedAudit(audit); ta != nil {
+			finalStatus = ta.ToStatus
+			completedAt = ta.CreatedAt
+		}
+	}
+	if finalStatus == "" {
+		// tasks ordered DESC; index 0 is most recent.
+		finalStatus = tasks[0].CurrentStatus
+	}
+	if completedAt == "" && tasks[0].FinishedAt.Valid {
+		completedAt = tasks[0].FinishedAt.String
+	}
+	if completedAt == "" {
+		completedAt = tasks[0].CreatedAt
 	}
 
 	repo := ""
 	if len(tasks) > 0 {
-		// tasks is ordered DESC; index 0 is the most recent task.
 		repo = tasks[0].Repo
 	}
 	if repo == "" {
@@ -475,9 +494,9 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 		IssueNumber: number,
 		Repo:        repo,
 		WorkflowKey: workflowKey,
-		FinalStatus: terminalAudit.ToStatus,
-		CompletedAt: terminalAudit.CreatedAt,
-		StepCount:   countSuccessfulAuditRows(audit),
+		FinalStatus: finalStatus,
+		CompletedAt: completedAt,
+		StepCount:   len(tasks),
 		Audit:       audit,
 		Tasks:       tasks,
 	}
@@ -496,12 +515,16 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, detail)
 }
 
+func isSuccessfulAuditResult(result string) bool {
+	return result == "applied" || result == "partially_applied"
+}
+
 func latestSuccessfulCompletedAudit(audit []TransitionAuditRow) *TransitionAuditRow {
 	for i := range audit {
-		if audit[i].Result == "success" && isCompletedWorkflowStatus(audit[i].ToStatus) {
+		if isSuccessfulAuditResult(audit[i].Result) && isCompletedWorkflowStatus(audit[i].ToStatus) {
 			return &audit[i]
 		}
-		if audit[i].Result == "success" && !isCompletedWorkflowStatus(audit[i].ToStatus) {
+		if isSuccessfulAuditResult(audit[i].Result) && !isCompletedWorkflowStatus(audit[i].ToStatus) {
 			return nil
 		}
 	}
@@ -511,7 +534,7 @@ func latestSuccessfulCompletedAudit(audit []TransitionAuditRow) *TransitionAudit
 func countSuccessfulAuditRows(audit []TransitionAuditRow) int {
 	count := 0
 	for _, row := range audit {
-		if row.Result == "success" {
+		if isSuccessfulAuditResult(row.Result) {
 			count++
 		}
 	}
