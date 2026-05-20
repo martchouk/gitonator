@@ -71,17 +71,90 @@ interface IssueDetailResponse {
 }
 
 const RUNNING_WORDS = [
-  'hyperspacing…', 'bebopping…',    'determining…',  'hammering…',
-  'wibbling…',     'pondering…',    'cogitating…',   'calibrating…',
-  'reticulating…', 'manifolding…',  'fluxing…',      'spooling…',
-  'recursing…',    'triangulating…','defragging…',   'synergising…',
-  'oscillating…',  'fuzzing…',      'caffeinating…', 'processing…',
-  'noodling…',     'wobbling…',     'crunching…',    'compiling…',
-  'nucleating…',   'crystallizing…','gesticulating…','transforming…',
-  'ebbing…',       'pontificating…','transfiguring…','wrangling…',
-  'enchanting…',   'grooving…',     'scampering…',   'compacting…',
-  'zipping…',      'zigzagging…',   'cascading…',    'thinking…',
-  'imagining…',    'transmuting…',  'computing…',    'churning…',
+  // original cast
+  'hyperspacing…', 'bebopping…',      'determining…',   'hammering…',
+  'wibbling…',     'pondering…',      'cogitating…',    'calibrating…',
+  'reticulating…', 'manifolding…',    'fluxing…',       'spooling…',
+  'recursing…',    'triangulating…',  'defragging…',    'synergising…',
+  'oscillating…',  'fuzzing…',        'caffeinating…',  'processing…',
+  'noodling…',     'wobbling…',       'crunching…',     'compiling…',
+  'nucleating…',   'crystallizing…',  'gesticulating…', 'transforming…',
+  'ebbing…',       'pontificating…',  'transfiguring…', 'wrangling…',
+  'enchanting…',   'grooving…',       'scampering…',    'compacting…',
+  'zipping…',      'zigzagging…',     'cascading…',     'thinking…',
+  'imagining…',    'transmuting…',    'computing…',     'churning…',
+  // locomotion
+  'perambulating…','moonwalking…',    'wandering…',     'moseying…',
+  'meandering…',   'gallivanting…',   'skedaddling…',   'tiptoeing…',
+  'frolicking…',   'loitering…',      'lurking…',       'skulking…',
+  'sneaking…',     'duckwalking…',    'goosestepping…', 'crabwalking…',
+  'penguinwaddling…','pajamawandering…',
+  // social & verbal
+  'hobnobbing…',   'schmoozing…',     'bantering…',     'quibbling…',
+  'babbling…',     'blabbering…',     'gibbering…',     'jabbering…',
+  'yodelling…',    'snickering…',     'mumbling…',      'grumbling…',
+  'snorting…',
+  // body noises & functions
+  'hiccuping…',    'burping…',        'slurping…',      'gargling…',
+  'gurgling…',     'drooling…',       'dribbling…',     'yawning…',
+  'sneezing…',     'farting…',        'sniffing…',      'spitting…',
+  'scratching…',
+  // physical comedy
+  'gobsmacking…',  'facepalming…',    'headbutting…',   'bellyflopping…',
+  'somersaulting…','cartwheeling…',
+  // food & cooking
+  'frosting…',     'garnishing…',     'simmering…',     'sizzling…',
+  'fermenting…',   'pickling…',       'marinating…',    'glazing…',
+  'sprinkling…',   'dusting…',        'whisking…',      'kneading…',
+  'folding…',      'stuffing…',       'basting…',       'seasoning…',
+  'caramelizing…', 'schmearing…',     'toasting…',      'roasting…',
+  'flambéing…',
+  // eating
+  'nibbling…',     'munching…',       'chomping…',      'chewing…',
+  // wrangling & herding
+  'herding…',      'corralling…',     'lassoing…',      'juggling…',
+  'balancing…',    'haggling…',       'bargaining…',
+  // scheming & faffing
+  'plotting…',     'scheming…',       'meddling…',      'faffing…',
+  'dithering…',    'dawdling…',       'futzing…',       'puttering…',
+  'fiddling…',     'fumbling…',       'bumbling…',      'stumbling…',
+  'tumbling…',     'rambling…',       'doodling…',      'canoodling…',
+  // befuddlement
+  'puzzling…',     'befuddling…',     'flustering…',    'bamboozling…',
+  'hoodwinking…',  'shenaniganing…',  'malarkeying…',   'kerfuffling…',
+  'hullabalooing…','gobbledygooking…','brouhahaing…',
+  // coding & tech
+  'refactoring…',  'debugging…',      'rubberducking…', 'committering…',
+  'squashing…',    'orchestrating…',  'tinkering…',     'hacking…',
+  'patching…',     'crashing…',       'glitching…',     'buffering…',
+  'spinning…',     'freezing…',       'overengineering…','procrastinating…',
+  'overthinking…', 'underthinking…',  'brainstorming…', 'daydreaming…',
+  // dreamland
+  'stargazing…',   'cloudbusting…',   'moonlighting…',  'improvising…',
+  'ruminating…',   'perusing…',
+  // sounds & sfx
+  'fizzing…',      'buzzing…',        'zapping…',       'zooming…',
+  'whooshing…',    'swooshing…',      'boinging…',      'bouncing…',
+  'blooping…',     'blipping…',       'beeping…',       'honking…',
+  'tooting…',      'plopping…',       'plunking…',      'clanking…',
+  'clattering…',   'rattling…',       'rustling…',
+  // textures & fluids
+  'squelching…',   'squishing…',      'splattering…',   'dripping…',
+  'oozing…',       'bubbling…',       'swirling…',      'spinning…',
+  // wiggles
+  'bobbling…',     'squiggling…',     'wiggling…',      'jiggling…',
+  // cozy
+  'snuggling…',    'cuddling…',       'nuzzling…',      'nestling…',
+  'snoozing…',     'lounging…',       'lazing…',        'hibernating…',
+  'cocooning…',    'pillowfighting…', 'teasipping…',    'biscuitdunking…',
+  // animal behaviour
+  'peacocking…',   'flamingoing…',    'ottering…',      'badgering…',
+  'squirreling…',  'ferreting…',      'monkeying…',     'parroting…',
+  'lemminging…',   'possuming…',      'hedgehogging…',  'raccooning…',
+  // misc
+  'bashing…',      'githubbing…',     'greenwashing…',  'quacking…',
+  'squawking…',    'cackling…',       'clucking…',      'grunting…',
+  'flibbering…',   'gibbeting…',      'knuddling…',
 ];
 
 const WORD_COLORS = [
