@@ -20,7 +20,7 @@ func TestSelectAgentRoleAndAssigneeMatch(t *testing.T) {
 	}}
 
 	pkg := &WorkPackage{Role: "developer", Assignee: "bud-dev-2"}
-	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), nil)
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
@@ -39,7 +39,7 @@ func TestSelectAgentCrossRoleAssigneeIgnored(t *testing.T) {
 
 	// ada-pow is in the roster but as "po", not "developer" — must not be selected.
 	pkg := &WorkPackage{Role: "developer", Assignee: "ada-pow"}
-	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), nil)
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
@@ -56,7 +56,7 @@ func TestSelectAgentFallsBackToRole(t *testing.T) {
 
 	// No assignee — falls back to role match.
 	pkg := &WorkPackage{Role: "developer", Assignee: ""}
-	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), nil)
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
@@ -71,7 +71,7 @@ func TestSelectAgentReturnsNilWhenNoMatch(t *testing.T) {
 	}}
 
 	pkg := &WorkPackage{Role: "reviewer", Assignee: "nobody"}
-	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), nil)
 	if agent != nil {
 		t.Errorf("expected nil, got %s", agent.Name)
 	}
@@ -86,7 +86,7 @@ func TestSelectAgentSkipsCoolingAgent(t *testing.T) {
 	cooldowns.mark("anthropic", transientFailure, "quota exhausted", time.Unix(100, 0))
 
 	pkg := &WorkPackage{Role: "developer"}
-	agent := selectAgent(roster, pkg, cooldowns, newAgentSelector(), time.Unix(101, 0))
+	agent := selectAgent(roster, pkg, cooldowns, newAgentSelector(), time.Unix(101, 0), nil)
 	if agent == nil {
 		t.Fatal("expected fallback agent, got nil")
 	}
@@ -104,7 +104,7 @@ func TestSelectAgentFallsBackWhenAssignedAgentProviderCooling(t *testing.T) {
 	cooldowns.mark("anthropic", transientFailure, "quota exhausted", time.Unix(100, 0))
 
 	pkg := &WorkPackage{Role: "po", Assignee: "ada-pow"}
-	agent := selectAgent(roster, pkg, cooldowns, newAgentSelector(), time.Unix(101, 0))
+	agent := selectAgent(roster, pkg, cooldowns, newAgentSelector(), time.Unix(101, 0), nil)
 	if agent == nil {
 		t.Fatal("expected fallback agent, got nil")
 	}
@@ -120,12 +120,72 @@ func TestSelectAgentPrefersPastWorkerWhenAvailable(t *testing.T) {
 	}}
 	pkg := &WorkPackage{Role: "developer", PastWorkers: []string{"bud-dev", "elza-dev"}}
 
-	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now())
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), nil)
 	if agent == nil {
 		t.Fatal("expected agent, got nil")
 	}
 	if agent.Name != "elza-dev" {
 		t.Fatalf("expected most recent past worker elza-dev, got %s", agent.Name)
+	}
+}
+
+// TestSelectAgentPrefersCrossProviderForReviewer verifies that when a past worker used
+// provider A, the reviewer is selected from provider B if one is available.
+func TestSelectAgentPrefersCrossProviderForReviewer(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "mud-rev-anthropic", Role: "reviewer", LLMProvider: "anthropic"},
+		{Name: "mud-rev-openai", Role: "reviewer", LLMProvider: "openai"},
+	}}
+	// bud-dev (anthropic) was the developer; reviewer should prefer openai.
+	pkg := &WorkPackage{Role: "reviewer", PastWorkers: []string{"bud-dev"}}
+	// bud-dev is registered as a developer so the roster lookup resolves its provider.
+	roster.Agents = append(roster.Agents, Agent{Name: "bud-dev", Role: "developer", LLMProvider: "anthropic"})
+
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), nil)
+	if agent == nil {
+		t.Fatal("expected agent, got nil")
+	}
+	if agent.Name != "mud-rev-openai" {
+		t.Errorf("expected cross-provider mud-rev-openai, got %s", agent.Name)
+	}
+}
+
+// TestSelectAgentCrossProviderFallsBackWhenAllSameProvider verifies that when every
+// available reviewer uses the same provider as the past workers, the best available
+// reviewer is still returned rather than nil.
+func TestSelectAgentCrossProviderFallsBackWhenAllSameProvider(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev", Role: "developer", LLMProvider: "anthropic"},
+		{Name: "mud-rev", Role: "reviewer", LLMProvider: "anthropic"},
+	}}
+	pkg := &WorkPackage{Role: "reviewer", PastWorkers: []string{"bud-dev"}}
+
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), nil)
+	if agent == nil {
+		t.Fatal("expected fallback agent, got nil")
+	}
+	if agent.Name != "mud-rev" {
+		t.Errorf("expected mud-rev as fallback, got %s", agent.Name)
+	}
+}
+
+// TestSelectAgentNoPastWorkersUnchanged verifies that cross-provider logic is skipped
+// entirely when there are no past workers, leaving round-robin behaviour intact.
+func TestSelectAgentNoPastWorkersUnchanged(t *testing.T) {
+	roster := Roster{Agents: []Agent{
+		{Name: "mud-rev-a", Role: "reviewer", LLMProvider: "anthropic"},
+		{Name: "mud-rev-b", Role: "reviewer", LLMProvider: "openai"},
+	}}
+	pkg := &WorkPackage{Role: "reviewer"} // no PastWorkers
+
+	selector := newAgentSelector()
+	first := selectAgent(roster, pkg, nil, selector, time.Now(), nil)
+	second := selectAgent(roster, pkg, nil, selector, time.Now(), nil)
+	if first == nil || second == nil {
+		t.Fatal("expected two selections")
+	}
+	if first.Name == second.Name {
+		t.Errorf("expected round-robin to alternate, got %s twice", first.Name)
 	}
 }
 
@@ -138,14 +198,131 @@ func TestSelectAgentRoundRobinRolePool(t *testing.T) {
 	selector := newAgentSelector()
 	pkg := &WorkPackage{Role: "developer"}
 
-	first := selectAgent(roster, pkg, nil, selector, time.Now())
-	second := selectAgent(roster, pkg, nil, selector, time.Now())
-	third := selectAgent(roster, pkg, nil, selector, time.Now())
+	first := selectAgent(roster, pkg, nil, selector, time.Now(), nil)
+	second := selectAgent(roster, pkg, nil, selector, time.Now(), nil)
+	third := selectAgent(roster, pkg, nil, selector, time.Now(), nil)
 	if first == nil || second == nil || third == nil {
 		t.Fatalf("expected three selections, got first=%v second=%v third=%v", first, second, third)
 	}
 	if first.Name != "bud-dev" || second.Name != "elza-dev" || third.Name != "bud-dev" {
 		t.Fatalf("round robin sequence got %s, %s, %s", first.Name, second.Name, third.Name)
+	}
+}
+
+// TestWorktreeTracker_TryAcquireAndRelease verifies the basic acquire/release cycle.
+func TestWorktreeTracker_TryAcquireAndRelease(t *testing.T) {
+	wt := newWorktreeTracker()
+	path := "/tmp/repo"
+
+	if wt.isBusy(path) {
+		t.Fatal("expected path to be free initially")
+	}
+	if !wt.tryAcquire(path) {
+		t.Fatal("expected first acquire to succeed")
+	}
+	if !wt.isBusy(path) {
+		t.Fatal("expected path to be busy after acquire")
+	}
+	if wt.tryAcquire(path) {
+		t.Fatal("expected second acquire on same path to fail")
+	}
+	wt.release(path)
+	if wt.isBusy(path) {
+		t.Fatal("expected path to be free after release")
+	}
+	if !wt.tryAcquire(path) {
+		t.Fatal("expected re-acquire after release to succeed")
+	}
+}
+
+// TestSelectAgent_BusyWorktreeSkipped verifies that an agent whose worktree is already occupied
+// is excluded from selection; an alternative agent with a free worktree is chosen instead.
+func TestSelectAgent_BusyWorktreeSkipped(t *testing.T) {
+	wt := newWorktreeTracker()
+
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/bud"}},
+		{Name: "elza-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/elza"}},
+	}}
+	pkg := &WorkPackage{Role: "developer", Repo: "owner/repo"}
+
+	// Mark bud-dev's worktree as busy.
+	if !wt.tryAcquire("/wt/bud") {
+		t.Fatal("tryAcquire should succeed")
+	}
+
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), wt)
+	if agent == nil {
+		t.Fatal("expected agent, got nil")
+	}
+	if agent.Name != "elza-dev" {
+		t.Errorf("expected elza-dev (free worktree), got %s", agent.Name)
+	}
+}
+
+// TestSelectAgent_AllWorktreesBusyReturnsNil verifies that when every candidate agent has
+// a busy worktree, nil is returned — causing the bridge to requeue the work package.
+func TestSelectAgent_AllWorktreesBusyReturnsNil(t *testing.T) {
+	wt := newWorktreeTracker()
+
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/bud"}},
+		{Name: "elza-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/elza"}},
+	}}
+	pkg := &WorkPackage{Role: "developer", Repo: "owner/repo"}
+
+	wt.tryAcquire("/wt/bud")
+	wt.tryAcquire("/wt/elza")
+
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), wt)
+	if agent != nil {
+		t.Errorf("expected nil when all worktrees are busy, got %s", agent.Name)
+	}
+}
+
+// TestSelectAgent_AssigneeWithBusyWorktreeFallsToPool verifies that when the exact-match
+// assignee's worktree is busy, selection falls through to the round-robin pool.
+func TestSelectAgent_AssigneeWithBusyWorktreeFallsToPool(t *testing.T) {
+	wt := newWorktreeTracker()
+
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/bud"}},
+		{Name: "elza-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/elza"}},
+	}}
+	pkg := &WorkPackage{Role: "developer", Repo: "owner/repo", Assignee: "bud-dev"}
+
+	wt.tryAcquire("/wt/bud")
+
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), wt)
+	if agent == nil {
+		t.Fatal("expected fallback agent, got nil")
+	}
+	if agent.Name != "elza-dev" {
+		t.Errorf("expected elza-dev as fallback when bud-dev worktree is busy, got %s", agent.Name)
+	}
+}
+
+// TestSelectAgent_DifferentRepoDoesNotBlock verifies that a busy worktree for repo A does
+// not block agent selection for repo B on the same agent.
+func TestSelectAgent_DifferentRepoDoesNotBlock(t *testing.T) {
+	wt := newWorktreeTracker()
+
+	roster := Roster{Agents: []Agent{
+		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{
+			"owner/repo-a": "/wt/repo-a",
+			"owner/repo-b": "/wt/repo-b",
+		}},
+	}}
+
+	wt.tryAcquire("/wt/repo-a") // repo-a is busy
+
+	pkg := &WorkPackage{Role: "developer", Repo: "owner/repo-b"}
+	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), wt)
+	if agent == nil {
+		t.Fatal("expected agent for repo-b, got nil")
+	}
+	if agent.Name != "bud-dev" {
+		t.Errorf("expected bud-dev for repo-b, got %s", agent.Name)
 	}
 }
 
