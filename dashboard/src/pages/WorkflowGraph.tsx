@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, GitBranch, Info, ListFilter, Route, X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import useSWR from 'swr';
@@ -52,6 +52,12 @@ interface PathPreset {
   source: 'canonical' | 'issueType' | 'fallback';
   statuses: string[];
 }
+
+type SwimlaneConnector = {
+  id: string;
+  edge: GraphEdge;
+  d: string;
+};
 
 function layoutNodes(
   nodes: GraphNode[],
@@ -435,11 +441,62 @@ function SwimlaneView({
 }) {
   const statuses = preset?.statuses ?? [];
   const roles = orderedRoles(data, statuses, nodeByID);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const nodeRefs = useRef(new Map<string, HTMLButtonElement | null>());
+  const [connectors, setConnectors] = useState<SwimlaneConnector[]>([]);
+
+  const setNodeRef = useCallback((status: string, element: HTMLButtonElement | null) => {
+    if (element) {
+      nodeRefs.current.set(status, element);
+    } else {
+      nodeRefs.current.delete(status);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const container = gridRef.current;
+      if (!container) return;
+      const containerRect = container.getBoundingClientRect();
+      const next: SwimlaneConnector[] = [];
+      statuses.slice(1).forEach((status, index) => {
+        const previousStatus = statuses[index];
+        const edge = findEdge(data.edges, previousStatus, status);
+        if (!edge) return;
+        const source = nodeRefs.current.get(previousStatus);
+        const target = nodeRefs.current.get(status);
+        if (!source || !target) return;
+        const sourceRect = source.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const sourceCenterX = sourceRect.left + sourceRect.width / 2;
+        const targetCenterX = targetRect.left + targetRect.width / 2;
+        const sourceCenterY = sourceRect.top + sourceRect.height / 2;
+        const targetCenterY = targetRect.top + targetRect.height / 2;
+        const sourceRightward = targetCenterX >= sourceCenterX;
+        const fromX = (sourceRightward ? sourceRect.right : sourceRect.left) - containerRect.left + (sourceRightward ? 6 : -6);
+        const toX = (sourceRightward ? targetRect.left : targetRect.right) - containerRect.left + (sourceRightward ? -6 : 6);
+        const fromY = sourceCenterY - containerRect.top;
+        const toY = targetCenterY - containerRect.top;
+        const elbowX = fromX + (toX - fromX) / 2;
+        const d = `M ${fromX} ${fromY} H ${elbowX} V ${toY} H ${toX}`;
+        next.push({ id: edge.id, edge, d });
+      });
+      setConnectors(next);
+    };
+
+    measure();
+    const handleResize = () => window.requestAnimationFrame(measure);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [data.edges, statuses]);
+
   return (
     <div style={canvasShell}>
       <div style={{ padding: 'var(--spacing-md)', overflow: 'auto' }}>
         <div
+          ref={gridRef}
           style={{
+            position: 'relative',
             display: 'grid',
             gridTemplateColumns: `132px repeat(${roles.length}, minmax(164px, 1fr))`,
             minWidth: `${132 + roles.length * 176}px`,
@@ -448,6 +505,32 @@ function SwimlaneView({
             overflow: 'hidden',
           }}
         >
+          <svg style={swimlaneConnectorLayer} aria-hidden="true">
+            {connectors.map((connector) => (
+              <g key={connector.id}>
+                <path
+                  d={connector.d}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={18}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pointerEvents="stroke"
+                  onClick={() => onSelect({ kind: 'edge', edge: connector.edge })}
+                  aria-label={connector.edge.description || connector.edge.transitionId}
+                />
+                <path
+                  d={connector.d}
+                  fill="none"
+                  stroke={edgeColor(connector.edge)}
+                  strokeWidth={4}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pointerEvents="none"
+                />
+              </g>
+            ))}
+          </svg>
           <div style={swimlaneHeaderCell}>Step</div>
           {roles.map((role) => (
             <div key={`role-${role}`} style={swimlaneRoleHeader(role)}>
@@ -462,23 +545,12 @@ function SwimlaneView({
               </div>
               {roles.map((role) => {
                 const node = nodeByID.get(status);
-                const edge = index > 0 ? findEdge(data.edges, statuses[index - 1], status) : undefined;
                 const ownsCell = (node?.role || 'terminal') === role;
                 return (
                   <div key={`${role}-${status}-${index}`} style={swimlaneCell}>
-                    {ownsCell && edge && (
-                      <button
-                        type="button"
-                        onClick={() => onSelect({ kind: 'edge', edge })}
-                        style={swimlaneTransitionConnector(edge)}
-                        title={edge.description || edge.transitionId}
-                      >
-                        <span style={swimlaneTransitionLine(edge)} />
-                        {edge.guard && <span style={guardBadge}>{edge.guard}</span>}
-                      </button>
-                    )}
                     {ownsCell && node && (
                       <button
+                        ref={(element) => setNodeRef(status, element)}
                         type="button"
                         onClick={() => onSelect({ kind: 'node', node })}
                         style={swimlaneNode(node)}
@@ -999,6 +1071,7 @@ const swimlaneCell: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  zIndex: 2,
 };
 
 const swimlaneNode = (node?: GraphNode): React.CSSProperties => ({
@@ -1015,34 +1088,23 @@ const swimlaneNode = (node?: GraphNode): React.CSSProperties => ({
   padding: '10px 12px',
   cursor: node ? 'pointer' : 'default',
   textAlign: 'left',
-});
-
-const swimlaneTransitionConnector = (edge: GraphEdge): React.CSSProperties => ({
-  width: '100%',
-  border: 0,
-  background: 'transparent',
-  color: edgeColor(edge),
-  display: 'grid',
-  gap: '6px',
-  alignItems: 'center',
-  justifyItems: 'center',
-  padding: '0 0 10px',
-  cursor: 'pointer',
-});
-
-const swimlaneTransitionLine = (edge: GraphEdge): React.CSSProperties => ({
-  width: '100%',
-  height: '2px',
-  borderRadius: '999px',
-  background: edgeColor(edge),
-  boxShadow: `0 0 0 1px ${edgeColor(edge)}22`,
-  opacity: 0.9,
+  position: 'relative',
+  zIndex: 3,
 });
 
 const swimlaneNodeMeta: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
   fontSize: '0.75rem',
   textTransform: 'uppercase',
+};
+
+const swimlaneConnectorLayer: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  width: '100%',
+  height: '100%',
+  overflow: 'visible',
+  zIndex: 1,
 };
 
 const pathStack: React.CSSProperties = {
