@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, Footprints, GitBranch, Info, ListFilter, Route, X } from 'lucide-react';
+import { ArrowDown, ChevronDown, Footprints, GitBranch, Info, ListFilter, Route, X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import useSWR from 'swr';
 import ReactFlow, {
@@ -978,11 +978,14 @@ function SelectControl({
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <label style={{ display: 'grid', gap: '4px', fontSize: '0.75rem', color: 'var(--md-sys-color-on-surface-variant)' }}>
-      {label}
-      <select value={value} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
-        {options.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-      </select>
+    <label style={selectField}>
+      <span style={selectLabel}>{label}</span>
+      <span style={selectShell}>
+        <select value={value} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
+          {options.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+        </select>
+        <ChevronDown size={14} style={selectChevron} />
+      </span>
     </label>
   );
 }
@@ -1044,14 +1047,53 @@ const smallCode: React.CSSProperties = {
   padding: '2px 6px',
 };
 
-const selectStyle: React.CSSProperties = {
-  height: '34px',
+const selectField: React.CSSProperties = {
+  display: 'grid',
+  gap: '4px',
+  fontSize: '0.75rem',
+  color: 'var(--md-sys-color-on-surface-variant)',
+};
+
+const selectLabel: React.CSSProperties = {
+  fontSize: '0.75rem',
+  color: 'var(--md-sys-color-on-surface-variant)',
+};
+
+const selectShell: React.CSSProperties = {
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
   minWidth: '220px',
+  minHeight: '38px',
   border: '1px solid var(--md-sys-color-outline-variant)',
-  borderRadius: 'var(--radius-sm)',
-  background: 'var(--md-sys-color-surface)',
+  borderRadius: 'var(--radius-full)',
+  background: 'var(--md-sys-color-surface-variant)',
+  boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.03)',
+};
+
+const selectStyle: React.CSSProperties = {
+  appearance: 'none',
+  WebkitAppearance: 'none',
+  MozAppearance: 'none',
+  width: '100%',
+  height: '100%',
+  minHeight: '38px',
+  border: 0,
+  outline: 'none',
+  background: 'transparent',
   color: 'var(--md-sys-color-on-surface)',
-  padding: '0 10px',
+  padding: '0 34px 0 12px',
+  fontFamily: 'var(--font-sans)',
+  fontSize: '0.8125rem',
+  fontWeight: 500,
+  cursor: 'pointer',
+};
+
+const selectChevron: React.CSSProperties = {
+  position: 'absolute',
+  right: '12px',
+  color: 'var(--md-sys-color-on-surface-variant)',
+  pointerEvents: 'none',
 };
 
 const segmentedShell: React.CSSProperties = {
