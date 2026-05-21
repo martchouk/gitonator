@@ -34,7 +34,7 @@ export function WorkflowList() {
         </p>
       )}
 
-      <div
+      {!error && <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
@@ -91,7 +91,7 @@ export function WorkflowList() {
             </div>
           </div>
         ))}
-      </div>
+      </div>}
     </div>
   );
 }
