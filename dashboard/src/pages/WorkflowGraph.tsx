@@ -557,7 +557,7 @@ function SwimlaneView({
             <React.Fragment key={`row-${status}-${index}`}>
               <div style={swimlaneStepHeader}>
                 <div style={swimlaneStepBadge}>{index + 1}</div>
-                <div style={swimlaneStepLabel}>{prettyStatus(status)}</div>
+                <StatusChip status={status} />
               </div>
               {roles.map((role) => {
                 const node = nodeByID.get(status);
@@ -1104,32 +1104,21 @@ const swimlaneStepHeader: React.CSSProperties = {
 };
 
 const swimlaneStepBadge: React.CSSProperties = {
-  width: '26px',
-  height: '26px',
-  borderRadius: '999px',
-  border: '1px solid var(--md-sys-color-outline)',
-  background: 'var(--md-sys-color-surface)',
+  position: 'relative',
+  zIndex: 1,
+  width: '17px',
+  height: '17px',
+  borderRadius: '50%',
+  border: '1.5px solid var(--color-neon-amber)',
+  background: 'transparent',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: '0.75rem',
+  fontFamily: 'var(--font-mono)',
+  fontSize: '0.5rem',
   fontWeight: 700,
-  color: 'var(--md-sys-color-on-surface)',
-};
-
-const swimlaneStepLabel: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '4px 8px',
-  border: '1px solid var(--md-sys-color-outline-variant)',
-  borderRadius: '999px',
-  background: 'var(--md-sys-color-surface)',
-  color: 'var(--md-sys-color-on-surface-variant)',
-  fontSize: '0.75rem',
-  fontWeight: 500,
-  textTransform: 'capitalize',
-  textAlign: 'center',
+  color: 'var(--color-neon-amber)',
+  flexShrink: 0,
 };
 
 const swimlaneCell: React.CSSProperties = {
