@@ -1009,7 +1009,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   return (
     <div>
       <div style={detailSectionTitle}>{label}</div>
-      <div>{children}</div>
+      <div style={detailValue}>{children}</div>
     </div>
   );
 }
@@ -1467,6 +1467,12 @@ const detailSectionTitle: React.CSSProperties = {
   fontWeight: 700,
   textTransform: 'uppercase',
   marginBottom: '5px',
+};
+
+const detailValue: React.CSSProperties = {
+  color: 'var(--md-sys-color-on-surface-variant)',
+  fontSize: '0.8125rem',
+  lineHeight: 1.5,
 };
 
 const engineBlock: React.CSSProperties = {
