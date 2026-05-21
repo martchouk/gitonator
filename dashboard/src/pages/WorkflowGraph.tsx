@@ -292,6 +292,7 @@ export function WorkflowGraph() {
               data={data}
               preset={selectedPreset}
               nodeByID={nodeByID}
+              selection={selection}
               onSelect={setSelection}
             />
           ) : (
@@ -299,6 +300,7 @@ export function WorkflowGraph() {
               data={data}
               preset={selectedPreset}
               nodeByID={nodeByID}
+              selection={selection}
               onSelect={setSelection}
             />
           )}
@@ -360,11 +362,13 @@ function PathView({
   data,
   preset,
   nodeByID,
+  selection,
   onSelect,
 }: {
   data: WorkflowGraphType;
   preset?: PathPreset;
   nodeByID: Map<string, GraphNode>;
+  selection: DetailSelection;
   onSelect: (selection: DetailSelection) => void;
 }) {
   const statuses = preset?.statuses ?? [];
@@ -386,13 +390,15 @@ function PathView({
           {statuses.map((status, index) => {
             const node = nodeByID.get(status);
             const edge = index > 0 ? findEdge(data.edges, statuses[index - 1], status) : undefined;
+            const edgeSelected = selection?.kind === 'edge' && selection.edge.id === edge?.id;
+            const nodeSelected = selection?.kind === 'node' && selection.node.id === status;
             return (
               <React.Fragment key={status}>
                 {index > 0 && (
                   <button
                     type="button"
                     onClick={() => edge && onSelect({ kind: 'edge', edge })}
-                    style={pathSeparator(edge, hoveredEdgeID === edge?.id)}
+                    style={pathSeparator(edge, hoveredEdgeID === edge?.id, edgeSelected)}
                     onMouseEnter={(e) => {
                       if (!edge) return;
                       const r = e.currentTarget.getBoundingClientRect();
@@ -423,7 +429,7 @@ function PathView({
                   onClick={() => node && onSelect({ kind: 'node', node })}
                   onMouseEnter={() => setHoveredNodeStatus(status)}
                   onMouseLeave={() => setHoveredNodeStatus((current) => (current === status ? null : current))}
-                  style={pathNode(node, hoveredNodeStatus === status)}
+                  style={pathNode(node, hoveredNodeStatus === status, nodeSelected)}
                 >
                   <StatusChip status={status} truncate maxWidth="170px" />
                   <span style={pathNodeMetaItem}>{node?.category ?? 'terminal'}</span>
@@ -457,11 +463,13 @@ function SwimlaneView({
   data,
   preset,
   nodeByID,
+  selection,
   onSelect,
 }: {
   data: WorkflowGraphType;
   preset?: PathPreset;
   nodeByID: Map<string, GraphNode>;
+  selection: DetailSelection;
   onSelect: (selection: DetailSelection) => void;
 }) {
   const statuses = preset?.statuses ?? [];
@@ -560,11 +568,17 @@ function SwimlaneView({
                   d={connector.d}
                   fill="none"
                   stroke={edgeColor(connector.edge)}
-                  strokeWidth={hoveredEdgeID === connector.id ? 6 : 4}
+                  strokeWidth={selection?.kind === 'edge' && selection.edge.id === connector.id ? 7 : hoveredEdgeID === connector.id ? 6 : 4}
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity={hoveredEdgeID === connector.id ? 1 : 0.88}
-                  filter={hoveredEdgeID === connector.id ? 'drop-shadow(0 0 5px rgba(46, 255, 140, 0.35))' : 'none'}
+                  opacity={selection?.kind === 'edge' && selection.edge.id === connector.id ? 1 : hoveredEdgeID === connector.id ? 1 : 0.88}
+                  filter={
+                    selection?.kind === 'edge' && selection.edge.id === connector.id
+                      ? `drop-shadow(0 0 7px ${edgeColor(connector.edge)})`
+                      : hoveredEdgeID === connector.id
+                        ? 'drop-shadow(0 0 5px rgba(46, 255, 140, 0.35))'
+                        : 'none'
+                  }
                   pointerEvents="none"
                 />
               </g>
@@ -593,6 +607,7 @@ function SwimlaneView({
               {roles.map((role) => {
                 const node = nodeByID.get(status);
                 const ownsCell = (node?.role || 'terminal') === role;
+                const nodeSelected = selection?.kind === 'node' && selection.node.id === status;
                 return (
                   <div key={`${role}-${status}-${index}`} style={swimlaneCell}>
                     {ownsCell && node && (
@@ -602,7 +617,7 @@ function SwimlaneView({
                         onClick={() => onSelect({ kind: 'node', node })}
                         onMouseEnter={() => setHoveredNodeStatus(status)}
                         onMouseLeave={() => setHoveredNodeStatus((current) => (current === status ? null : current))}
-                        style={swimlaneNode(node, hoveredNodeStatus === status)}
+                        style={swimlaneNode(node, hoveredNodeStatus === status, nodeSelected)}
                       >
                         <StatusChip status={status} truncate maxWidth="132px" />
                         <span style={swimlaneNodeMeta}>{node.category}</span>
@@ -614,7 +629,7 @@ function SwimlaneView({
             </React.Fragment>
           ))}
         </div>
-        <TransitionStrip data={data} statuses={statuses} onSelect={onSelect} />
+        <TransitionStrip data={data} statuses={statuses} selection={selection} onSelect={onSelect} />
       </div>
     </div>
   );
@@ -623,10 +638,12 @@ function SwimlaneView({
 function TransitionStrip({
   data,
   statuses,
+  selection,
   onSelect,
 }: {
   data: WorkflowGraphType;
   statuses: string[];
+  selection: DetailSelection;
   onSelect: (selection: DetailSelection) => void;
 }) {
   const [hoveredEdgeID, setHoveredEdgeID] = useState<string | null>(null);
@@ -640,7 +657,7 @@ function TransitionStrip({
           onClick={() => onSelect({ kind: 'edge', edge })}
           onMouseEnter={() => setHoveredEdgeID(edge.id)}
           onMouseLeave={() => setHoveredEdgeID((current) => (current === edge.id ? null : current))}
-          style={transitionChip(edge, hoveredEdgeID === edge.id)}
+          style={transitionChip(edge, hoveredEdgeID === edge.id, selection?.kind === 'edge' && selection.edge.id === edge.id)}
         >
           <span>{compactTransitionName(edge.transitionId)}</span>
           {edge.guard && (
@@ -1289,7 +1306,7 @@ const swimlaneCell: React.CSSProperties = {
   pointerEvents: 'none',
 };
 
-const swimlaneNode = (node?: GraphNode, hovered = false): React.CSSProperties => ({
+const swimlaneNode = (node?: GraphNode, hovered = false, selected = false): React.CSSProperties => ({
   width: '100%',
   minHeight: '72px',
   border: `1px solid ${node ? roleColor(node.role) : 'var(--md-sys-color-outline-variant)'}`,
@@ -1307,9 +1324,13 @@ const swimlaneNode = (node?: GraphNode, hovered = false): React.CSSProperties =>
   zIndex: 8,
   pointerEvents: 'auto',
   transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
-  transform: hovered ? 'translateY(-1px)' : 'none',
-  boxShadow: hovered ? '0 6px 16px rgba(0, 0, 0, 0.14)' : 'none',
-  backgroundColor: hovered ? 'var(--md-sys-color-surface-variant)' : 'var(--md-sys-color-surface)',
+  transform: hovered || selected ? 'translateY(-1px)' : 'none',
+  boxShadow: selected
+    ? `0 0 0 2px ${node ? roleColor(node.role) : 'var(--md-sys-color-primary)'}, 0 8px 18px rgba(0, 0, 0, 0.16)`
+    : hovered
+      ? '0 6px 16px rgba(0, 0, 0, 0.14)'
+      : 'none',
+  backgroundColor: hovered || selected ? 'var(--md-sys-color-surface-variant)' : 'var(--md-sys-color-surface)',
 });
 
 const swimlaneNodeMeta: React.CSSProperties = {
@@ -1335,11 +1356,11 @@ const pathStack: React.CSSProperties = {
   justifyItems: 'center',
 };
 
-const pathSeparator = (edge?: GraphEdge, hovered = false): React.CSSProperties => ({
+const pathSeparator = (edge?: GraphEdge, hovered = false, selected = false): React.CSSProperties => ({
   width: 'fit-content',
   border: 0,
   borderRadius: 'var(--radius-sm)',
-  background: hovered && edge ? `${edgeColor(edge)}12` : 'transparent',
+  background: (hovered || selected) && edge ? `${edgeColor(edge)}12` : 'transparent',
   color: edge ? edgeColor(edge) : 'var(--md-sys-color-outline)',
   display: 'grid',
   alignContent: 'center',
@@ -1348,11 +1369,13 @@ const pathSeparator = (edge?: GraphEdge, hovered = false): React.CSSProperties =
   padding: '2px 8px',
   cursor: edge ? 'pointer' : 'default',
   transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, color 120ms ease',
-  transform: hovered ? 'translateY(-1px)' : 'none',
-  boxShadow: hovered && edge ? `0 6px 16px ${edgeColor(edge)}20` : 'none',
+  transform: hovered || selected ? 'translateY(-1px)' : 'none',
+  boxShadow: (hovered || selected) && edge
+    ? (selected ? `0 0 0 2px ${edgeColor(edge)}55, 0 6px 16px ${edgeColor(edge)}20` : `0 6px 16px ${edgeColor(edge)}20`)
+    : 'none',
 });
 
-const pathNode = (node?: GraphNode, hovered = false): React.CSSProperties => ({
+const pathNode = (node?: GraphNode, hovered = false, selected = false): React.CSSProperties => ({
   width: 'min(100%, 240px)',
   minHeight: '86px',
   border: `1px solid ${node ? roleColor(node.role) : 'var(--md-sys-color-outline-variant)'}`,
@@ -1368,9 +1391,13 @@ const pathNode = (node?: GraphNode, hovered = false): React.CSSProperties => ({
   textAlign: 'center',
   justifyItems: 'center',
   transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
-  transform: hovered ? 'translateY(-1px)' : 'none',
-  boxShadow: hovered ? '0 6px 16px rgba(0, 0, 0, 0.14)' : 'none',
-  backgroundColor: hovered ? 'var(--md-sys-color-surface-variant)' : 'var(--md-sys-color-surface)',
+  transform: hovered || selected ? 'translateY(-1px)' : 'none',
+  boxShadow: selected
+    ? `0 0 0 2px ${node ? roleColor(node.role) : 'var(--md-sys-color-primary)'}, 0 8px 18px rgba(0, 0, 0, 0.16)`
+    : hovered
+      ? '0 6px 16px rgba(0, 0, 0, 0.14)'
+      : 'none',
+  backgroundColor: hovered || selected ? 'var(--md-sys-color-surface-variant)' : 'var(--md-sys-color-surface)',
 });
 
 const pathNodeMetaItem: React.CSSProperties = {
@@ -1433,12 +1460,12 @@ const guardBadge: React.CSSProperties = {
   gap: '4px',
 };
 
-const transitionChip = (edge: GraphEdge, hovered = false): React.CSSProperties => {
+const transitionChip = (edge: GraphEdge, hovered = false, selected = false): React.CSSProperties => {
   const color = roleColor(transitionRole(edge));
   return {
     border: `1px solid ${color}`,
     borderRadius: 'var(--radius-sm)',
-    background: hovered ? `${color}18` : 'var(--md-sys-color-surface)',
+    background: hovered || selected ? `${color}18` : 'var(--md-sys-color-surface)',
     color,
     display: 'flex',
     alignItems: 'center',
@@ -1446,8 +1473,8 @@ const transitionChip = (edge: GraphEdge, hovered = false): React.CSSProperties =
     padding: '7px 9px',
     cursor: 'pointer',
     transition: 'background-color 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease',
-    boxShadow: hovered ? `0 6px 16px ${color}20` : 'none',
-    transform: hovered ? 'translateY(-1px)' : 'none',
+    boxShadow: selected ? `0 0 0 2px ${color}55, 0 6px 16px ${color}20` : hovered ? `0 6px 16px ${color}20` : 'none',
+    transform: hovered || selected ? 'translateY(-1px)' : 'none',
   };
 };
 
