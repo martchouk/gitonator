@@ -971,6 +971,19 @@ function OutputValue({ value }: { value: unknown }) {
     );
   }
   if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > 0) {
+      return (
+        <div style={{ display: 'grid', gap: '10px' }}>
+          {entries.map(([key, entryValue]) => (
+            <div key={key} style={{ display: 'grid', gap: '4px' }}>
+              <div style={detailSubheading}>{prettyPresetName(key)}</div>
+              <OutputValue value={entryValue} />
+            </div>
+          ))}
+        </div>
+      );
+    }
     return <pre style={engineBlock}>{JSON.stringify(value, null, 2)}</pre>;
   }
   return <span style={detailValue}>{String(value)}</span>;
@@ -1479,6 +1492,14 @@ const detailSectionBody: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
   fontSize: '0.8125rem',
   lineHeight: 1.5,
+};
+
+const detailSubheading: React.CSSProperties = {
+  color: 'var(--md-sys-color-on-surface-variant)',
+  fontSize: '0.6875rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: 0,
 };
 
 const engineBlock: React.CSSProperties = {
