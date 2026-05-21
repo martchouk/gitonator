@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ChevronDown, Footprints, GitBranch, Info, ListFilter, Route, ShieldCheck, X } from 'lucide-react';
+import { ArrowDown, ChevronDown, Footprints, GitBranch, Info, ListFilter, Route, ShieldCheck, UserCheck, UserCog, UserKey, UserPen, UserSearch, UserStar, X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import useSWR from 'swr';
 import ReactFlow, {
@@ -589,6 +589,7 @@ function SwimlaneView({
           </div>
           {roles.map((role) => (
             <div key={`role-${role}`} style={swimlaneRoleHeader(role)}>
+              {roleHeaderIcon(role)}
               {role || 'Terminal'}
             </div>
           ))}
@@ -956,6 +957,28 @@ function prettyRole(role?: string) {
   }
 }
 
+function roleHeaderIcon(role?: string) {
+  const size = 15;
+  switch (role) {
+    case 'po':
+      return <UserStar size={size} />;
+    case 'architect':
+      return <UserCog size={size} />;
+    case 'uidesigner':
+      return <UserPen size={size} />;
+    case 'developer':
+      return <UserCheck size={size} />;
+    case 'reviewer':
+      return <UserSearch size={size} />;
+    case 'tester':
+      return <UserKey size={size} />;
+    case 'terminal':
+      return <X size={size} />;
+    default:
+      return null;
+  }
+}
+
 function compactTransitionName(value: string) {
   return value.replace(/^(po|developer|reviewer|tester|architect|ui)_/, '').replace(/_/g, ' ');
 }
@@ -1238,6 +1261,10 @@ const swimlaneHeaderIconCell: React.CSSProperties = {
 
 const swimlaneRoleHeader = (role: string): React.CSSProperties => ({
   ...swimlaneHeaderCell,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '6px',
   color: roleColor(role),
   textTransform: 'none',
   fontSize: '0.875rem',
