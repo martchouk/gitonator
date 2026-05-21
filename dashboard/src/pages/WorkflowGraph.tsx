@@ -392,6 +392,9 @@ function PathView({
                     title={edge?.description || edge?.transitionId}
                   >
                     <ArrowDown size={16} />
+                    {edge?.transitionId && (
+                      <span style={pathTransitionLabel}>{compactTransitionName(edge.transitionId)}</span>
+                    )}
                     {edge?.guard && <span style={guardBadge}>{edge.guard}</span>}
                   </button>
                 )}
@@ -1320,6 +1323,15 @@ const pathNodeRole = (role?: string): React.CSSProperties => ({
   textTransform: 'none',
   letterSpacing: 0,
 });
+
+const pathTransitionLabel: React.CSSProperties = {
+  color: 'var(--md-sys-color-on-surface-variant)',
+  fontSize: '0.6875rem',
+  fontFamily: 'var(--font-mono)',
+  lineHeight: 1.2,
+  textAlign: 'center',
+  textTransform: 'none',
+};
 
 const guardBadge: React.CSSProperties = {
   border: '1px solid rgba(0, 229, 255, 0.32)',
