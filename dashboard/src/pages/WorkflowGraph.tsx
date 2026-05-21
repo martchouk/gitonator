@@ -249,6 +249,7 @@ export function WorkflowGraph() {
             options={presets.map((p) => ({ value: p.id, label: p.label }))}
           />
           <SegmentedControl
+            label="View"
             value={viewMode}
             onChange={(v) => setViewMode(v as ViewMode)}
             options={[
@@ -991,27 +992,32 @@ function SelectControl({
 }
 
 function SegmentedControl({
+  label,
   value,
   onChange,
   options,
 }: {
+  label?: string;
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <div style={segmentedShell}>
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          style={segmentButton(value === opt.value)}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
+    <label style={selectField}>
+      <span style={selectLabel}>{label ?? '\u00A0'}</span>
+      <div style={segmentedShell}>
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            style={segmentButton(value === opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </label>
   );
 }
 
@@ -1067,7 +1073,7 @@ const selectShell: React.CSSProperties = {
   minHeight: '38px',
   border: '1px solid var(--md-sys-color-outline-variant)',
   borderRadius: 'var(--radius-full)',
-  background: 'var(--md-sys-color-surface-variant)',
+  background: 'var(--md-sys-color-surface)',
   boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.03)',
 };
 
@@ -1099,19 +1105,23 @@ const selectChevron: React.CSSProperties = {
 const segmentedShell: React.CSSProperties = {
   display: 'flex',
   gap: '2px',
+  minHeight: '38px',
   padding: '3px',
   border: '1px solid var(--md-sys-color-outline-variant)',
-  borderRadius: 'var(--radius-sm)',
-  background: 'var(--md-sys-color-surface-variant)',
+  borderRadius: 'var(--radius-full)',
+  background: 'var(--md-sys-color-surface)',
+  boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.03)',
 };
 
 const segmentButton = (active: boolean): React.CSSProperties => ({
   border: 0,
-  borderRadius: 'var(--radius-sm)',
-  padding: '7px 10px',
+  borderRadius: 'var(--radius-full)',
+  padding: '7px 14px',
   color: active ? 'var(--md-sys-color-on-primary)' : 'var(--md-sys-color-on-surface-variant)',
   background: active ? 'var(--md-sys-color-primary)' : 'transparent',
   cursor: 'pointer',
+  fontFamily: 'var(--font-sans)',
+  fontSize: '0.8125rem',
   fontWeight: 600,
 });
 
