@@ -525,6 +525,7 @@ function SwimlaneView({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   pointerEvents="stroke"
+                  style={{ cursor: 'pointer' }}
                   onClick={() => onSelect({ kind: 'edge', edge: connector.edge })}
                   onMouseEnter={() => setHoveredEdgeID(connector.id)}
                   onMouseLeave={() => setHoveredEdgeID((current) => (current === connector.id ? null : current))}
@@ -1123,7 +1124,7 @@ const swimlaneConnectorLayer: React.CSSProperties = {
   width: '100%',
   height: '100%',
   overflow: 'visible',
-  zIndex: 2,
+  zIndex: 4,
 };
 
 const pathStack: React.CSSProperties = {
