@@ -375,6 +375,8 @@ function ExpandedDetail({ issueNumber }: { issueNumber: number }) {
 // 8 columns: arrow | issue | repo | issue-name | final-status | workflow | steps | completed
 const MAIN_COLS = '28px 80px 160px 1fr 160px 160px 80px 110px';
 
+const PAGE_SIZE = 10;
+
 export function CompletedList() {
   const { data, error, mutate } = useSWR<CompletedListResponse>(
     '/api/v1/dashboard/completed',
@@ -383,8 +385,17 @@ export function CompletedList() {
   );
 
   const [expandedIssue, setExpandedIssue] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
 
   const runs = data?.completed ?? [];
+  const totalPages = Math.max(1, Math.ceil(runs.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const visibleRuns = runs.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
+  function goToPage(next: number) {
+    setPage(next);
+    setExpandedIssue(null);
+  }
 
   return (
     <div>
@@ -462,7 +473,7 @@ export function CompletedList() {
             <span>Completed</span>
           </div>
 
-          {runs.map((run) => {
+          {visibleRuns.map((run) => {
             const isExpanded = expandedIssue === run.issueNumber;
             const issueUrl = `https://github.com/${run.repo}/issues/${run.issueNumber}`;
             return (
@@ -551,6 +562,54 @@ export function CompletedList() {
               </React.Fragment>
             );
           })}
+        </div>
+      )}
+
+      {!error && totalPages > 1 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '12px',
+          padding: '14px 0 4px',
+        }}>
+          <button
+            onClick={() => goToPage(safePage - 1)}
+            disabled={safePage === 0}
+            style={{
+              padding: '5px 14px',
+              borderRadius: '6px',
+              border: '1px solid var(--md-sys-color-outline-variant)',
+              background: 'var(--md-sys-color-surface)',
+              color: safePage === 0 ? 'var(--color-text-muted)' : 'var(--md-sys-color-on-surface)',
+              cursor: safePage === 0 ? 'default' : 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.75rem',
+              opacity: safePage === 0 ? 0.4 : 1,
+            }}
+          >
+            ← Newer
+          </button>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+            {safePage + 1} / {totalPages}
+          </span>
+          <button
+            onClick={() => goToPage(safePage + 1)}
+            disabled={safePage === totalPages - 1}
+            style={{
+              padding: '5px 14px',
+              borderRadius: '6px',
+              border: '1px solid var(--md-sys-color-outline-variant)',
+              background: 'var(--md-sys-color-surface)',
+              color: safePage === totalPages - 1 ? 'var(--color-text-muted)' : 'var(--md-sys-color-on-surface)',
+              cursor: safePage === totalPages - 1 ? 'default' : 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.75rem',
+              opacity: safePage === totalPages - 1 ? 0.4 : 1,
+            }}
+          >
+            Older →
+          </button>
         </div>
       )}
 
