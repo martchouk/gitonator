@@ -61,7 +61,7 @@ function taskOutcomeColor(status: string): string {
 }
 
 // 8 columns: step | role | status | outcome | assigned to | bridge | created | duration
-const SUB_COLS = '40px 90px 1fr 100px 120px 90px 78px 74px';
+const SUB_COLS = '50px 90px 1fr 100px 120px 90px 78px 74px';
 
 function SubTableHeader() {
   return (
@@ -94,8 +94,17 @@ function SubTableHeader() {
 // Roadmap node: circle with step number + vertical connector lines.
 // isFirst/isLast circles are color-filled; middle circles are hollow.
 // Circle links to the GitHub issue comment when commentUrl is provided.
-function StepNode({ step, isFirst, isLast, commentUrl }: { step: number; isFirst: boolean; isLast: boolean; commentUrl: string | null }) {
+function StepNode({ step, isFirst, isLast, commentUrl, commentId }: {
+  step: number; isFirst: boolean; isLast: boolean;
+  commentUrl: string | null; commentId: number | null;
+}) {
   const filled = isFirst || isLast;
+  const [hovered, setHovered] = useState(false);
+
+  const hoverBg = filled
+    ? 'color-mix(in srgb, var(--color-neon-amber) 75%, white)'
+    : 'color-mix(in srgb, var(--color-neon-amber) 22%, transparent)';
+
   const circleStyle: React.CSSProperties = {
     position: 'relative',
     zIndex: 1,
@@ -103,7 +112,7 @@ function StepNode({ step, isFirst, isLast, commentUrl }: { step: number; isFirst
     height: '17px',
     borderRadius: '50%',
     border: '1.5px solid var(--color-neon-amber)',
-    background: filled ? 'var(--color-neon-amber)' : 'transparent',
+    background: commentUrl && hovered ? hoverBg : (filled ? 'var(--color-neon-amber)' : 'transparent'),
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -113,7 +122,16 @@ function StepNode({ step, isFirst, isLast, commentUrl }: { step: number; isFirst
     color: filled ? 'var(--md-sys-color-surface)' : 'var(--color-neon-amber)',
     flexShrink: 0,
     textDecoration: 'none',
+    cursor: commentUrl ? 'pointer' : 'default',
+    transition: 'background 120ms ease',
   };
+
+  const linkProps = commentUrl ? {
+    onMouseEnter: () => setHovered(true),
+    onMouseLeave: () => setHovered(false),
+    title: commentId ? `issuecomment-${commentId}` : 'View GitHub comment',
+  } : {};
+
   return (
     <div style={{
       position: 'relative',
@@ -141,8 +159,8 @@ function StepNode({ step, isFirst, isLast, commentUrl }: { step: number; isFirst
           target="_blank"
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
-          title="View GitHub comment"
           style={circleStyle}
+          {...linkProps}
         >
           {step}
         </a>
@@ -195,17 +213,23 @@ function SubTaskRow({ task, step, isFirst, isLast }: { task: TaskRow; step: numb
         fontSize: '0.8125rem',
       }}
     >
-      {/* Row separator that skips the # column (16px left-padding + 40px # column = 56px) */}
+      {/* Row separator — skips the # column on all rows except the last */}
       <div style={{
         position: 'absolute',
         bottom: 0,
-        left: '56px',
+        left: isLast ? 0 : '66px',
         right: 0,
         height: '1px',
         background: 'var(--md-sys-color-outline-variant)',
       }} />
 
-      <StepNode step={step} isFirst={isFirst} isLast={isLast} commentUrl={commentUrl} />
+      <StepNode
+        step={step}
+        isFirst={isFirst}
+        isLast={isLast}
+        commentUrl={commentUrl}
+        commentId={task.last_comment_id ?? null}
+      />
 
       <div style={cell()}>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
