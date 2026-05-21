@@ -222,7 +222,7 @@ export function WorkflowGraph() {
             <code style={smallCode}>key: {data.key}</code>
           </div>
           {data.description && (
-            <p style={{ margin: '8px 0 0', color: 'var(--md-sys-color-on-surface-variant)', maxWidth: '900px' }}>
+            <p style={{ margin: '8px 0 0', color: 'var(--md-sys-color-on-surface-variant)', fontSize: '0.8125rem', maxWidth: '900px' }}>
               {data.description}
             </p>
           )}
@@ -1529,6 +1529,7 @@ const iconButton: React.CSSProperties = {
 
 const emptyPanel: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
+  fontSize: '0.8125rem',
   lineHeight: 1.6,
 };
 
