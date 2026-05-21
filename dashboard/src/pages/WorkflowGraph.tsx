@@ -1147,10 +1147,10 @@ const selectShell: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   minWidth: '220px',
-  minHeight: '38px',
-  padding: '3px',
+  minHeight: '32px',
+  padding: '2px',
   border: '1px solid var(--md-sys-color-outline-variant)',
-  borderRadius: 'var(--radius-full)',
+  borderRadius: 'var(--radius-sm)',
   background: 'var(--md-sys-color-surface)',
   boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.03)',
 };
@@ -1160,23 +1160,23 @@ const selectStyle: React.CSSProperties = {
   WebkitAppearance: 'none',
   MozAppearance: 'none',
   width: '100%',
-  height: '32px',
-  minHeight: '32px',
+  height: '28px',
+  minHeight: '28px',
   border: 0,
-  borderRadius: 'var(--radius-full)',
+  borderRadius: 'var(--radius-sm)',
   outline: 'none',
   background: 'transparent',
   color: 'var(--md-sys-color-on-surface-variant)',
-  padding: '0 34px 0 14px',
+  padding: '0 30px 0 12px',
   fontFamily: 'var(--font-sans)',
-  fontSize: '0.8125rem',
+  fontSize: '0.75rem',
   fontWeight: 600,
   cursor: 'pointer',
 };
 
 const selectChevron: React.CSSProperties = {
   position: 'absolute',
-  right: '12px',
+  right: '10px',
   color: 'var(--md-sys-color-on-surface-variant)',
   pointerEvents: 'none',
 };
@@ -1184,23 +1184,23 @@ const selectChevron: React.CSSProperties = {
 const segmentedShell: React.CSSProperties = {
   display: 'flex',
   gap: '2px',
-  minHeight: '38px',
-  padding: '3px',
+  minHeight: '32px',
+  padding: '2px',
   border: '1px solid var(--md-sys-color-outline-variant)',
-  borderRadius: 'var(--radius-full)',
+  borderRadius: 'var(--radius-sm)',
   background: 'var(--md-sys-color-surface)',
   boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.03)',
 };
 
 const segmentButton = (active: boolean): React.CSSProperties => ({
   border: 0,
-  borderRadius: 'var(--radius-full)',
-  padding: '7px 14px',
+  borderRadius: 'var(--radius-sm)',
+  padding: '5px 12px',
   color: active ? 'var(--md-sys-color-on-primary)' : 'var(--md-sys-color-on-surface-variant)',
   background: active ? 'var(--md-sys-color-primary)' : 'transparent',
   cursor: 'pointer',
   fontFamily: 'var(--font-sans)',
-  fontSize: '0.8125rem',
+  fontSize: '0.75rem',
   fontWeight: 600,
 });
 
