@@ -557,7 +557,7 @@ function SwimlaneView({
             <React.Fragment key={`row-${status}-${index}`}>
               <div style={swimlaneStepHeader}>
                 <div style={swimlaneStepBadge}>{index + 1}</div>
-                <StatusChip status={status} />
+                <StatusChip status={status} truncate maxWidth="96px" />
               </div>
               {roles.map((role) => {
                 const node = nodeByID.get(status);
@@ -598,11 +598,19 @@ function TransitionStrip({
   statuses: string[];
   onSelect: (selection: DetailSelection) => void;
 }) {
+  const [hoveredEdgeID, setHoveredEdgeID] = useState<string | null>(null);
   const edges = statuses.slice(1).map((status, i) => findEdge(data.edges, statuses[i], status)).filter(Boolean) as GraphEdge[];
   return (
     <div style={{ marginTop: 'var(--spacing-md)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
       {edges.map((edge) => (
-        <button key={edge.id} type="button" onClick={() => onSelect({ kind: 'edge', edge })} style={transitionChip(edge)}>
+        <button
+          key={edge.id}
+          type="button"
+          onClick={() => onSelect({ kind: 'edge', edge })}
+          onMouseEnter={() => setHoveredEdgeID(edge.id)}
+          onMouseLeave={() => setHoveredEdgeID((current) => (current === edge.id ? null : current))}
+          style={transitionChip(edge, hoveredEdgeID === edge.id)}
+        >
           <span>{compactTransitionName(edge.transitionId)}</span>
           {edge.guard && <span style={guardBadge}>{edge.guard}</span>}
         </button>
@@ -885,6 +893,20 @@ function prettyPresetName(value: string) {
 
 function compactTransitionName(value: string) {
   return value.replace(/^(po|developer|reviewer|tester|architect|ui)_/, '').replace(/_/g, ' ');
+}
+
+function transitionRole(edge: GraphEdge) {
+  const id = edge.transitionId || '';
+  if (id.startsWith('po_')) return 'po';
+  if (id.startsWith('developer_')) return 'developer';
+  if (id.startsWith('reviewer_')) return 'reviewer';
+  if (id.startsWith('tester_')) return 'tester';
+  if (id.startsWith('architect_')) return 'architect';
+  if (id.startsWith('ui_') || id.startsWith('uidesigner_')) return 'uidesigner';
+  if (edge.allowedRoles.length === 1) {
+    return edge.allowedRoles[0];
+  }
+  return edge.queuesNextRole || edge.allowedRoles[0];
 }
 
 function selectionTitle(selection: DetailSelection) {
@@ -1236,17 +1258,23 @@ const guardBadge: React.CSSProperties = {
   fontFamily: 'var(--font-mono)',
 };
 
-const transitionChip = (edge: GraphEdge): React.CSSProperties => ({
-  border: `1px solid ${edgeColor(edge)}`,
-  borderRadius: 'var(--radius-sm)',
-  background: 'var(--md-sys-color-surface)',
-  color: 'var(--md-sys-color-on-surface)',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '6px',
-  padding: '7px 9px',
-  cursor: 'pointer',
-});
+const transitionChip = (edge: GraphEdge, hovered = false): React.CSSProperties => {
+  const color = roleColor(transitionRole(edge));
+  return {
+    border: `1px solid ${color}`,
+    borderRadius: 'var(--radius-sm)',
+    background: hovered ? `${color}18` : 'var(--md-sys-color-surface)',
+    color,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '7px 9px',
+    cursor: 'pointer',
+    transition: 'background-color 120ms ease, color 120ms ease, box-shadow 120ms ease, transform 120ms ease',
+    boxShadow: hovered ? `0 6px 16px ${color}20` : 'none',
+    transform: hovered ? 'translateY(-1px)' : 'none',
+  };
+};
 
 const iconButton: React.CSSProperties = {
   width: '32px',

@@ -60,9 +60,11 @@ function inferCategory(status: string): string {
 interface Props {
   status: string;
   category?: string;
+  truncate?: boolean;
+  maxWidth?: string | number;
 }
 
-export function StatusChip({ status, category }: Props) {
+export function StatusChip({ status, category, truncate = false, maxWidth }: Props) {
   const cat = category || inferCategory(status);
   const colors = categoryVars[cat] ?? categoryVars.terminal;
   const label = status.startsWith('status:') ? status.slice(7) : status;
@@ -83,7 +85,12 @@ export function StatusChip({ status, category }: Props) {
         letterSpacing: '0.01em',
         lineHeight: '1.33',
         whiteSpace: 'nowrap',
+        maxWidth,
+        overflow: truncate ? 'hidden' : undefined,
+        textOverflow: truncate ? 'ellipsis' : undefined,
+        verticalAlign: 'top',
       }}
+      title={truncate ? label : undefined}
     >
       {label}
     </span>
