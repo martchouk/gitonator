@@ -264,33 +264,32 @@ export function WorkflowGraph() {
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1fr) 340px',
-          gridTemplateRows: 'auto 1fr',
           gap: 'var(--spacing-md)',
           minHeight: 0,
-          alignItems: 'start',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            gap: '8px',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            padding: '0 2px',
-          }}
-        >
-          <Toggle label="Loops" checked={showLoops} onChange={setShowLoops} />
-          <Toggle label="Blocked" checked={showExceptions} onChange={setShowExceptions} />
-          <Toggle label="Reject/Reopen" checked={showTerminal} onChange={setShowTerminal} />
-          {data.defaultPathScope && <span style={mutedText}>default paths: {data.defaultPathScope}</span>}
-        </div>
-
         <section
           style={{
             minWidth: 0,
-            minHeight: 0,
+            display: 'grid',
+            gridTemplateRows: 'auto 1fr',
+            gap: 'var(--spacing-sm)',
           }}
         >
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              padding: '0 2px',
+            }}
+          >
+            <Toggle label="Loops" checked={showLoops} onChange={setShowLoops} />
+            <Toggle label="Blocked" checked={showExceptions} onChange={setShowExceptions} />
+            <Toggle label="Reject/Reopen" checked={showTerminal} onChange={setShowTerminal} />
+            {data.defaultPathScope && <span style={mutedText}>default paths: {data.defaultPathScope}</span>}
+          </div>
           {viewMode === 'full' ? (
             <GraphCanvas
               nodes={rfNodes}
@@ -317,13 +316,12 @@ export function WorkflowGraph() {
           )}
         </section>
 
-        <div />
-
         <DetailsPanel
           data={data}
           selection={selection}
           detailMode={detailMode}
           setDetailMode={setDetailMode}
+          offsetTop
           onClose={() => setSelection(null)}
         />
       </main>
@@ -633,17 +631,20 @@ function DetailsPanel({
   selection,
   detailMode,
   setDetailMode,
+  offsetTop,
   onClose,
 }: {
   data: WorkflowGraphType;
   selection: DetailSelection;
   detailMode: 'human' | 'engine';
   setDetailMode: (value: 'human' | 'engine') => void;
+  offsetTop?: boolean;
   onClose: () => void;
 }) {
   return (
     <aside
       style={{
+        marginTop: offsetTop ? 'calc(32px + var(--spacing-sm))' : 0,
         border: '1px solid var(--md-sys-color-outline-variant)',
         borderRadius: 'var(--radius-md)',
         background: 'var(--md-sys-color-surface)',
