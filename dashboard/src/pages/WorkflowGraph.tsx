@@ -1346,7 +1346,7 @@ const pathTransitionLabel: React.CSSProperties = {
 const guardBadge: React.CSSProperties = {
   border: '1px solid rgba(0, 229, 255, 0.32)',
   borderRadius: 'var(--radius-sm)',
-  padding: '1px 5px',
+  padding: '3px 8px',
   color: 'var(--color-neon-cyan)',
   fontSize: '0.625rem',
   fontFamily: 'var(--font-mono)',
