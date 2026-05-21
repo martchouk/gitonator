@@ -90,10 +90,13 @@ type GraphIssueType struct {
 
 // WorkflowSummary is a brief description of a workflow for the list endpoint.
 type WorkflowSummary struct {
-	ID          string `json:"id"`
-	Key         string `json:"key"`
-	StatusCount int    `json:"statusCount"`
-	EdgeCount   int    `json:"edgeCount"`
+	ID             string `json:"id"`
+	Key            string `json:"key"`
+	Description    string `json:"description,omitempty"`
+	StatusCount    int    `json:"statusCount"`
+	EdgeCount      int    `json:"edgeCount"`
+	RoleCount      int    `json:"roleCount"`
+	IssueTypeCount int    `json:"issueTypeCount"`
 }
 
 func (d *DashboardServer) handleDashboardIssues(w http.ResponseWriter, r *http.Request) {
@@ -334,10 +337,13 @@ func (d *DashboardServer) handleWorkflowList(w http.ResponseWriter, r *http.Requ
 	for _, key := range d.workflows.Keys() {
 		wd := d.workflows.Get(key)
 		summaries = append(summaries, WorkflowSummary{
-			ID:          wd.Workflow.ID,
-			Key:         wd.Workflow.Key,
-			StatusCount: len(wd.Statuses),
-			EdgeCount:   len(wd.Transitions),
+			ID:             wd.Workflow.ID,
+			Key:            wd.Workflow.Key,
+			Description:    wd.Workflow.Purpose,
+			StatusCount:    len(wd.Statuses),
+			EdgeCount:      len(wd.Transitions),
+			RoleCount:      len(wd.Workflow.Roles),
+			IssueTypeCount: len(wd.Workflow.SupportedTypes),
 		})
 	}
 

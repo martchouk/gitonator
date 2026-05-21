@@ -160,8 +160,24 @@ data: {"type":"task_queued","data":{"issue_number":59,"task_id":42,"role":"devel
     description: 'List all workflow definitions parsed from workflows/*.yaml.',
     responseSchema: JSON.stringify({
       workflows: [
-        { id: 'simplified_3_role_issue_workflow', key: 'lean', statusCount: 11, edgeCount: 18 },
-        { id: 'full_6_roles_issue_workflow', key: 'full', statusCount: 15, edgeCount: 28 },
+        {
+          id: 'workflow_lean_3_roles_issue',
+          key: 'lean',
+          description: 'Lean issue workflow with PO, developer, and reviewer handoffs.',
+          statusCount: 11,
+          edgeCount: 18,
+          roleCount: 3,
+          issueTypeCount: 4,
+        },
+        {
+          id: 'workflow_full_6_roles_issue',
+          key: 'full',
+          description: 'Full issue workflow with architecture, UI, review, and testing lanes.',
+          statusCount: 15,
+          edgeCount: 28,
+          roleCount: 6,
+          issueTypeCount: 4,
+        },
       ],
     }, null, 2),
     curlExample: `curl ${BASE}/api/v1/workflows`,

@@ -101,8 +101,11 @@ export interface WorkflowGraph {
 export interface WorkflowSummary {
   id: string;
   key: string;
+  description?: string;
   statusCount: number;
   edgeCount: number;
+  roleCount: number;
+  issueTypeCount: number;
 }
 
 export interface CompletedIssueSummary {

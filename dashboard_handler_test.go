@@ -41,6 +41,11 @@ const minimalWorkflowYAML = `
 workflow:
   id: test_workflow
   key: lean
+  purpose: Minimal lean workflow for dashboard tests.
+  roles:
+    - developer
+  supported_issue_types:
+    - bug
 statuses:
   - id: status:open
     role: developer
@@ -353,6 +358,12 @@ func TestHandleWorkflowList(t *testing.T) {
 	}
 	if body.Workflows[0].Key != "lean" {
 		t.Errorf("key: want lean, got %s", body.Workflows[0].Key)
+	}
+	if body.Workflows[0].RoleCount != 1 {
+		t.Errorf("roleCount: want 1, got %d", body.Workflows[0].RoleCount)
+	}
+	if body.Workflows[0].IssueTypeCount != 1 {
+		t.Errorf("issueTypeCount: want 1, got %d", body.Workflows[0].IssueTypeCount)
 	}
 }
 
