@@ -978,7 +978,7 @@ function OutputValue({ value }: { value: unknown }) {
 
 function TransitionLine({ edge }: { edge: GraphEdge }) {
   return (
-    <div style={{ ...detailSectionBody, display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', alignItems: 'center' }}>
+    <div style={{ ...detailSectionBody, display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
       <span style={detailValue}>{compactTransitionName(edge.transitionId)}</span>
       <StatusChip status={edge.target} />
     </div>
