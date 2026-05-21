@@ -557,7 +557,6 @@ function SwimlaneView({
             <React.Fragment key={`row-${status}-${index}`}>
               <div style={swimlaneStepHeader}>
                 <div style={swimlaneStepBadge}>{index + 1}</div>
-                <StatusChip status={status} truncate maxWidth="96px" />
               </div>
               {roles.map((role) => {
                 const node = nodeByID.get(status);
@@ -573,7 +572,7 @@ function SwimlaneView({
                         onMouseLeave={() => setHoveredNodeStatus((current) => (current === status ? null : current))}
                         style={swimlaneNode(node, hoveredNodeStatus === status)}
                       >
-                        <span style={{ color: roleColor(node.role) }}>{prettyStatus(status)}</span>
+                        <StatusChip status={status} truncate maxWidth="132px" />
                         <span style={swimlaneNodeMeta}>{node.category}</span>
                       </button>
                     )}
