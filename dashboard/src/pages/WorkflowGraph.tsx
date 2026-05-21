@@ -1358,20 +1358,20 @@ const pathStack: React.CSSProperties = {
 
 const pathSeparator = (edge?: GraphEdge, hovered = false, selected = false): React.CSSProperties => ({
   width: 'fit-content',
-  border: 0,
+  border: edge && (hovered || selected) ? `1px solid ${selected ? `${edgeColor(edge)}88` : `${edgeColor(edge)}40`}` : '1px solid transparent',
   borderRadius: 'var(--radius-sm)',
-  background: (hovered || selected) && edge ? `${edgeColor(edge)}12` : 'transparent',
+  background: (hovered || selected) && edge ? `${edgeColor(edge)}16` : 'transparent',
   color: edge ? edgeColor(edge) : 'var(--md-sys-color-outline)',
   display: 'grid',
   alignContent: 'center',
   justifyItems: 'center',
   gap: '4px',
-  padding: '2px 8px',
+  padding: '4px 10px',
   cursor: edge ? 'pointer' : 'default',
   transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, color 120ms ease',
   transform: hovered || selected ? 'translateY(-1px)' : 'none',
   boxShadow: (hovered || selected) && edge
-    ? (selected ? `0 0 0 2px ${edgeColor(edge)}55, 0 6px 16px ${edgeColor(edge)}20` : `0 6px 16px ${edgeColor(edge)}20`)
+    ? (selected ? `0 0 0 2px ${edgeColor(edge)}55, 0 8px 18px ${edgeColor(edge)}26` : `0 6px 16px ${edgeColor(edge)}20`)
     : 'none',
 });
 
