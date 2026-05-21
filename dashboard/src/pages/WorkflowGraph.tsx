@@ -369,6 +369,8 @@ function PathView({
 }) {
   const statuses = preset?.statuses ?? [];
   const [hoveredEdge, setHoveredEdge] = useState<GraphEdge | null>(null);
+  const [hoveredEdgeID, setHoveredEdgeID] = useState<string | null>(null);
+  const [hoveredNodeStatus, setHoveredNodeStatus] = useState<string | null>(null);
   const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
   return (
     <div style={canvasShell}>
@@ -390,15 +392,17 @@ function PathView({
                   <button
                     type="button"
                     onClick={() => edge && onSelect({ kind: 'edge', edge })}
-                    style={pathSeparator(edge)}
+                    style={pathSeparator(edge, hoveredEdgeID === edge?.id)}
                     onMouseEnter={(e) => {
                       if (!edge) return;
                       const r = e.currentTarget.getBoundingClientRect();
                       setHoveredEdge(edge);
+                      setHoveredEdgeID(edge.id);
                       setTipPos({ x: r.left + r.width / 2 + 16, y: r.top + r.height / 2 });
                     }}
                     onMouseLeave={() => {
                       setHoveredEdge(null);
+                      setHoveredEdgeID((current) => (current === edge?.id ? null : current));
                       setTipPos(null);
                     }}
                   >
@@ -417,7 +421,9 @@ function PathView({
                 <button
                   type="button"
                   onClick={() => node && onSelect({ kind: 'node', node })}
-                  style={pathNode(node)}
+                  onMouseEnter={() => setHoveredNodeStatus(status)}
+                  onMouseLeave={() => setHoveredNodeStatus((current) => (current === status ? null : current))}
+                  style={pathNode(node, hoveredNodeStatus === status)}
                 >
                   <StatusChip status={status} truncate maxWidth="170px" />
                   <span style={pathNodeMetaItem}>{node?.category ?? 'terminal'}</span>
@@ -1316,10 +1322,11 @@ const pathStack: React.CSSProperties = {
   justifyItems: 'center',
 };
 
-const pathSeparator = (edge?: GraphEdge): React.CSSProperties => ({
+const pathSeparator = (edge?: GraphEdge, hovered = false): React.CSSProperties => ({
   width: 'fit-content',
   border: 0,
-  background: 'transparent',
+  borderRadius: 'var(--radius-sm)',
+  background: hovered && edge ? `${edgeColor(edge)}12` : 'transparent',
   color: edge ? edgeColor(edge) : 'var(--md-sys-color-outline)',
   display: 'grid',
   alignContent: 'center',
@@ -1327,9 +1334,12 @@ const pathSeparator = (edge?: GraphEdge): React.CSSProperties => ({
   gap: '4px',
   padding: '2px 8px',
   cursor: edge ? 'pointer' : 'default',
+  transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, color 120ms ease',
+  transform: hovered ? 'translateY(-1px)' : 'none',
+  boxShadow: hovered && edge ? `0 6px 16px ${edgeColor(edge)}20` : 'none',
 });
 
-const pathNode = (node?: GraphNode): React.CSSProperties => ({
+const pathNode = (node?: GraphNode, hovered = false): React.CSSProperties => ({
   width: 'min(100%, 240px)',
   minHeight: '86px',
   border: `1px solid ${node ? roleColor(node.role) : 'var(--md-sys-color-outline-variant)'}`,
@@ -1344,6 +1354,10 @@ const pathNode = (node?: GraphNode): React.CSSProperties => ({
   cursor: 'pointer',
   textAlign: 'center',
   justifyItems: 'center',
+  transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
+  transform: hovered ? 'translateY(-1px)' : 'none',
+  boxShadow: hovered ? '0 6px 16px rgba(0, 0, 0, 0.14)' : 'none',
+  backgroundColor: hovered ? 'var(--md-sys-color-surface-variant)' : 'var(--md-sys-color-surface)',
 });
 
 const pathNodeMetaItem: React.CSSProperties = {
