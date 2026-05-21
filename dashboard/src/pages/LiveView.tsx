@@ -218,8 +218,8 @@ function RunningTimer({ createdAt }: { createdAt: string }) {
   );
 }
 
-// 9 columns: step | gh-comment | role | status | outcome | assigned to | bridge | created | duration
-const SUB_COLS = '40px 32px 90px 1fr 100px 120px 90px 78px 74px';
+// 8 columns: step | role | status | outcome | assigned to | bridge | created | duration
+const SUB_COLS = '50px 90px 1fr 100px 120px 90px 78px 74px';
 
 function SubTableHeader() {
   return (
@@ -237,8 +237,7 @@ function SubTableHeader() {
         borderBottom: '1px solid var(--md-sys-color-outline-variant)',
       }}
     >
-      <span>#</span>
-      <span style={{ display: 'flex', alignItems: 'center' }}><GithubIcon size={12} color="var(--color-text-muted)" /></span>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><GithubIcon size={17} color="var(--color-text-muted)" /></span>
       <span>Role</span>
       <span>Status at Dispatch</span>
       <span>Outcome</span>
@@ -250,10 +249,94 @@ function SubTableHeader() {
   );
 }
 
-function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
+// Roadmap node: circle with step number (or spinner for running task) + connector lines.
+// First/last non-running circles are amber-filled; running circle uses green border + spinner.
+function StepNode({ step, isFirst, isLast, isRunning, commentUrl, commentId }: {
+  step: number; isFirst: boolean; isLast: boolean;
+  isRunning: boolean; commentUrl: string | null; commentId: number | null;
+}) {
+  const filled = (isFirst || isLast) && !isRunning;
+  const borderColor = isRunning ? 'var(--color-neon-green)' : 'var(--color-neon-amber)';
+  const [hovered, setHovered] = useState(false);
+  const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
+
+  const hoverBg = filled
+    ? 'color-mix(in srgb, var(--color-neon-amber) 75%, white)'
+    : 'color-mix(in srgb, var(--color-neon-amber) 22%, transparent)';
+
+  const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
+    setHovered(true);
+    if (commentId) {
+      const r = e.currentTarget.getBoundingClientRect();
+      setTipPos({ x: r.right + 8, y: r.top + r.height / 2 });
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setHovered(false);
+    setTipPos(null);
+  };
+
+  const circleStyle: React.CSSProperties = {
+    position: 'relative',
+    zIndex: 1,
+    width: '17px',
+    height: '17px',
+    borderRadius: '50%',
+    border: `1.5px solid ${borderColor}`,
+    background: commentUrl && hovered ? hoverBg : (filled ? 'var(--color-neon-amber)' : 'transparent'),
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.5rem',
+    fontWeight: 700,
+    color: filled ? 'var(--md-sys-color-surface)' : borderColor,
+    flexShrink: 0,
+    textDecoration: 'none',
+    cursor: commentUrl ? 'pointer' : 'default',
+    transition: 'background 120ms ease',
+  };
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' }}>
+      {!isFirst && (
+        <div style={{ position: 'absolute', top: 0, bottom: 'calc(50% + 8.5px)', left: '50%', transform: 'translateX(-50%)', width: '1.5px', background: 'var(--color-neon-amber)' }} />
+      )}
+      {commentUrl ? (
+        <a href={commentUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+          style={circleStyle} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+          {isRunning ? <Loader2 size={9} style={{ animation: 'spin 1.2s linear infinite' }} /> : step}
+        </a>
+      ) : (
+        <div style={circleStyle}>
+          {isRunning ? <Loader2 size={9} style={{ animation: 'spin 1.2s linear infinite' }} /> : step}
+        </div>
+      )}
+      {!isLast && (
+        <div style={{ position: 'absolute', top: 'calc(50% + 8.5px)', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '1.5px', background: 'var(--color-neon-amber)' }} />
+      )}
+      {hovered && commentId && tipPos && (
+        <div style={{
+          position: 'fixed', left: tipPos.x, top: tipPos.y, transform: 'translateY(-50%)',
+          zIndex: 9999, pointerEvents: 'none',
+          background: 'var(--md-sys-color-inverse-surface)', color: 'var(--md-sys-color-inverse-on-surface)',
+          border: '1px solid var(--md-sys-color-outline-variant)', borderRadius: '0.5rem',
+          padding: '5px 10px', boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          fontFamily: 'var(--font-mono)', fontSize: '0.75rem', whiteSpace: 'nowrap',
+          display: 'flex', alignItems: 'center', gap: '6px',
+        }}>
+          <GithubIcon size={11} color="currentColor" />
+          {`issuecomment-${commentId}`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubTaskRow({ task, step, isFirst, isLast }: { task: TaskRow; step: number; isFirst: boolean; isLast: boolean }) {
   const isRunning = task.status === 'queued' || task.status === 'dispatched';
   const bridge = nullStr(task.bridge_id);
-  // Prefer GitHub-authenticated commenter (claimed_by) over issue assignee over role.
   const workerLogin = (task.claimed_by?.Valid && task.claimed_by?.String)
     ? task.claimed_by.String
     : task.assignee || null;
@@ -262,79 +345,71 @@ function SubTaskRow({ task, step }: { task: TaskRow; step: number }) {
     ? `https://github.com/${task.repo}/issues/${task.issue_number}#issuecomment-${task.last_comment_id}`
     : null;
 
+  const cell = (style?: React.CSSProperties): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', padding: '11px 0', ...style,
+  });
+
   return (
     <div
       style={{
         display: 'grid',
         gridTemplateColumns: SUB_COLS,
-        padding: '11px 16px',
-        alignItems: 'center',
-        borderBottom: '1px solid var(--md-sys-color-outline-variant)',
+        padding: '0 16px',
+        minHeight: '44px',
+        alignItems: 'stretch',
+        position: 'relative',
         fontSize: '0.8125rem',
       }}
     >
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: isRunning ? 'var(--color-neon-green)' : 'var(--color-neon-amber)', display: 'flex', alignItems: 'center' }}>
-        {isRunning
-          ? <Loader2 size={13} style={{ animation: 'spin 1.2s linear infinite' }} />
-          : step
-        }
-      </span>
-      <span style={{ display: 'flex', alignItems: 'center' }}>
-        {commentUrl ? (
-          <a
-            href={commentUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            title="View GitHub comment"
-            style={{ display: 'flex', alignItems: 'center', color: 'var(--color-text-muted)', opacity: 0.7, transition: 'opacity 150ms ease' }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
-          >
-            <GithubIcon size={13} color="var(--color-neon-cyan)" />
-          </a>
-        ) : (
-          <GithubIcon size={13} color="var(--color-text-muted)" />
-        )}
-      </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
-        {task.role || '–'}
-      </span>
-      <span>
+      <div style={{ position: 'absolute', bottom: 0, left: isLast ? 0 : '66px', right: 0, height: '1px', background: 'var(--md-sys-color-outline-variant)' }} />
+
+      <StepNode step={step} isFirst={isFirst} isLast={isLast} isRunning={isRunning}
+        commentUrl={commentUrl} commentId={task.last_comment_id ?? null} />
+
+      <div style={cell()}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
+          {task.role || '–'}
+        </span>
+      </div>
+
+      <div style={cell()}>
         {task.current_status
           ? <StatusChip status={task.current_status} />
           : <span style={{ color: 'var(--color-text-muted)' }}>–</span>
         }
-      </span>
-      <span>
+      </div>
+
+      <div style={cell()}>
         {isRunning ? <RotatingWord /> : (
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: taskOutcomeColor(task.status) }}>
             {task.status}
           </span>
         )}
-      </span>
-      <span style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: '0.6875rem',
-        color: workerLogin ? 'var(--color-neon-cyan)' : 'var(--color-neon-yellow)',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}>
-        {workerLogin || task.role || ''}
-      </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: bridge !== '–' ? 1 : 0.4 }}>
-        {bridge}
-      </span>
-      <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
-        {relativeTime(task.created_at)}
-      </span>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
-        {isRunning
-          ? <RunningTimer createdAt={task.created_at} />
-          : duration(task.created_at, task.finished_at)
-        }
-      </span>
+      </div>
+
+      <div style={cell({ overflow: 'hidden' })}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: workerLogin ? 'var(--color-neon-cyan)' : 'var(--color-neon-yellow)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {workerLogin || task.role || ''}
+        </span>
+      </div>
+
+      <div style={cell({ overflow: 'hidden' })}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: bridge !== '–' ? 1 : 0.4 }}>
+          {bridge}
+        </span>
+      </div>
+
+      <div style={cell()}>
+        <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+          {relativeTime(task.created_at)}
+        </span>
+      </div>
+
+      <div style={cell()}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+          {isRunning ? <RunningTimer createdAt={task.created_at} /> : duration(task.created_at, task.finished_at)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -375,7 +450,8 @@ function ExpandedIssueDetail({ issueNumber }: { issueNumber: number }) {
       <div style={{ minWidth: '780px' }}>
         <SubTableHeader />
         {tasks.map((task, idx) => (
-          <SubTaskRow key={task.id} task={task} step={idx + 1} />
+          <SubTaskRow key={task.id} task={task} step={idx + 1}
+            isFirst={idx === 0} isLast={idx === tasks.length - 1} />
         ))}
       </div>
     </div>
@@ -519,7 +595,7 @@ export function LiveView() {
                   <span
                     style={{
                       fontFamily: 'var(--font-mono)',
-                      fontSize: '0.6875rem',
+                      fontSize: '0.75rem',
                       color: 'var(--color-text-muted)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
