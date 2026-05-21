@@ -556,7 +556,12 @@ function SwimlaneView({
           ))}
           {statuses.map((status, index) => (
             <React.Fragment key={`row-${status}-${index}`}>
-              <div style={swimlaneStepHeader}>
+              <div
+                style={{
+                  ...swimlaneStepHeader,
+                  ...(index === statuses.length - 1 ? { borderBottom: '1px solid var(--md-sys-color-outline-variant)' } : null),
+                }}
+              >
                 {index > 0 && <div style={swimlaneStepConnectorTop} />}
                 <div style={swimlaneStepBadge(index === 0 || index === statuses.length - 1)}>{index + 1}</div>
                 {index < statuses.length - 1 && <div style={swimlaneStepConnectorBottom} />}
