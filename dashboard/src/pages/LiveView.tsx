@@ -264,10 +264,10 @@ function StepNode({ step, isFirst, isLast, isRunning, nextIsRunning, commentUrl,
   };
   const dottedGreen: React.CSSProperties = {
     width: '4px',
-    backgroundImage: 'radial-gradient(circle 1.5px at 50% 50%, color-mix(in srgb, var(--color-neon-green) 40%, transparent) 100%, transparent 0)',
-    backgroundSize: '4px 9px',
+    backgroundImage: 'radial-gradient(circle 1.5px at 50% 50%, color-mix(in srgb, var(--color-neon-green) 40%, transparent) 100%, transparent 100%)',
+    backgroundSize: '4px 5px',
     backgroundRepeat: 'repeat-y',
-    backgroundPosition: 'center',
+    backgroundPosition: '50% 0',
   };
 
   const topConnector = !isFirst ? (
