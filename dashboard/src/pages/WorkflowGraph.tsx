@@ -402,7 +402,7 @@ function PathView({
                 >
                   <StatusChip status={status} truncate maxWidth="170px" />
                   <span style={pathNodeMetaItem}>{node?.category ?? 'terminal'}</span>
-                  <span style={pathNodeMetaItem}>{prettyRole(node?.role)}</span>
+                  <span style={pathNodeRole}>{prettyRole(node?.role)}</span>
                 </button>
               </React.Fragment>
             );
@@ -1312,6 +1312,13 @@ const pathNodeMetaItem: React.CSSProperties = {
   textTransform: 'uppercase',
   letterSpacing: 0,
   fontFamily: 'var(--font-mono)',
+};
+
+const pathNodeRole: React.CSSProperties = {
+  color: 'var(--md-sys-color-on-surface-variant)',
+  fontSize: '0.75rem',
+  textTransform: 'none',
+  letterSpacing: 0,
 };
 
 const guardBadge: React.CSSProperties = {
