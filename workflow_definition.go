@@ -3,6 +3,7 @@ package main
 // WorkflowDef is the top-level structure loaded from a workflow YAML file.
 type WorkflowDef struct {
 	Workflow       WorkflowMeta        `yaml:"workflow"`
+	IssueTypes     []IssueTypeDef      `yaml:"issue_types"`
 	Statuses       []StatusDef         `yaml:"statuses"`
 	Guards         map[string]GuardDef `yaml:"guards"`
 	Transitions    []TransitionDef     `yaml:"transitions"`
@@ -11,8 +12,20 @@ type WorkflowDef struct {
 
 // WorkflowMeta holds identity fields from the YAML workflow block.
 type WorkflowMeta struct {
-	ID  string `yaml:"id"`
-	Key string `yaml:"key"`
+	ID               string   `yaml:"id"`
+	Key              string   `yaml:"key"`
+	Purpose          string   `yaml:"purpose"`
+	Roles            []string `yaml:"roles"`
+	SupportedTypes   []string `yaml:"supported_issue_types"`
+	DefaultPathScope string   `yaml:"default_path_scope"`
+}
+
+// IssueTypeDef describes a type:* label and its default route metadata.
+type IssueTypeDef struct {
+	ID                 string   `yaml:"id"`
+	Name               string   `yaml:"name"`
+	PODefinitionOutput string   `yaml:"po_definition_output"`
+	DefaultPath        []string `yaml:"default_path"`
 }
 
 // StatusDef describes a single workflow status as declared in a YAML file.
@@ -28,8 +41,9 @@ type StatusDef struct {
 // AnyLabel: at least one of the listed labels must be present on the issue.
 // AllAbsent: every listed label must be absent from the issue.
 type GuardDef struct {
-	AnyLabel  []string `yaml:"any_label"`
-	AllAbsent []string `yaml:"all_absent"`
+	Description string   `yaml:"description" json:"description,omitempty"`
+	AnyLabel    []string `yaml:"any_label" json:"any_label,omitempty"`
+	AllAbsent   []string `yaml:"all_absent" json:"all_absent,omitempty"`
 }
 
 // TransitionDef describes a single workflow transition as declared in a YAML file.

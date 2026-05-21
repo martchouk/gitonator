@@ -56,6 +56,11 @@ transitions:
     from: [status:open]
     to: status:done
     allowed_roles: [developer]
+    queues_next_role: ""
+    required_outputs:
+      - verification_evidence
+    terminal_after_transition: true
+    close_issue: true
     description: "Close the issue."
 `
 
@@ -446,6 +451,16 @@ func TestBuildWorkflowGraph_NodesAndEdges(t *testing.T) {
 	}
 	if edge.Target != "status:done" {
 		t.Errorf("edge target: want status:done, got %s", edge.Target)
+	}
+	if edge.TransitionID != "open_to_done" {
+		t.Errorf("transition id: want open_to_done, got %s", edge.TransitionID)
+	}
+	if !edge.TerminalAfterTransition || !edge.CloseIssue {
+		t.Errorf("expected terminal close metadata, got terminal=%v close=%v", edge.TerminalAfterTransition, edge.CloseIssue)
+	}
+	outputs, ok := edge.RequiredOutputs.([]interface{})
+	if !ok || len(outputs) != 1 || outputs[0] != "verification_evidence" {
+		t.Errorf("required outputs: got %#v", edge.RequiredOutputs)
 	}
 }
 

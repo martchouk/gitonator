@@ -42,11 +42,17 @@ type ActiveTask struct {
 
 // WorkflowGraphResponse is the graph-ready representation of a workflow definition.
 type WorkflowGraphResponse struct {
-	ID          string      `json:"id"`
-	Key         string      `json:"key"`
-	Description string      `json:"description,omitempty"`
-	Nodes       []GraphNode `json:"nodes"`
-	Edges       []GraphEdge `json:"edges"`
+	ID               string              `json:"id"`
+	Key              string              `json:"key"`
+	Description      string              `json:"description,omitempty"`
+	Roles            []string            `json:"roles,omitempty"`
+	SupportedTypes   []string            `json:"supportedTypes,omitempty"`
+	DefaultPathScope string              `json:"defaultPathScope,omitempty"`
+	IssueTypes       []GraphIssueType    `json:"issueTypes,omitempty"`
+	Guards           map[string]GuardDef `json:"guards,omitempty"`
+	CanonicalPaths   map[string][]string `json:"canonicalPaths,omitempty"`
+	Nodes            []GraphNode         `json:"nodes"`
+	Edges            []GraphEdge         `json:"edges"`
 }
 
 // GraphNode represents a status node in the workflow graph.
@@ -60,12 +66,26 @@ type GraphNode struct {
 
 // GraphEdge represents a transition edge in the workflow graph.
 type GraphEdge struct {
-	ID           string   `json:"id"`
-	Source       string   `json:"source"`
-	Target       string   `json:"target"`
-	AllowedRoles []string `json:"allowedRoles"`
-	Guard        string   `json:"guard,omitempty"`
-	Description  string   `json:"description,omitempty"`
+	ID                      string      `json:"id"`
+	TransitionID            string      `json:"transitionId"`
+	Source                  string      `json:"source"`
+	Target                  string      `json:"target"`
+	AllowedRoles            []string    `json:"allowedRoles"`
+	Guard                   string      `json:"guard,omitempty"`
+	QueuesNextRole          string      `json:"queuesNextRole,omitempty"`
+	RequiredOutputs         interface{} `json:"requiredOutputs,omitempty"`
+	CloseIssue              bool        `json:"closeIssue,omitempty"`
+	ReopenIssue             bool        `json:"reopenIssue,omitempty"`
+	TerminalAfterTransition bool        `json:"terminalAfterTransition,omitempty"`
+	Description             string      `json:"description,omitempty"`
+}
+
+// GraphIssueType represents a type:* label and optional route metadata.
+type GraphIssueType struct {
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	PODefinitionOutput string   `json:"poDefinitionOutput,omitempty"`
+	DefaultPath        []string `json:"defaultPath,omitempty"`
 }
 
 // WorkflowSummary is a brief description of a workflow for the list endpoint.
@@ -573,32 +593,69 @@ func buildWorkflowGraph(wd *WorkflowDef) WorkflowGraphResponse {
 				continue
 			}
 			edges = append(edges, GraphEdge{
-				ID:           fmt.Sprintf("%s__%s", t.ID, from),
-				Source:       from,
-				Target:       t.To,
-				AllowedRoles: t.AllowedRoles,
-				Guard:        t.Guard,
-				Description:  t.Description,
+				ID:                      fmt.Sprintf("%s__%s", t.ID, from),
+				TransitionID:            t.ID,
+				Source:                  from,
+				Target:                  t.To,
+				AllowedRoles:            t.AllowedRoles,
+				Guard:                   t.Guard,
+				QueuesNextRole:          queuesNextRoleValue(t.QueuesNextRole),
+				RequiredOutputs:         t.RequiredOutputs,
+				CloseIssue:              t.CloseIssue,
+				ReopenIssue:             t.ReopenIssue,
+				TerminalAfterTransition: t.TerminalAfterTransition,
+				Description:             t.Description,
 			})
 		}
 		// Bootstrap transitions (From == nil) have no source node.
 		if len(t.From) == 0 && t.To != "" {
 			edges = append(edges, GraphEdge{
-				ID:           t.ID,
-				Source:       "__bootstrap__",
-				Target:       t.To,
-				AllowedRoles: t.AllowedRoles,
-				Description:  t.Description,
+				ID:                      t.ID,
+				TransitionID:            t.ID,
+				Source:                  "__bootstrap__",
+				Target:                  t.To,
+				AllowedRoles:            t.AllowedRoles,
+				Guard:                   t.Guard,
+				QueuesNextRole:          queuesNextRoleValue(t.QueuesNextRole),
+				RequiredOutputs:         t.RequiredOutputs,
+				CloseIssue:              t.CloseIssue,
+				ReopenIssue:             t.ReopenIssue,
+				TerminalAfterTransition: t.TerminalAfterTransition,
+				Description:             t.Description,
 			})
 		}
 	}
 
-	return WorkflowGraphResponse{
-		ID:    wd.Workflow.ID,
-		Key:   wd.Workflow.Key,
-		Nodes: nodes,
-		Edges: edges,
+	issueTypes := make([]GraphIssueType, 0, len(wd.IssueTypes))
+	for _, it := range wd.IssueTypes {
+		issueTypes = append(issueTypes, GraphIssueType{
+			ID:                 it.ID,
+			Name:               it.Name,
+			PODefinitionOutput: it.PODefinitionOutput,
+			DefaultPath:        it.DefaultPath,
+		})
 	}
+
+	return WorkflowGraphResponse{
+		ID:               wd.Workflow.ID,
+		Key:              wd.Workflow.Key,
+		Description:      strings.TrimSpace(wd.Workflow.Purpose),
+		Roles:            wd.Workflow.Roles,
+		SupportedTypes:   wd.Workflow.SupportedTypes,
+		DefaultPathScope: wd.Workflow.DefaultPathScope,
+		IssueTypes:       issueTypes,
+		Guards:           wd.Guards,
+		CanonicalPaths:   wd.CanonicalPaths,
+		Nodes:            nodes,
+		Edges:            edges,
+	}
+}
+
+func queuesNextRoleValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func setCORSHeaders(w http.ResponseWriter) {

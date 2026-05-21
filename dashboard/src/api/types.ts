@@ -58,17 +58,42 @@ export interface GraphNode {
 
 export interface GraphEdge {
   id: string;
+  transitionId: string;
   source: string;
   target: string;
   allowedRoles: string[];
   guard?: string;
+  queuesNextRole?: string;
+  requiredOutputs?: unknown;
+  closeIssue?: boolean;
+  reopenIssue?: boolean;
+  terminalAfterTransition?: boolean;
   description?: string;
+}
+
+export interface WorkflowGuard {
+  description?: string;
+  any_label?: string[];
+  all_absent?: string[];
+}
+
+export interface WorkflowIssueType {
+  id: string;
+  name: string;
+  poDefinitionOutput?: string;
+  defaultPath?: string[];
 }
 
 export interface WorkflowGraph {
   id: string;
   key: string;
   description?: string;
+  roles?: string[];
+  supportedTypes?: string[];
+  defaultPathScope?: string;
+  issueTypes?: WorkflowIssueType[];
+  guards?: Record<string, WorkflowGuard>;
+  canonicalPaths?: Record<string, string[]>;
   nodes: GraphNode[];
   edges: GraphEdge[];
 }
