@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, GitBranch, Info, ListFilter, Route, X } from 'lucide-react';
+import { ArrowDown, GitBranch, Info, ListFilter, Route, X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import useSWR from 'swr';
 import ReactFlow, {
@@ -305,7 +305,6 @@ export function WorkflowGraph() {
               data={data}
               preset={selectedPreset}
               nodeByID={nodeByID}
-              edges={visibleEdges}
               onSelect={setSelection}
             />
           )}
@@ -384,7 +383,7 @@ function PathView({
             <div style={mutedText}>Normal route with exception paths hidden</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', minWidth: 'max-content' }}>
+        <div style={pathStack}>
           {statuses.map((status, index) => {
             const node = nodeByID.get(status);
             const edge = index > 0 ? findEdge(data.edges, statuses[index - 1], status) : undefined;
@@ -394,10 +393,10 @@ function PathView({
                   <button
                     type="button"
                     onClick={() => edge && onSelect({ kind: 'edge', edge })}
-                    style={pathArrow(edge)}
+                    style={pathSeparator(edge)}
                     title={edge?.description || edge?.transitionId}
                   >
-                    <ArrowRight size={16} />
+                    <ArrowDown size={16} />
                     {edge?.guard && <span style={guardBadge}>{edge.guard}</span>}
                   </button>
                 )}
@@ -406,10 +405,13 @@ function PathView({
                   onClick={() => node && onSelect({ kind: 'node', node })}
                   style={pathNode(node)}
                 >
-                  <span style={{ color: node ? categoryColor(node.category) : undefined }}>
-                    {prettyStatus(status)}
-                  </span>
-                  <span style={pathNodeMeta}>{node?.role || 'terminal'}</span>
+                  <div style={pathNodeHeader}>
+                    <span style={{ color: node ? categoryColor(node.category) : undefined }}>
+                      {prettyStatus(status)}
+                    </span>
+                    <span style={pathNodeMeta}>{node?.role || 'terminal'}</span>
+                  </div>
+                  <span style={pathNodeSummary}>{node?.category ?? 'terminal'}</span>
                 </button>
               </React.Fragment>
             );
@@ -424,71 +426,54 @@ function SwimlaneView({
   data,
   preset,
   nodeByID,
-  edges,
   onSelect,
 }: {
   data: WorkflowGraphType;
   preset?: PathPreset;
   nodeByID: Map<string, GraphNode>;
-  edges: GraphEdge[];
   onSelect: (selection: DetailSelection) => void;
 }) {
   const statuses = preset?.statuses ?? [];
   const roles = orderedRoles(data, statuses, nodeByID);
-  const columns = statuses.length;
+  const roleEntries = roles.map((role) => ({
+    role,
+    nodes: statuses
+      .map((status, index) => ({ status, index, node: nodeByID.get(status) }))
+      .filter(({ node }) => (node?.role || 'terminal') === role),
+  }));
   return (
     <div style={canvasShell}>
       <div style={{ padding: 'var(--spacing-md)', overflow: 'auto' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: `132px repeat(${columns}, minmax(144px, 1fr))`,
-            minWidth: `${132 + columns * 154}px`,
-            border: '1px solid var(--md-sys-color-outline-variant)',
-            borderRadius: 'var(--radius-md)',
-            overflow: 'hidden',
-          }}
-        >
-          <div style={laneHeader}>Role</div>
-          {statuses.map((status, index) => (
-            <div key={`step-${status}-${index}`} style={laneHeader}>
-              Step {index + 1}
-            </div>
-          ))}
-          {roles.map((role) => (
-            <React.Fragment key={role}>
-              <div style={laneRoleCell(role)}>{role || 'Terminal'}</div>
-              {statuses.map((status, index) => {
-                const node = nodeByID.get(status);
-                const edge = index > 0 ? findEdge(edges, statuses[index - 1], status) : undefined;
-                const ownsCell = (node?.role || 'terminal') === role;
-                return (
-                  <div key={`${role}-${status}-${index}`} style={laneCell}>
-                    {index > 0 && <div style={laneConnector(Boolean(edge))} />}
-                    {edge && (
-                      <button
-                        type="button"
-                        onClick={() => onSelect({ kind: 'edge', edge })}
-                        style={laneEdgeButton}
-                        title={edge.description || edge.transitionId}
-                      >
-                        <ArrowRight size={13} />
-                      </button>
-                    )}
-                    {ownsCell && node && (
-                      <button
-                        type="button"
-                        onClick={() => onSelect({ kind: 'node', node })}
-                        style={laneNode(node)}
-                      >
-                        <span>{prettyStatus(status)}</span>
-                        <span style={laneCategory}>{node.category}</span>
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </React.Fragment>
+        <div style={swimlaneStack}>
+          {roleEntries.map(({ role, nodes }) => (
+            <section key={role} style={swimlaneLane}>
+              <div style={swimlaneLaneHeader}>
+                <div style={swimlaneLaneTitle}>{role || 'Terminal'}</div>
+                <div style={swimlaneLaneMeta}>{nodes.length} states in path</div>
+              </div>
+              <div style={swimlaneLaneBody}>
+                {nodes.length === 0 ? (
+                  <div style={swimlaneEmpty}>No states for this role in the selected path</div>
+                ) : (
+                  nodes.map(({ status, index, node }) => (
+                    <button
+                      key={`${role}-${status}-${index}`}
+                      type="button"
+                      onClick={() => node && onSelect({ kind: 'node', node })}
+                      style={swimlaneNode(node)}
+                    >
+                      <div style={swimlaneNodeHeader}>
+                        <span style={{ color: node ? categoryColor(node.category) : undefined }}>
+                          {prettyStatus(status)}
+                        </span>
+                        <span style={swimlaneStep}>Step {index + 1}</span>
+                      </div>
+                      <div style={swimlaneNodeMeta}>{node?.category ?? 'terminal'}</div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </section>
           ))}
         </div>
         <TransitionStrip data={data} statuses={statuses} onSelect={onSelect} />
@@ -951,85 +936,100 @@ const toggleStyle: React.CSSProperties = {
   fontSize: '0.8125rem',
 };
 
-const laneHeader: React.CSSProperties = {
-  padding: '10px 12px',
-  background: 'var(--md-sys-color-surface-variant)',
-  borderRight: '1px solid var(--md-sys-color-outline-variant)',
-  borderBottom: '1px solid var(--md-sys-color-outline-variant)',
-  color: 'var(--md-sys-color-on-surface-variant)',
-  fontSize: '0.75rem',
-  fontWeight: 700,
-  textTransform: 'uppercase',
+const swimlaneStack: React.CSSProperties = {
+  display: 'grid',
+  gap: 'var(--spacing-md)',
+  width: 'min(100%, 960px)',
+  margin: '0 auto',
 };
 
-const laneCell: React.CSSProperties = {
-  minHeight: '92px',
-  padding: '12px',
-  borderRight: '1px solid var(--md-sys-color-outline-variant)',
-  borderBottom: '1px solid var(--md-sys-color-outline-variant)',
-  position: 'relative',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
-
-const laneRoleCell = (role: string): React.CSSProperties => ({
-  ...laneHeader,
-  color: role === 'terminal' ? 'var(--status-color-terminal)' : 'var(--md-sys-color-on-surface)',
-  textTransform: 'none',
-  fontSize: '0.875rem',
-});
-
-const laneConnector = (active: boolean): React.CSSProperties => ({
-  position: 'absolute',
-  left: '-50%',
-  right: '50%',
-  top: '50%',
-  borderTop: `2px ${active ? 'solid' : 'dashed'} ${active ? 'var(--color-neon-green)' : 'var(--md-sys-color-outline-variant)'}`,
-  opacity: active ? 0.8 : 0.35,
-});
-
-const laneEdgeButton: React.CSSProperties = {
-  position: 'absolute',
-  left: '-13px',
-  top: 'calc(50% - 13px)',
-  width: '26px',
-  height: '26px',
+const swimlaneLane: React.CSSProperties = {
   border: '1px solid var(--md-sys-color-outline-variant)',
-  borderRadius: '50%',
+  borderRadius: 'var(--radius-md)',
+  overflow: 'hidden',
   background: 'var(--md-sys-color-surface)',
-  color: 'var(--color-neon-green)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
 };
 
-const laneNode = (node: GraphNode): React.CSSProperties => ({
+const swimlaneLaneHeader: React.CSSProperties = {
+  padding: '10px 12px',
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: '12px',
+  background: 'var(--md-sys-color-surface-variant)',
+  borderBottom: '1px solid var(--md-sys-color-outline-variant)',
+};
+
+const swimlaneLaneTitle: React.CSSProperties = {
+  fontSize: '0.875rem',
+  fontWeight: 700,
+  color: 'var(--md-sys-color-on-surface)',
+  textTransform: 'none',
+};
+
+const swimlaneLaneMeta: React.CSSProperties = {
+  fontSize: '0.75rem',
+  color: 'var(--md-sys-color-on-surface-variant)',
+};
+
+const swimlaneLaneBody: React.CSSProperties = {
+  display: 'grid',
+  gap: '10px',
+  padding: '12px',
+};
+
+const swimlaneEmpty: React.CSSProperties = {
+  padding: '14px 12px',
+  border: '1px dashed var(--md-sys-color-outline-variant)',
+  borderRadius: 'var(--radius-sm)',
+  color: 'var(--md-sys-color-on-surface-variant)',
+  fontSize: '0.8125rem',
+};
+
+const swimlaneNode = (node?: GraphNode): React.CSSProperties => ({
   width: '100%',
-  minHeight: '58px',
-  border: `1px solid ${categoryColor(node.category)}`,
-  borderLeft: `4px solid ${categoryColor(node.category)}`,
+  minHeight: '72px',
+  border: `1px solid ${node ? categoryColor(node.category) : 'var(--md-sys-color-outline-variant)'}`,
+  borderTop: `4px solid ${node ? categoryColor(node.category) : 'var(--md-sys-color-outline-variant)'}`,
   borderRadius: 'var(--radius-sm)',
   background: 'var(--md-sys-color-surface)',
   color: 'var(--md-sys-color-on-surface)',
   display: 'grid',
-  gap: '3px',
-  justifyItems: 'start',
+  gap: '6px',
   alignContent: 'center',
-  padding: '8px 10px',
-  cursor: 'pointer',
+  padding: '10px 12px',
+  cursor: node ? 'pointer' : 'default',
   textAlign: 'left',
 });
 
-const laneCategory: React.CSSProperties = {
+const swimlaneNodeHeader: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '12px',
+  fontWeight: 600,
+};
+
+const swimlaneNodeMeta: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
-  fontSize: '0.6875rem',
+  fontSize: '0.75rem',
   textTransform: 'uppercase',
 };
 
-const pathArrow = (edge?: GraphEdge): React.CSSProperties => ({
-  minWidth: '80px',
+const swimlaneStep: React.CSSProperties = {
+  color: 'var(--md-sys-color-on-surface-variant)',
+  fontSize: '0.75rem',
+};
+
+const pathStack: React.CSSProperties = {
+  display: 'grid',
+  gap: '8px',
+  width: 'min(100%, 960px)',
+  margin: '0 auto',
+};
+
+const pathSeparator = (edge?: GraphEdge): React.CSSProperties => ({
+  width: '100%',
   border: 0,
   background: 'transparent',
   color: edge ? edgeColor(edge) : 'var(--md-sys-color-outline)',
@@ -1041,24 +1041,39 @@ const pathArrow = (edge?: GraphEdge): React.CSSProperties => ({
 });
 
 const pathNode = (node?: GraphNode): React.CSSProperties => ({
-  minWidth: '150px',
-  minHeight: '82px',
+  width: '100%',
+  minHeight: '86px',
   border: `1px solid ${node ? categoryColor(node.category) : 'var(--md-sys-color-outline-variant)'}`,
   borderTop: `4px solid ${node ? categoryColor(node.category) : 'var(--md-sys-color-outline-variant)'}`,
   borderRadius: 'var(--radius-sm)',
   background: 'var(--md-sys-color-surface)',
   color: 'var(--md-sys-color-on-surface)',
   display: 'grid',
-  alignContent: 'center',
   gap: '6px',
-  padding: '10px',
+  alignContent: 'center',
+  padding: '12px 14px',
   cursor: 'pointer',
   textAlign: 'left',
 });
 
+const pathNodeHeader: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '12px',
+  fontWeight: 600,
+};
+
 const pathNodeMeta: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
   fontSize: '0.75rem',
+};
+
+const pathNodeSummary: React.CSSProperties = {
+  color: 'var(--md-sys-color-on-surface-variant)',
+  fontSize: '0.75rem',
+  textTransform: 'uppercase',
+  letterSpacing: 0,
 };
 
 const guardBadge: React.CSSProperties = {
