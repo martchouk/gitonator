@@ -27,19 +27,6 @@ import { StatusChip } from '../components/StatusChip';
 const nodeTypes = { workflowStatus: WorkflowNode };
 const SWIMLANE_STEP_COLUMN_WIDTH = 56;
 
-const categoryColors: Record<string, string> = {
-  intake: 'var(--status-color-intake)',
-  design: 'var(--status-color-design)',
-  requirements: 'var(--status-color-requirements)',
-  planning: 'var(--status-color-planning)',
-  implementation: 'var(--status-color-implementation)',
-  review: 'var(--status-color-review)',
-  verification: 'var(--status-color-acceptance)',
-  acceptance: 'var(--status-color-intake)',
-  exception: 'var(--status-color-blocked)',
-  terminal: 'var(--status-color-terminal)',
-};
-
 type GraphApiResponse = WorkflowGraphType;
 type ViewMode = 'path' | 'swimlane' | 'full';
 type DetailSelection =
@@ -413,13 +400,11 @@ function PathView({
                   onClick={() => node && onSelect({ kind: 'node', node })}
                   style={pathNode(node)}
                 >
-                  <div style={pathNodeHeader}>
-                    <span style={{ color: node ? categoryColor(node.category) : undefined }}>
-                      {prettyStatus(status)}
-                    </span>
-                    <span style={pathNodeMeta}>{node?.role || 'terminal'}</span>
+                  <StatusChip status={status} truncate maxWidth="170px" />
+                  <div style={pathNodeFooter}>
+                    <span style={pathNodeMetaItem}>{node?.category ?? 'terminal'}</span>
+                    <span style={pathNodeMetaItem}>{node?.role || 'terminal'}</span>
                   </div>
-                  <span style={pathNodeSummary}>{node?.category ?? 'terminal'}</span>
                 </button>
               </React.Fragment>
             );
@@ -853,10 +838,6 @@ function edgeColor(edge: GraphEdge) {
   return 'var(--color-neon-green)';
 }
 
-function categoryColor(category: string) {
-  return categoryColors[category] ?? 'var(--md-sys-color-on-surface)';
-}
-
 function roleColor(role?: string) {
   switch (role) {
     case 'po':
@@ -1272,6 +1253,7 @@ const pathStack: React.CSSProperties = {
   gap: '8px',
   width: 'min(100%, 960px)',
   margin: '0 auto',
+  justifyItems: 'center',
 };
 
 const pathSeparator = (edge?: GraphEdge): React.CSSProperties => ({
@@ -1287,39 +1269,36 @@ const pathSeparator = (edge?: GraphEdge): React.CSSProperties => ({
 });
 
 const pathNode = (node?: GraphNode): React.CSSProperties => ({
-  width: '100%',
+  width: 'min(100%, 240px)',
   minHeight: '86px',
-  border: `1px solid ${node ? categoryColor(node.category) : 'var(--md-sys-color-outline-variant)'}`,
-  borderTop: `4px solid ${node ? categoryColor(node.category) : 'var(--md-sys-color-outline-variant)'}`,
+  border: `1px solid ${node ? roleColor(node.role) : 'var(--md-sys-color-outline-variant)'}`,
+  borderTop: `4px solid ${node ? roleColor(node.role) : 'var(--md-sys-color-outline-variant)'}`,
   borderRadius: 'var(--radius-sm)',
   background: 'var(--md-sys-color-surface)',
   color: 'var(--md-sys-color-on-surface)',
   display: 'grid',
-  gap: '6px',
+  gap: '10px',
   alignContent: 'center',
   padding: '12px 14px',
   cursor: 'pointer',
-  textAlign: 'left',
+  textAlign: 'center',
+  justifyItems: 'center',
 });
 
-const pathNodeHeader: React.CSSProperties = {
+const pathNodeFooter: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '12px',
-  fontWeight: 600,
+  justifyContent: 'center',
+  gap: '8px',
+  flexWrap: 'wrap',
 };
 
-const pathNodeMeta: React.CSSProperties = {
+const pathNodeMetaItem: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
-  fontSize: '0.75rem',
-};
-
-const pathNodeSummary: React.CSSProperties = {
-  color: 'var(--md-sys-color-on-surface-variant)',
-  fontSize: '0.75rem',
+  fontSize: '0.6875rem',
   textTransform: 'uppercase',
   letterSpacing: 0,
+  fontFamily: 'var(--font-mono)',
 };
 
 const guardBadge: React.CSSProperties = {
