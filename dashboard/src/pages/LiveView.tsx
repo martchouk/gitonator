@@ -249,17 +249,49 @@ function SubTableHeader() {
   );
 }
 
-// Roadmap node: circle with step number (or spinner for running task) + connector lines.
-// First/last non-running circles are amber-filled; running circle uses green border + spinner.
+// Roadmap node: circle with step number + connector lines.
+// First/last circles are amber-filled. Running circle is a spinning arc with no inner content.
+// Connectors leading to/from a running circle are dashed green.
 function StepNode({ step, isFirst, isLast, isRunning, commentUrl, commentId }: {
   step: number; isFirst: boolean; isLast: boolean;
   isRunning: boolean; commentUrl: string | null; commentId: number | null;
 }) {
-  const filled = (isFirst || isLast) && !isRunning;
-  const borderColor = isRunning ? 'var(--color-neon-green)' : 'var(--color-neon-amber)';
   const [hovered, setHovered] = useState(false);
   const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
 
+  const connectorBase: React.CSSProperties = {
+    position: 'absolute', left: '50%', transform: 'translateX(-50%)', width: '1.5px',
+  };
+  const dashedGreen = { backgroundImage: 'repeating-linear-gradient(to bottom, var(--color-neon-green) 0px, var(--color-neon-green) 4px, transparent 4px, transparent 8px)' };
+
+  const topConnector = !isFirst ? (
+    <div style={{ ...connectorBase, top: 0, bottom: 'calc(50% + 8.5px)', ...(isRunning ? dashedGreen : { background: 'var(--color-neon-amber)' }) }} />
+  ) : null;
+
+  const bottomConnector = !isLast ? (
+    <div style={{ ...connectorBase, top: 'calc(50% + 8.5px)', bottom: 0, ...(isRunning ? dashedGreen : { background: 'var(--color-neon-amber)' }) }} />
+  ) : null;
+
+  if (isRunning) {
+    return (
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' }}>
+        {topConnector}
+        <div style={{
+          position: 'relative', zIndex: 1,
+          width: '17px', height: '17px', borderRadius: '50%',
+          borderTop: '1.5px solid var(--color-neon-green)',
+          borderRight: '1.5px solid color-mix(in srgb, var(--color-neon-green) 25%, transparent)',
+          borderBottom: '1.5px solid color-mix(in srgb, var(--color-neon-green) 25%, transparent)',
+          borderLeft: '1.5px solid color-mix(in srgb, var(--color-neon-green) 25%, transparent)',
+          background: 'transparent', flexShrink: 0,
+          animation: 'spin 1.2s linear infinite',
+        }} />
+        {bottomConnector}
+      </div>
+    );
+  }
+
+  const filled = isFirst || isLast;
   const hoverBg = filled
     ? 'color-mix(in srgb, var(--color-neon-amber) 75%, white)'
     : 'color-mix(in srgb, var(--color-neon-amber) 22%, transparent)';
@@ -278,44 +310,30 @@ function StepNode({ step, isFirst, isLast, isRunning, commentUrl, commentId }: {
   };
 
   const circleStyle: React.CSSProperties = {
-    position: 'relative',
-    zIndex: 1,
-    width: '17px',
-    height: '17px',
-    borderRadius: '50%',
-    border: `1.5px solid ${borderColor}`,
+    position: 'relative', zIndex: 1,
+    width: '17px', height: '17px', borderRadius: '50%',
+    border: '1.5px solid var(--color-neon-amber)',
     background: commentUrl && hovered ? hoverBg : (filled ? 'var(--color-neon-amber)' : 'transparent'),
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontFamily: 'var(--font-mono)',
-    fontSize: '0.5rem',
-    fontWeight: 700,
-    color: filled ? 'var(--md-sys-color-surface)' : borderColor,
-    flexShrink: 0,
-    textDecoration: 'none',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontFamily: 'var(--font-mono)', fontSize: '0.5rem', fontWeight: 700,
+    color: filled ? 'var(--md-sys-color-surface)' : 'var(--color-neon-amber)',
+    flexShrink: 0, textDecoration: 'none',
     cursor: commentUrl ? 'pointer' : 'default',
     transition: 'background 120ms ease',
   };
 
   return (
     <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' }}>
-      {!isFirst && (
-        <div style={{ position: 'absolute', top: 0, bottom: 'calc(50% + 8.5px)', left: '50%', transform: 'translateX(-50%)', width: '1.5px', background: 'var(--color-neon-amber)' }} />
-      )}
+      {topConnector}
       {commentUrl ? (
         <a href={commentUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
           style={circleStyle} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-          {isRunning ? <Loader2 size={9} style={{ animation: 'spin 1.2s linear infinite' }} /> : step}
+          {step}
         </a>
       ) : (
-        <div style={circleStyle}>
-          {isRunning ? <Loader2 size={9} style={{ animation: 'spin 1.2s linear infinite' }} /> : step}
-        </div>
+        <div style={circleStyle}>{step}</div>
       )}
-      {!isLast && (
-        <div style={{ position: 'absolute', top: 'calc(50% + 8.5px)', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '1.5px', background: 'var(--color-neon-amber)' }} />
-      )}
+      {bottomConnector}
       {hovered && commentId && tipPos && (
         <div style={{
           position: 'fixed', left: tipPos.x, top: tipPos.y, transform: 'translateY(-50%)',
