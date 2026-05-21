@@ -60,8 +60,8 @@ function taskOutcomeColor(status: string): string {
   return 'var(--color-text-muted)';
 }
 
-// 9 columns: step | gh-comment | role | status | outcome | assigned to | bridge | created | duration
-const SUB_COLS = '40px 48px 90px 1fr 100px 120px 90px 78px 74px';
+// 8 columns: step | role | status | outcome | assigned to | bridge | created | duration
+const SUB_COLS = '40px 90px 1fr 100px 120px 90px 78px 74px';
 
 function SubTableHeader() {
   return (
@@ -79,8 +79,7 @@ function SubTableHeader() {
         borderBottom: '1px solid var(--md-sys-color-outline-variant)',
       }}
     >
-      <span />
-      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><GithubIcon size={12} color="var(--color-text-muted)" /></span>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><GithubIcon size={17} color="var(--color-text-muted)" /></span>
       <span>Role</span>
       <span>Status at Dispatch</span>
       <span>Outcome</span>
@@ -94,8 +93,27 @@ function SubTableHeader() {
 
 // Roadmap node: circle with step number + vertical connector lines.
 // isFirst/isLast circles are color-filled; middle circles are hollow.
-function StepNode({ step, isFirst, isLast }: { step: number; isFirst: boolean; isLast: boolean }) {
+// Circle links to the GitHub issue comment when commentUrl is provided.
+function StepNode({ step, isFirst, isLast, commentUrl }: { step: number; isFirst: boolean; isLast: boolean; commentUrl: string | null }) {
   const filled = isFirst || isLast;
+  const circleStyle: React.CSSProperties = {
+    position: 'relative',
+    zIndex: 1,
+    width: '17px',
+    height: '17px',
+    borderRadius: '50%',
+    border: '1.5px solid var(--color-neon-amber)',
+    background: filled ? 'var(--color-neon-amber)' : 'transparent',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.5rem',
+    fontWeight: 700,
+    color: filled ? 'var(--md-sys-color-surface)' : 'var(--color-neon-amber)',
+    flexShrink: 0,
+    textDecoration: 'none',
+  };
   return (
     <div style={{
       position: 'relative',
@@ -116,26 +134,21 @@ function StepNode({ step, isFirst, isLast }: { step: number; isFirst: boolean; i
           background: 'var(--color-neon-amber)',
         }} />
       )}
-      {/* circle — 17px (25% smaller than original 22px) */}
-      <div style={{
-        position: 'relative',
-        zIndex: 1,
-        width: '17px',
-        height: '17px',
-        borderRadius: '50%',
-        border: '1.5px solid var(--color-neon-amber)',
-        background: filled ? 'var(--color-neon-amber)' : 'transparent',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: 'var(--font-mono)',
-        fontSize: '0.5rem',
-        fontWeight: 700,
-        color: filled ? 'var(--md-sys-color-surface)' : 'var(--color-neon-amber)',
-        flexShrink: 0,
-      }}>
-        {step}
-      </div>
+      {/* circle — 17px, links to GitHub comment when available */}
+      {commentUrl ? (
+        <a
+          href={commentUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          title="View GitHub comment"
+          style={circleStyle}
+        >
+          {step}
+        </a>
+      ) : (
+        <div style={circleStyle}>{step}</div>
+      )}
       {/* bottom connector — hidden for last node */}
       {!isLast && (
         <div style={{
@@ -192,26 +205,7 @@ function SubTaskRow({ task, step, isFirst, isLast }: { task: TaskRow; step: numb
         background: 'var(--md-sys-color-outline-variant)',
       }} />
 
-      <StepNode step={step} isFirst={isFirst} isLast={isLast} />
-
-      <div style={cell({ justifyContent: 'center' })}>
-        {commentUrl ? (
-          <a
-            href={commentUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            title="View GitHub comment"
-            style={{ display: 'flex', alignItems: 'center', opacity: 0.7, transition: 'opacity 150ms ease' }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
-          >
-            <GithubIcon size={13} color="var(--color-neon-cyan)" />
-          </a>
-        ) : (
-          <GithubIcon size={13} color="var(--color-text-muted)" />
-        )}
-      </div>
+      <StepNode step={step} isFirst={isFirst} isLast={isLast} commentUrl={commentUrl} />
 
       <div style={cell()}>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
@@ -458,7 +452,7 @@ export function CompletedList() {
                   >
                     {run.issueNumber}
                   </a>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {run.repo || '–'}
                   </span>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
