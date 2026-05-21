@@ -1136,7 +1136,7 @@ const selectStyle: React.CSSProperties = {
   borderRadius: 'var(--radius-full)',
   outline: 'none',
   background: 'transparent',
-  color: 'var(--md-sys-color-on-surface)',
+  color: 'var(--md-sys-color-on-surface-variant)',
   padding: '0 34px 0 14px',
   fontFamily: 'var(--font-sans)',
   fontSize: '0.8125rem',
