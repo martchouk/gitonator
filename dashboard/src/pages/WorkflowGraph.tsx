@@ -521,7 +521,7 @@ function SwimlaneView({
                   d={connector.d}
                   fill="none"
                   stroke="transparent"
-                  strokeWidth={18}
+                  strokeWidth={24}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   pointerEvents="stroke"
@@ -1087,7 +1087,7 @@ const swimlaneCell: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  zIndex: 2,
+  zIndex: 5,
 };
 
 const swimlaneNode = (node?: GraphNode, hovered = false): React.CSSProperties => ({
@@ -1105,7 +1105,7 @@ const swimlaneNode = (node?: GraphNode, hovered = false): React.CSSProperties =>
   cursor: node ? 'pointer' : 'default',
   textAlign: 'left',
   position: 'relative',
-  zIndex: 3,
+  zIndex: 6,
   transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
   transform: hovered ? 'translateY(-1px)' : 'none',
   boxShadow: hovered ? '0 6px 16px rgba(0, 0, 0, 0.14)' : 'none',
