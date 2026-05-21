@@ -12,6 +12,7 @@ workflow:
     - bug
     - change_request
     - smoke_test
+  default_path_scope: post_intake
   roles:
     - po
     - architect
@@ -70,8 +71,7 @@ issue_types:
   - id: type:smoke-test
     name: smoke_test
     default_path:
-      - status:ready-for-dev
-      - status:code-review
+      - status:testing
       - status:po-acceptance
       - status:done
 
@@ -138,6 +138,10 @@ statuses:
     terminal: true
 
 guards:
+  smoke_test:
+    description: "Issue is a workflow smoke test and should be routed to verification without implementation work."
+    any_label:
+      - type:smoke-test
   has_ui_impact:
     description: "Issue needs UI/UX design or visual acceptance."
     any_label:
@@ -151,6 +155,7 @@ guards:
       - area:ux
       - needs:ui-design
     all_absent:
+      - type:smoke-test
       - needs:architecture
       - risk:high
       - type:feature
@@ -162,9 +167,12 @@ guards:
       - risk:high
       - type:feature
       - type:change-request
+    all_absent:
+      - type:smoke-test
   small_safe_change:
     description: "Issue can skip architecture and UI gates."
     all_absent:
+      - type:smoke-test
       - needs:architecture
       - needs:ui-design
       - area:ui
@@ -201,7 +209,25 @@ transitions:
     allowed_roles:
       - po
     queues_next_role: null
+    terminal_after_transition: true
+    close_issue: true
+    required_outputs:
+      - rejection_reason
     description: "PO rejects invalid, duplicate, or out-of-scope issue."
+
+  - id: po_send_smoke_test_to_testing
+    from:
+      - status:new
+      - status:triage
+    to: status:testing
+    allowed_roles:
+      - po
+    guard: smoke_test
+    queues_next_role: tester
+    required_outputs:
+      - smoke_test_scope
+      - expected_check
+    description: "PO sends a workflow smoke-test issue directly to tester verification."
 
   - id: po_request_architecture
     from:
@@ -212,6 +238,10 @@ transitions:
       - po
     guard: needs_architecture
     queues_next_role: architect
+    required_outputs:
+      - problem_statement
+      - acceptance_criteria
+      - constraints
     description: "PO sends issue to architect for solution design."
 
   - id: po_request_ui_design
@@ -223,6 +253,10 @@ transitions:
       - po
     guard: has_ui_impact_without_architecture
     queues_next_role: uidesigner
+    required_outputs:
+      - problem_statement
+      - ui_context
+      - visual_acceptance_criteria
     description: "PO sends an issue directly to UI designer when UI/UX work is needed without architecture first."
 
   - id: architect_request_ui_design
@@ -234,6 +268,9 @@ transitions:
       - architect
     guard: has_ui_impact
     queues_next_role: uidesigner
+    required_outputs:
+      - solution_design_summary
+      - ui_design_request
     description: "PO or architect sends an architected issue to UI designer."
 
   - id: po_mark_ready_for_dev
@@ -245,6 +282,9 @@ transitions:
       - po
     guard: small_safe_change
     queues_next_role: developer
+    required_outputs:
+      - requirement_summary
+      - acceptance_criteria
     description: "PO sends a small or clear issue directly to development."
 
   - id: architect_complete_solution_design
@@ -254,6 +294,10 @@ transitions:
     allowed_roles:
       - architect
     queues_next_role: developer
+    required_outputs:
+      - solution_design
+      - technical_risks
+      - implementation_notes
     description: "Architect completes solution design and releases issue for development."
 
   - id: architect_return_to_po
@@ -263,6 +307,8 @@ transitions:
     allowed_roles:
       - architect
     queues_next_role: po
+    required_outputs:
+      - clarification_request
     description: "Architect needs PO clarification or scope decision."
 
   - id: ui_complete_design
@@ -272,6 +318,9 @@ transitions:
     allowed_roles:
       - uidesigner
     queues_next_role: developer
+    required_outputs:
+      - ui_specification
+      - visual_acceptance_criteria
     description: "UI designer completes design and releases issue for development."
 
   - id: ui_return_to_po
@@ -281,6 +330,8 @@ transitions:
     allowed_roles:
       - uidesigner
     queues_next_role: po
+    required_outputs:
+      - clarification_request
     description: "UI designer needs PO clarification or scope decision."
 
   - id: developer_start_work
@@ -291,6 +342,8 @@ transitions:
     allowed_roles:
       - developer
     queues_next_role: developer
+    required_outputs:
+      - implementation_progress
     description: "Developer starts or continues implementation."
 
   - id: developer_request_architecture_review
@@ -301,6 +354,9 @@ transitions:
       - developer
     guard: needs_architecture
     queues_next_role: architect
+    required_outputs:
+      - implementation_summary
+      - architecture_review_focus
     description: "Developer asks architect to review implementation or design-sensitive changes."
 
   - id: developer_request_ui_review
@@ -311,21 +367,24 @@ transitions:
       - developer
     guard: has_ui_impact
     queues_next_role: uidesigner
+    required_outputs:
+      - implementation_summary
+      - ui_review_focus
     description: "Developer asks UI designer to review implemented UI."
 
   - id: developer_submit_code_review
     from:
       - status:ready-for-dev
       - status:in-development
-      - status:architecture-review
-      - status:ui-review
     to: status:code-review
     allowed_roles:
       - developer
-      - architect
-      - uidesigner
     queues_next_role: reviewer
-    description: "Implementation is ready for code review."
+    required_outputs:
+      - implementation_summary
+      - changed_files
+      - verification_notes
+    description: "Developer submits implementation for code review."
 
   - id: architect_approve_implementation
     from:
@@ -334,6 +393,9 @@ transitions:
     allowed_roles:
       - architect
     queues_next_role: reviewer
+    required_outputs:
+      - architecture_review_result
+      - reviewer_notes
     description: "Architect accepts implementation and passes it to code review."
 
   - id: architect_reject_implementation
@@ -343,6 +405,8 @@ transitions:
     allowed_roles:
       - architect
     queues_next_role: developer
+    required_outputs:
+      - architecture_review_feedback
     description: "Architect requests implementation changes."
 
   - id: ui_approve_implementation
@@ -352,6 +416,9 @@ transitions:
     allowed_roles:
       - uidesigner
     queues_next_role: reviewer
+    required_outputs:
+      - ui_review_result
+      - reviewer_notes
     description: "UI designer accepts implementation and passes it to code review."
 
   - id: ui_reject_implementation
@@ -361,6 +428,8 @@ transitions:
     allowed_roles:
       - uidesigner
     queues_next_role: developer
+    required_outputs:
+      - ui_review_feedback
     description: "UI designer requests implementation changes."
 
   - id: reviewer_approve_code
@@ -370,6 +439,8 @@ transitions:
     allowed_roles:
       - reviewer
     queues_next_role: tester
+    required_outputs:
+      - code_review_summary
     description: "Reviewer accepts code and sends issue to testing."
 
   - id: reviewer_request_changes
@@ -379,6 +450,8 @@ transitions:
     allowed_roles:
       - reviewer
     queues_next_role: developer
+    required_outputs:
+      - code_review_feedback
     description: "Reviewer requests code changes."
 
   - id: tester_pass
@@ -388,6 +461,8 @@ transitions:
     allowed_roles:
       - tester
     queues_next_role: po
+    required_outputs:
+      - test_evidence
     description: "Tester verifies the issue and sends it to PO acceptance."
 
   - id: tester_fail
@@ -397,6 +472,9 @@ transitions:
     allowed_roles:
       - tester
     queues_next_role: developer
+    required_outputs:
+      - failed_test_cases
+      - reproduction_steps
     description: "Tester finds defects and sends issue back to development."
 
   - id: po_accept
@@ -406,6 +484,10 @@ transitions:
     allowed_roles:
       - po
     queues_next_role: null
+    terminal_after_transition: true
+    close_issue: true
+    required_outputs:
+      - acceptance_decision
     description: "PO accepts the delivered issue."
 
   - id: po_reject_acceptance
@@ -415,7 +497,42 @@ transitions:
     allowed_roles:
       - po
     queues_next_role: developer
+    required_outputs:
+      - po_acceptance_feedback
     description: "PO requests final changes."
+
+  - id: po_return_to_triage
+    from:
+      - status:po-acceptance
+    to: status:triage
+    allowed_roles:
+      - po
+    queues_next_role: po
+    required_outputs:
+      - scope_or_requirement_feedback
+    description: "PO sends issue back to triage when acceptance reveals a requirement or scope problem."
+
+  - id: po_return_to_solution_design
+    from:
+      - status:po-acceptance
+    to: status:solution-design
+    allowed_roles:
+      - po
+    queues_next_role: architect
+    required_outputs:
+      - architecture_acceptance_feedback
+    description: "PO sends issue back to architecture when acceptance reveals a solution-design problem."
+
+  - id: po_return_to_ui_design
+    from:
+      - status:po-acceptance
+    to: status:ui-design
+    allowed_roles:
+      - po
+    queues_next_role: uidesigner
+    required_outputs:
+      - ui_acceptance_feedback
+    description: "PO sends issue back to UI design when acceptance reveals a UX or visual-design problem."
 
   - id: block_issue
     from:
@@ -481,6 +598,10 @@ transitions:
     allowed_roles:
       - po
     queues_next_role: null
+    terminal_after_transition: true
+    close_issue: true
+    required_outputs:
+      - rejection_reason
     description: "PO rejects an active issue after new information or changed priorities."
 
   - id: reopen_done
@@ -490,6 +611,9 @@ transitions:
     allowed_roles:
       - po
     queues_next_role: po
+    required_outputs:
+      - reopen_reason
+    reopen_issue: true
     description: "PO reopens completed work for follow-up triage."
 
   - id: reopen_rejected
@@ -499,6 +623,10 @@ transitions:
     allowed_roles:
       - po
     queues_next_role: po
+    required_outputs:
+      - reopen_reason
+      - changed_context
+    reopen_issue: true
     description: "PO reopens a rejected issue when circumstances change."
 
 canonical_paths:
@@ -528,6 +656,11 @@ canonical_paths:
     - status:in-development
     - status:ui-review
     - status:code-review
+    - status:testing
+    - status:po-acceptance
+    - status:done
+  smoke_test:
+    - status:new
     - status:testing
     - status:po-acceptance
     - status:done

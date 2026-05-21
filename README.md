@@ -283,10 +283,13 @@ The `full` workflow uses one PO intake pass before the first handoff. New issues
 - architecture needed → `status:solution-design` → Architect task queued
 - UI/UX needed without architecture first → `status:ui-design` → UI designer task queued
 - small or clear work → `status:ready-for-dev` → Developer task queued
+- workflow smoke test → `status:testing` → Tester task queued
 - invalid or out of scope → `status:rejected`
 - blocked or missing information → `status:blocked` → PO task queued
 
 `status:triage` remains for exception paths such as reopen, blocked re-triage, or clarification requested by architect/UI/developer.
+
+Specialist review states are owned by the specialist role: `status:architecture-review` can move to code review only through architect approval, and `status:ui-review` can move to code review only through UI designer approval. PO acceptance may return work to development, triage, architecture, or UI design depending on the kind of acceptance failure. Terminal accept/reject transitions close the GitHub issue, and reopen transitions reopen it.
 
 ### Bridge failure handling
 

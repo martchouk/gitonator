@@ -450,7 +450,7 @@ func TestFullWorkflow_NewIssueDoesNotSelfHandoffToTriage(t *testing.T) {
 func TestFullWorkflow_NextRolesFromNewExcludesPO(t *testing.T) {
 	wd := fullWorkflowForTest(t)
 	roles := wd.NextRolesFrom("status:new")
-	for _, want := range []string{"architect", "uidesigner", "developer"} {
+	for _, want := range []string{"architect", "uidesigner", "developer", "tester"} {
 		if !containsString(roles, want) {
 			t.Errorf("expected NextRolesFrom(status:new) to include %q, got %v", want, roles)
 		}
@@ -458,6 +458,97 @@ func TestFullWorkflow_NextRolesFromNewExcludesPO(t *testing.T) {
 	if containsString(roles, "po") {
 		t.Errorf("expected NextRolesFrom(status:new) not to include po self-handoff, got %v", roles)
 	}
+}
+
+func TestFullWorkflow_SmokeTestRoutesDirectlyToTesting(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	issue := Issue{
+		Number: 1,
+		Labels: []GitHubLabel{{Name: "status:new"}, {Name: "type:smoke-test"}},
+	}
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:testing")
+	if !res.Allowed {
+		t.Errorf("expected smoke test to route directly to testing, violations: %v", res.Violations)
+	}
+
+	res = validateTransitionFromDef(wd, issue, nil, "po", "status:ready-for-dev")
+	if res.Allowed {
+		t.Error("expected smoke test not to route to development")
+	}
+}
+
+func TestFullWorkflow_DeveloperCannotBypassArchitectureReview(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	issue := Issue{
+		Number: 1,
+		Labels: []GitHubLabel{{Name: "status:architecture-review"}, {Name: "needs:architecture"}},
+	}
+	res := validateTransitionFromDef(wd, issue, nil, "developer", "status:code-review")
+	if res.Allowed {
+		t.Error("expected developer not to move architecture-review directly to code-review")
+	}
+
+	res = validateTransitionFromDef(wd, issue, nil, "architect", "status:code-review")
+	if !res.Allowed {
+		t.Errorf("expected architect to approve architecture-review to code-review, violations: %v", res.Violations)
+	}
+}
+
+func TestFullWorkflow_DeveloperCannotBypassUIReview(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+	issue := Issue{
+		Number: 1,
+		Labels: []GitHubLabel{{Name: "status:ui-review"}, {Name: "area:ui"}},
+	}
+	res := validateTransitionFromDef(wd, issue, nil, "developer", "status:code-review")
+	if res.Allowed {
+		t.Error("expected developer not to move ui-review directly to code-review")
+	}
+
+	res = validateTransitionFromDef(wd, issue, nil, "uidesigner", "status:code-review")
+	if !res.Allowed {
+		t.Errorf("expected UI designer to approve ui-review to code-review, violations: %v", res.Violations)
+	}
+}
+
+func TestFullWorkflow_TerminalAndReopenActions(t *testing.T) {
+	wd := fullWorkflowForTest(t)
+
+	poAccept := transitionByID(t, wd, "po_accept")
+	if !poAccept.TerminalAfterTransition || !poAccept.CloseIssue {
+		t.Errorf("po_accept should mark terminal and close issue, got terminal=%v close=%v",
+			poAccept.TerminalAfterTransition, poAccept.CloseIssue)
+	}
+
+	rejectAtTriage := transitionByID(t, wd, "po_reject_at_triage")
+	if !rejectAtTriage.TerminalAfterTransition || !rejectAtTriage.CloseIssue {
+		t.Errorf("po_reject_at_triage should mark terminal and close issue, got terminal=%v close=%v",
+			rejectAtTriage.TerminalAfterTransition, rejectAtTriage.CloseIssue)
+	}
+
+	rejectActive := transitionByID(t, wd, "reject_active_issue")
+	if !rejectActive.TerminalAfterTransition || !rejectActive.CloseIssue {
+		t.Errorf("reject_active_issue should mark terminal and close issue, got terminal=%v close=%v",
+			rejectActive.TerminalAfterTransition, rejectActive.CloseIssue)
+	}
+
+	if !transitionByID(t, wd, "reopen_done").ReopenIssue {
+		t.Error("reopen_done should reopen the GitHub issue")
+	}
+	if !transitionByID(t, wd, "reopen_rejected").ReopenIssue {
+		t.Error("reopen_rejected should reopen the GitHub issue")
+	}
+}
+
+func transitionByID(t *testing.T, wd *WorkflowDef, id string) TransitionDef {
+	t.Helper()
+	for _, tr := range wd.Transitions {
+		if tr.ID == id {
+			return tr
+		}
+	}
+	t.Fatalf("transition %q not found", id)
+	return TransitionDef{}
 }
 
 // ---------------------------------------------------------------------------
