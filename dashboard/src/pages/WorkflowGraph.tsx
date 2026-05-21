@@ -521,7 +521,7 @@ function SwimlaneView({
                   d={connector.d}
                   fill="none"
                   stroke="transparent"
-                  strokeWidth={24}
+                  strokeWidth={12}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   pointerEvents="stroke"
@@ -1124,7 +1124,7 @@ const swimlaneConnectorLayer: React.CSSProperties = {
   width: '100%',
   height: '100%',
   overflow: 'visible',
-  zIndex: 4,
+  zIndex: 7,
 };
 
 const pathStack: React.CSSProperties = {
