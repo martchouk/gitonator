@@ -462,21 +462,9 @@ function SwimlaneView({
               </div>
               {roles.map((role) => {
                 const node = nodeByID.get(status);
-                const edge = index > 0 ? findEdge(data.edges, statuses[index - 1], status) : undefined;
                 const ownsCell = (node?.role || 'terminal') === role;
                 return (
                   <div key={`${role}-${status}-${index}`} style={swimlaneCell}>
-                    {index > 0 && <div style={swimlaneConnector(Boolean(edge))} />}
-                    {edge && (
-                      <button
-                        type="button"
-                        onClick={() => onSelect({ kind: 'edge', edge })}
-                        style={swimlaneEdgeButton}
-                        title={edge.description || edge.transitionId}
-                      >
-                        <ArrowDown size={13} />
-                      </button>
-                    )}
                     {ownsCell && node && (
                       <button
                         type="button"
@@ -999,31 +987,6 @@ const swimlaneCell: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-};
-
-const swimlaneConnector = (active: boolean): React.CSSProperties => ({
-  position: 'absolute',
-  top: '-50%',
-  bottom: '50%',
-  left: '50%',
-  borderLeft: `2px ${active ? 'solid' : 'dashed'} ${active ? 'var(--color-neon-green)' : 'var(--md-sys-color-outline-variant)'}`,
-  opacity: active ? 0.8 : 0.35,
-});
-
-const swimlaneEdgeButton: React.CSSProperties = {
-  position: 'absolute',
-  top: '-13px',
-  left: 'calc(50% - 13px)',
-  width: '26px',
-  height: '26px',
-  border: '1px solid var(--md-sys-color-outline-variant)',
-  borderRadius: '50%',
-  background: 'var(--md-sys-color-surface)',
-  color: 'var(--color-neon-green)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
 };
 
 const swimlaneNode = (node?: GraphNode): React.CSSProperties => ({
