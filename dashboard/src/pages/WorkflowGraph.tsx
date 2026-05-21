@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ChevronDown, Footprints, GitBranch, Info, ListFilter, Route, X } from 'lucide-react';
+import { ArrowDown, ChevronDown, Footprints, GitBranch, Info, ListFilter, Route, ShieldCheck, X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import useSWR from 'swr';
 import ReactFlow, {
@@ -395,7 +395,12 @@ function PathView({
                     {edge?.transitionId && (
                       <span style={pathTransitionLabel}>{compactTransitionName(edge.transitionId)}</span>
                     )}
-                    {edge?.guard && <span style={guardBadge}>{edge.guard}</span>}
+                    {edge?.guard && (
+                      <span style={guardBadge}>
+                        <ShieldCheck size={11} />
+                        <span>{edge.guard}</span>
+                      </span>
+                    )}
                   </button>
                 )}
                 <button
@@ -606,7 +611,12 @@ function TransitionStrip({
           style={transitionChip(edge, hoveredEdgeID === edge.id)}
         >
           <span>{compactTransitionName(edge.transitionId)}</span>
-          {edge.guard && <span style={guardBadge}>{edge.guard}</span>}
+          {edge.guard && (
+            <span style={guardBadge}>
+              <ShieldCheck size={11} />
+              <span>{edge.guard}</span>
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -1340,6 +1350,9 @@ const guardBadge: React.CSSProperties = {
   color: 'var(--color-neon-cyan)',
   fontSize: '0.625rem',
   fontFamily: 'var(--font-mono)',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
 };
 
 const transitionChip = (edge: GraphEdge, hovered = false): React.CSSProperties => {
