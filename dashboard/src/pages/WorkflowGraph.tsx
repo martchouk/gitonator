@@ -767,7 +767,7 @@ function buildPathPresets(data: WorkflowGraphType): PathPreset[] {
   if (presets.length === 0) {
     presets.push({ id: 'fallback:all', label: 'All statuses', source: 'fallback', statuses: data.nodes.map((n) => n.id) });
   }
-  return uniquePresets(presets);
+  return presets;
 }
 
 function normalizeIssueTypePath(data: WorkflowGraphType, type: WorkflowIssueType): string[] {
@@ -777,16 +777,6 @@ function normalizeIssueTypePath(data: WorkflowGraphType, type: WorkflowIssueType
     path.unshift('status:new');
   }
   return path;
-}
-
-function uniquePresets(presets: PathPreset[]): PathPreset[] {
-  const seen = new Set<string>();
-  return presets.filter((preset) => {
-    const key = preset.statuses.join('>');
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 function filterEdges(
