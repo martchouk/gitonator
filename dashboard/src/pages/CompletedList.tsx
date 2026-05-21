@@ -153,7 +153,7 @@ function StepNode({ step, isFirst, isLast, commentUrl, commentId }: {
         <div style={{
           position: 'absolute',
           top: 0,
-          bottom: 'calc(50% + 8.5px)',
+          bottom: 'calc(50% + 9.5px)',
           left: '50%',
           transform: 'translateX(-50%)',
           width: '1.5px',
@@ -180,7 +180,7 @@ function StepNode({ step, isFirst, isLast, commentUrl, commentId }: {
       {!isLast && (
         <div style={{
           position: 'absolute',
-          top: 'calc(50% + 8.5px)',
+          top: 'calc(50% + 9.5px)',
           bottom: 0,
           left: '50%',
           transform: 'translateX(-50%)',
