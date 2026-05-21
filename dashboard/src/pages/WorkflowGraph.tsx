@@ -466,22 +466,26 @@ function SwimlaneView({
         const source = nodeRefs.current.get(previousStatus);
         const target = nodeRefs.current.get(status);
         if (!source || !target) return;
+        const sourceNode = nodeByID.get(previousStatus);
+        const targetNode = nodeByID.get(status);
         const sourceRect = source.getBoundingClientRect();
         const targetRect = target.getBoundingClientRect();
         const sourceCenterX = sourceRect.left + sourceRect.width / 2;
         const targetCenterX = targetRect.left + targetRect.width / 2;
+        const sameRole = sourceNode?.role === targetNode?.role;
         const fromX = sourceCenterX - containerRect.left;
-        const fromY = sourceRect.bottom - containerRect.top;
-        const toX = targetCenterX - containerRect.left;
-        const toY = targetRect.top - containerRect.top;
+        const fromY = sourceRect.bottom - containerRect.top + 4;
+        const toX = sameRole
+          ? targetCenterX - containerRect.left
+          : (targetCenterX >= sourceCenterX ? targetRect.left : targetRect.right) - containerRect.left + (targetCenterX >= sourceCenterX ? -4 : 4);
+        const toY = sameRole ? targetRect.top - containerRect.top - 4 : targetRect.top + targetRect.height / 2 - containerRect.top;
         const deltaX = Math.abs(toX - fromX);
         const deltaY = Math.max(40, Math.abs(toY - fromY));
         const bend = Math.min(96, Math.max(28, deltaY / 2));
-        const controlOffset = Math.min(88, Math.max(24, deltaX / 2));
-        const d =
-          deltaX < 24
-            ? `M ${fromX} ${fromY} C ${fromX} ${fromY + bend}, ${toX} ${toY - bend}, ${toX} ${toY}`
-            : `M ${fromX} ${fromY} C ${fromX} ${fromY + controlOffset}, ${toX} ${toY - controlOffset}, ${toX} ${toY}`;
+        const horizontalBias = Math.min(96, Math.max(24, deltaX / 2));
+        const d = sameRole
+          ? `M ${fromX} ${fromY} C ${fromX} ${fromY + bend}, ${toX} ${toY - bend}, ${toX} ${toY}`
+          : `M ${fromX} ${fromY} C ${fromX} ${fromY + bend}, ${toX + (targetCenterX >= sourceCenterX ? -horizontalBias : horizontalBias)} ${toY - bend}, ${toX} ${toY}`;
         next.push({ id: edge.id, edge, d });
       });
       setConnectors(next);
