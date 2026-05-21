@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, GitBranch, Info, ListFilter, Route, X } from 'lucide-react';
+import { ArrowDown, Footprints, GitBranch, Info, ListFilter, Route, X } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import useSWR from 'swr';
 import ReactFlow, {
@@ -545,7 +545,9 @@ function SwimlaneView({
               </g>
             ))}
           </svg>
-          <div style={swimlaneHeaderCell}>Step</div>
+          <div style={swimlaneHeaderIconCell}>
+            <Footprints size={16} />
+          </div>
           {roles.map((role) => (
             <div key={`role-${role}`} style={swimlaneRoleHeader(role)}>
               {role || 'Terminal'}
@@ -554,8 +556,8 @@ function SwimlaneView({
           {statuses.map((status, index) => (
             <React.Fragment key={`row-${status}-${index}`}>
               <div style={swimlaneStepHeader}>
-                <div>Step {index + 1}</div>
-                <div style={swimlaneStepStatus}>{prettyStatus(status)}</div>
+                <div style={swimlaneStepBadge}>{index + 1}</div>
+                <div style={swimlaneStepLabel}>{prettyStatus(status)}</div>
               </div>
               {roles.map((role) => {
                 const node = nodeByID.get(status);
@@ -1073,6 +1075,13 @@ const swimlaneHeaderCell: React.CSSProperties = {
   textTransform: 'uppercase',
 };
 
+const swimlaneHeaderIconCell: React.CSSProperties = {
+  ...swimlaneHeaderCell,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
 const swimlaneRoleHeader = (role: string): React.CSSProperties => ({
   ...swimlaneHeaderCell,
   color: roleColor(role),
@@ -1087,16 +1096,40 @@ const swimlaneStepHeader: React.CSSProperties = {
   borderBottom: '1px solid var(--md-sys-color-outline-variant)',
   background: 'var(--md-sys-color-surface-variant)',
   display: 'grid',
+  justifyItems: 'center',
   alignContent: 'center',
-  gap: '4px',
+  gap: '10px',
   color: 'var(--md-sys-color-on-surface)',
   fontWeight: 600,
 };
 
-const swimlaneStepStatus: React.CSSProperties = {
+const swimlaneStepBadge: React.CSSProperties = {
+  width: '26px',
+  height: '26px',
+  borderRadius: '999px',
+  border: '1px solid var(--md-sys-color-outline)',
+  background: 'var(--md-sys-color-surface)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  color: 'var(--md-sys-color-on-surface)',
+};
+
+const swimlaneStepLabel: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '4px 8px',
+  border: '1px solid var(--md-sys-color-outline-variant)',
+  borderRadius: '999px',
+  background: 'var(--md-sys-color-surface)',
   color: 'var(--md-sys-color-on-surface-variant)',
   fontSize: '0.75rem',
-  fontWeight: 400,
+  fontWeight: 500,
+  textTransform: 'capitalize',
+  textAlign: 'center',
 };
 
 const swimlaneCell: React.CSSProperties = {
