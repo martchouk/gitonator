@@ -213,11 +213,11 @@ function SubTaskRow({ task, step, isFirst, isLast }: { task: TaskRow; step: numb
         fontSize: '0.8125rem',
       }}
     >
-      {/* Row separator that skips the # column (16px left-padding + 50px # column = 66px) */}
+      {/* Row separator — skips the # column on all rows except the last */}
       <div style={{
         position: 'absolute',
         bottom: 0,
-        left: '66px',
+        left: isLast ? 0 : '66px',
         right: 0,
         height: '1px',
         background: 'var(--md-sys-color-outline-variant)',
