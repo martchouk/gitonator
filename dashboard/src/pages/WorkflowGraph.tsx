@@ -571,7 +571,7 @@ function SwimlaneView({
                         onMouseLeave={() => setHoveredNodeStatus((current) => (current === status ? null : current))}
                         style={swimlaneNode(node, hoveredNodeStatus === status)}
                       >
-                        <span style={{ color: categoryColor(node.category) }}>{prettyStatus(status)}</span>
+                        <span style={{ color: roleColor(node.role) }}>{prettyStatus(status)}</span>
                         <span style={swimlaneNodeMeta}>{node.category}</span>
                       </button>
                     )}
@@ -846,6 +846,27 @@ function categoryColor(category: string) {
   return categoryColors[category] ?? 'var(--md-sys-color-on-surface)';
 }
 
+function roleColor(role?: string) {
+  switch (role) {
+    case 'po':
+      return '#0b84c6';
+    case 'architect':
+      return '#8a5cf6';
+    case 'uidesigner':
+      return '#d9487d';
+    case 'developer':
+      return '#1f9d55';
+    case 'reviewer':
+      return '#d97706';
+    case 'tester':
+      return '#0f766e';
+    case 'terminal':
+      return 'var(--status-color-terminal)';
+    default:
+      return 'var(--md-sys-color-on-surface)';
+  }
+}
+
 function workflowTitle(data: WorkflowGraphType) {
   if (data.key === 'lean') return 'Lean 3-role GitHub Issue Workflow';
   if (data.key === 'full') return 'Full 6-role GitHub Issue Workflow';
@@ -1054,7 +1075,7 @@ const swimlaneHeaderCell: React.CSSProperties = {
 
 const swimlaneRoleHeader = (role: string): React.CSSProperties => ({
   ...swimlaneHeaderCell,
-  color: role === 'terminal' ? 'var(--status-color-terminal)' : 'var(--md-sys-color-on-surface)',
+  color: roleColor(role),
   textTransform: 'none',
   fontSize: '0.875rem',
 });
@@ -1094,8 +1115,8 @@ const swimlaneCell: React.CSSProperties = {
 const swimlaneNode = (node?: GraphNode, hovered = false): React.CSSProperties => ({
   width: '100%',
   minHeight: '72px',
-  border: `1px solid ${node ? categoryColor(node.category) : 'var(--md-sys-color-outline-variant)'}`,
-  borderTop: `4px solid ${node ? categoryColor(node.category) : 'var(--md-sys-color-outline-variant)'}`,
+  border: `1px solid ${node ? roleColor(node.role) : 'var(--md-sys-color-outline-variant)'}`,
+  borderTop: `4px solid ${node ? roleColor(node.role) : 'var(--md-sys-color-outline-variant)'}`,
   borderRadius: 'var(--radius-sm)',
   background: 'var(--md-sys-color-surface)',
   color: 'var(--md-sys-color-on-surface)',
