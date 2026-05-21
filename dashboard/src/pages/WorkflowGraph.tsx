@@ -264,33 +264,33 @@ export function WorkflowGraph() {
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1fr) 340px',
+          gridTemplateRows: 'auto 1fr',
           gap: 'var(--spacing-md)',
           minHeight: 0,
+          alignItems: 'start',
         }}
       >
+        <div
+          style={{
+            display: 'flex',
+            gap: '8px',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            padding: '0 2px',
+          }}
+        >
+          <Toggle label="Loops" checked={showLoops} onChange={setShowLoops} />
+          <Toggle label="Blocked" checked={showExceptions} onChange={setShowExceptions} />
+          <Toggle label="Reject/Reopen" checked={showTerminal} onChange={setShowTerminal} />
+          {data.defaultPathScope && <span style={mutedText}>default paths: {data.defaultPathScope}</span>}
+        </div>
+
         <section
           style={{
             minWidth: 0,
-            display: 'grid',
-            gridTemplateRows: 'auto 1fr',
-            gap: 'var(--spacing-sm)',
+            minHeight: 0,
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              gap: '8px',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              padding: '0 2px',
-            }}
-          >
-            <Toggle label="Loops" checked={showLoops} onChange={setShowLoops} />
-            <Toggle label="Blocked" checked={showExceptions} onChange={setShowExceptions} />
-            <Toggle label="Reject/Reopen" checked={showTerminal} onChange={setShowTerminal} />
-            {data.defaultPathScope && <span style={mutedText}>default paths: {data.defaultPathScope}</span>}
-          </div>
-
           {viewMode === 'full' ? (
             <GraphCanvas
               nodes={rfNodes}
@@ -316,6 +316,8 @@ export function WorkflowGraph() {
             />
           )}
         </section>
+
+        <div />
 
         <DetailsPanel
           data={data}
