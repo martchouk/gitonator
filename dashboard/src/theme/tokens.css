@@ -78,6 +78,8 @@
   --md-sys-color-inverse-surface: #1e1b4b;
   --md-sys-color-inverse-on-surface: #e0e7ff;
   --md-sys-color-inverse-primary: #818cf8;
+  --workflow-selector-active-bg: #dbeafe;
+  --workflow-selector-active-fg: #1d4ed8;
 
   /* MD3 shape compat */
   --md-shape-extra-small: var(--radius-sm);
@@ -148,6 +150,8 @@
   --md-sys-color-inverse-surface: #e0e7ff;
   --md-sys-color-inverse-on-surface: #1e1b4b;
   --md-sys-color-inverse-primary: #4f46e5;
+  --workflow-selector-active-bg: var(--md-sys-color-primary);
+  --workflow-selector-active-fg: var(--md-sys-color-on-primary);
 }
 
 * {
