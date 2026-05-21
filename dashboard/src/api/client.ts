@@ -1,4 +1,6 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:6666';
+const BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ??
+  (import.meta.env.DEV ? '' : 'http://127.0.0.1:6666');
 
 async function get<T>(path: string): Promise<T> {
   let res: Response;
