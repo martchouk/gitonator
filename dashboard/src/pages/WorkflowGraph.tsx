@@ -368,6 +368,8 @@ function PathView({
   onSelect: (selection: DetailSelection) => void;
 }) {
   const statuses = preset?.statuses ?? [];
+  const [hoveredEdge, setHoveredEdge] = useState<GraphEdge | null>(null);
+  const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
   return (
     <div style={canvasShell}>
       <div style={{ padding: 'var(--spacing-lg)', overflow: 'auto' }}>
@@ -389,7 +391,16 @@ function PathView({
                     type="button"
                     onClick={() => edge && onSelect({ kind: 'edge', edge })}
                     style={pathSeparator(edge)}
-                    title={edge?.description || edge?.transitionId}
+                    onMouseEnter={(e) => {
+                      if (!edge) return;
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setHoveredEdge(edge);
+                      setTipPos({ x: r.right + 8, y: r.top + r.height / 2 });
+                    }}
+                    onMouseLeave={() => {
+                      setHoveredEdge(null);
+                      setTipPos(null);
+                    }}
                   >
                     <ArrowDown size={16} />
                     {edge?.transitionId && (
@@ -416,6 +427,21 @@ function PathView({
             );
           })}
         </div>
+        {hoveredEdge && tipPos && (
+          <div style={pathTooltip}>
+            <div
+              style={{
+                ...pathTooltipBubble,
+                left: tipPos.x,
+                top: tipPos.y,
+                color: edgeColor(hoveredEdge),
+              }}
+            >
+              <GitBranch size={11} color="currentColor" />
+              <span>{hoveredEdge.description || hoveredEdge.transitionId}</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1341,6 +1367,29 @@ const pathTransitionLabel: React.CSSProperties = {
   lineHeight: 1.2,
   textAlign: 'center',
   textTransform: 'none',
+};
+
+const pathTooltip: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  pointerEvents: 'none',
+  zIndex: 9999,
+};
+
+const pathTooltipBubble: React.CSSProperties = {
+  position: 'fixed',
+  transform: 'translateY(-50%)',
+  background: 'var(--md-sys-color-inverse-surface)',
+  border: '1px solid var(--md-sys-color-outline-variant)',
+  borderRadius: '0.5rem',
+  padding: '5px 10px',
+  boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+  fontFamily: 'var(--font-mono)',
+  fontSize: '0.75rem',
+  whiteSpace: 'nowrap',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
 };
 
 const guardBadge: React.CSSProperties = {
