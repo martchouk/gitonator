@@ -1317,7 +1317,7 @@ const pathStack: React.CSSProperties = {
 };
 
 const pathSeparator = (edge?: GraphEdge): React.CSSProperties => ({
-  width: '100%',
+  width: 'fit-content',
   border: 0,
   background: 'transparent',
   color: edge ? edgeColor(edge) : 'var(--md-sys-color-outline)',
@@ -1325,6 +1325,7 @@ const pathSeparator = (edge?: GraphEdge): React.CSSProperties => ({
   alignContent: 'center',
   justifyItems: 'center',
   gap: '4px',
+  padding: '2px 8px',
   cursor: edge ? 'pointer' : 'default',
 });
 
