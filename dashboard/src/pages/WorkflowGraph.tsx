@@ -462,9 +462,21 @@ function SwimlaneView({
               </div>
               {roles.map((role) => {
                 const node = nodeByID.get(status);
+                const edge = index > 0 ? findEdge(data.edges, statuses[index - 1], status) : undefined;
                 const ownsCell = (node?.role || 'terminal') === role;
                 return (
                   <div key={`${role}-${status}-${index}`} style={swimlaneCell}>
+                    {ownsCell && edge && (
+                      <button
+                        type="button"
+                        onClick={() => onSelect({ kind: 'edge', edge })}
+                        style={swimlaneTransitionConnector(edge)}
+                        title={edge.description || edge.transitionId}
+                      >
+                        <span style={swimlaneTransitionLine(edge)} />
+                        {edge.guard && <span style={guardBadge}>{edge.guard}</span>}
+                      </button>
+                    )}
                     {ownsCell && node && (
                       <button
                         type="button"
@@ -1003,6 +1015,28 @@ const swimlaneNode = (node?: GraphNode): React.CSSProperties => ({
   padding: '10px 12px',
   cursor: node ? 'pointer' : 'default',
   textAlign: 'left',
+});
+
+const swimlaneTransitionConnector = (edge: GraphEdge): React.CSSProperties => ({
+  width: '100%',
+  border: 0,
+  background: 'transparent',
+  color: edgeColor(edge),
+  display: 'grid',
+  gap: '6px',
+  alignItems: 'center',
+  justifyItems: 'center',
+  padding: '0 0 10px',
+  cursor: 'pointer',
+});
+
+const swimlaneTransitionLine = (edge: GraphEdge): React.CSSProperties => ({
+  width: '100%',
+  height: '2px',
+  borderRadius: '999px',
+  background: edgeColor(edge),
+  boxShadow: `0 0 0 1px ${edgeColor(edge)}22`,
+  opacity: 0.9,
 });
 
 const swimlaneNodeMeta: React.CSSProperties = {
