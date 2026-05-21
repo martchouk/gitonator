@@ -1106,7 +1106,7 @@ const swimlaneNode = (node?: GraphNode, hovered = false): React.CSSProperties =>
   cursor: node ? 'pointer' : 'default',
   textAlign: 'left',
   position: 'relative',
-  zIndex: 6,
+  zIndex: 8,
   pointerEvents: 'auto',
   transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
   transform: hovered ? 'translateY(-1px)' : 'none',
