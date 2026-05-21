@@ -271,11 +271,15 @@ function StepNode({ step, isFirst, isLast, isRunning, nextIsRunning, commentUrl,
   };
 
   const topConnector = !isFirst ? (
-    <div style={{ ...connectorBase, top: 0, bottom: 'calc(54% + 11px)', ...(isRunning ? dottedGreen : { background: 'var(--color-neon-amber)' }) }} />
+    isRunning
+      ? <div style={{ ...connectorBase, top: 0, bottom: 'calc(54% + 11px)', ...dottedGreen }} />
+      : <div style={{ ...connectorBase, top: 0, bottom: 'calc(50% + 9.5px)', background: 'var(--color-neon-amber)' }} />
   ) : null;
 
   const bottomConnector = !isLast ? (
-    <div style={{ ...connectorBase, top: 'calc(54% + 11px)', bottom: 0, ...((isRunning || nextIsRunning) ? dottedGreen : { background: 'var(--color-neon-amber)' }) }} />
+    (isRunning || nextIsRunning)
+      ? <div style={{ ...connectorBase, top: 'calc(54% + 11px)', bottom: 0, ...dottedGreen }} />
+      : <div style={{ ...connectorBase, top: 'calc(50% + 9.5px)', bottom: 0, background: 'var(--color-neon-amber)' }} />
   ) : null;
 
   if (isRunning) {
