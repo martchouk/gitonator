@@ -1117,7 +1117,6 @@ const swimlaneStepHeader: React.CSSProperties = {
   minHeight: '100px',
   padding: '0',
   borderRight: '1px solid var(--md-sys-color-outline-variant)',
-  borderBottom: '1px solid var(--md-sys-color-outline-variant)',
   background: 'var(--md-sys-color-surface-variant)',
   position: 'relative',
   display: 'flex',
