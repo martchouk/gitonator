@@ -1266,6 +1266,7 @@ const swimlaneRoleHeader = (role: string): React.CSSProperties => ({
   justifyContent: 'center',
   gap: '6px',
   color: roleColor(role),
+  fontWeight: 400,
   textTransform: 'none',
   fontSize: '0.875rem',
 });
