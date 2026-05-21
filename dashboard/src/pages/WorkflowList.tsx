@@ -201,6 +201,11 @@ const workflowCardSubtitle: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
   fontSize: '0.8125rem',
   lineHeight: 1.5,
+  minHeight: '4.5em',
+  display: '-webkit-box',
+  WebkitLineClamp: 3,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
 };
 
 const workflowIconShell: React.CSSProperties = {
@@ -226,10 +231,10 @@ const metricCell: React.CSSProperties = {
   border: '1px solid var(--md-sys-color-outline-variant)',
   borderRadius: 'var(--radius-sm)',
   background: 'var(--md-sys-color-surface-variant)',
-  padding: '12px 12px 10px',
+  padding: '10px 12px 8px',
   display: 'grid',
-  gap: '4px',
-  minHeight: '72px',
+  gap: '3px',
+  minHeight: '62px',
   alignContent: 'center',
 };
 
