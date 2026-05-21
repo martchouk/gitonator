@@ -757,8 +757,8 @@ function EdgeDetails({ data, edge }: { data: WorkflowGraphType; edge: GraphEdge 
       {edge.description && <DetailRow label="Description">{edge.description}</DetailRow>}
       {edge.guard && (
         <DetailSection title={`Guard: ${edge.guard}`}>
-          <div style={{ display: 'grid', gap: '8px' }}>
-            {guard?.description && <div>{guard.description}</div>}
+          <div style={{ ...detailSectionBody, display: 'grid', gap: '8px' }}>
+            {guard?.description && <div style={detailValue}>{guard.description}</div>}
             {guard?.any_label && guard.any_label.length > 0 && <LabelList label="Any label" values={guard.any_label} />}
             {guard?.all_absent && guard.all_absent.length > 0 && <LabelList label="All absent" values={guard.all_absent} />}
           </div>
@@ -965,7 +965,7 @@ function selectionTitle(selection: DetailSelection) {
 function OutputValue({ value }: { value: unknown }) {
   if (Array.isArray(value)) {
     return (
-      <ul style={{ margin: 0, paddingLeft: '18px' }}>
+      <ul style={{ ...detailValue, margin: 0, paddingLeft: '18px' }}>
         {value.map((item) => <li key={String(item)}>{String(item)}</li>)}
       </ul>
     );
@@ -973,13 +973,13 @@ function OutputValue({ value }: { value: unknown }) {
   if (value && typeof value === 'object') {
     return <pre style={engineBlock}>{JSON.stringify(value, null, 2)}</pre>;
   }
-  return <span>{String(value)}</span>;
+  return <span style={detailValue}>{String(value)}</span>;
 }
 
 function TransitionLine({ edge }: { edge: GraphEdge }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', alignItems: 'center' }}>
-      <span>{compactTransitionName(edge.transitionId)}</span>
+    <div style={{ ...detailSectionBody, display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', alignItems: 'center' }}>
+      <span style={detailValue}>{compactTransitionName(edge.transitionId)}</span>
       <StatusChip status={edge.target} />
     </div>
   );
@@ -1000,7 +1000,7 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
   return (
     <section>
       <div style={detailSectionTitle}>{title}</div>
-      <div>{children}</div>
+      <div style={detailSectionBody}>{children}</div>
     </section>
   );
 }
@@ -1470,6 +1470,12 @@ const detailSectionTitle: React.CSSProperties = {
 };
 
 const detailValue: React.CSSProperties = {
+  color: 'var(--md-sys-color-on-surface-variant)',
+  fontSize: '0.8125rem',
+  lineHeight: 1.5,
+};
+
+const detailSectionBody: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
   fontSize: '0.8125rem',
   lineHeight: 1.5,
