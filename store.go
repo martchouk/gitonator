@@ -254,6 +254,7 @@ func (s *Store) GetNextWorkPackage(bridgeID string, roles []string) (*WorkPackag
 	var enriched WorkPackage
 	if json.Unmarshal([]byte(payloadJSON), &enriched) == nil {
 		pkg.WorkflowKey = enriched.WorkflowKey
+		pkg.TypeLabels = enriched.TypeLabels
 		pkg.ValidTransitions = enriched.ValidTransitions
 		pkg.NextAssigneeRoles = enriched.NextAssigneeRoles
 		pkg.PastWorkers = enriched.PastWorkers

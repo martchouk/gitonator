@@ -18,6 +18,7 @@ func TestGenerateInitRepoScriptIncludesWorkflowLabels(t *testing.T) {
 		`upsert_label "status:solution-design"`,
 		`upsert_label "status:ui-design"`,
 		`upsert_label "type:change-request"`,
+		`upsert_label "type:smoke-test"`,
 		`upsert_label "role:architect"`,
 		`upsert_label "needs:architecture"`,
 		`upsert_label "needs:ui-design"`,

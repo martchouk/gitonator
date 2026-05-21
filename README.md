@@ -215,7 +215,7 @@ Initialize labels in a target GitHub repository before running a workflow:
 ./deploy/init_repo_full.sh OWNER/REPO
 ```
 
-The scripts are idempotent: existing labels are updated with the expected color and description, and missing labels are created. The lean script creates the labels required by `workflows/workflow-lean-3-roles-issue.yaml`; the full script creates the labels required by `workflows/workflow-full-6-roles-issue.yaml`, including guard labels such as `needs:architecture`, `needs:ui-design`, `area:ui`, `area:ux`, and `risk:high`.
+The scripts are idempotent: existing labels are updated with the expected color and description, and missing labels are created. The lean script creates the labels required by `workflows/workflow-lean-3-roles-issue.yaml`; the full script creates the labels required by `workflows/workflow-full-6-roles-issue.yaml`, including `type:smoke-test` and guard labels such as `needs:architecture`, `needs:ui-design`, `area:ui`, `area:ux`, and `risk:high`.
 
 `deploy/init_repo_lean.sh` and `deploy/init_repo_full.sh` are generated from the workflow YAML files. After changing a workflow definition, regenerate them and verify they are in sync:
 
@@ -332,8 +332,13 @@ A task (work package) contains:
 - `last_comment_id` — ID of the most recent issue comment at queue time
 - `current_status` — current workflow status label at queue time
 - `workflow_key` — active workflow key (e.g. `lean`)
+- `type_labels` — current `type:*` labels at queue time, such as `type:bug` or `type:smoke-test`
 - `valid_transitions` — statically-reachable target status IDs from the current status
 - `next_assignee_roles` — roles eligible to handle the next step, derived from outbound workflow transitions
+
+### Smoke workflow tests
+
+Use `type:smoke-test` for issues whose only purpose is to exercise workflow routing. Agents should treat this type as a no-code pass-through mode: do not create branches, commits, PRs, review artifacts, or implementation changes unless the work package explicitly asks for them. If a smoke test exposes unrelated failing tests or product defects, mention them briefly and create or recommend a separate issue; do not turn the smoke-test issue into the implementation vehicle.
 
 ### Task lifecycle
 

@@ -82,6 +82,7 @@ var labelColors = map[string]string{
 	"type:bug":                     "b60205",
 	"type:change-request":          "c5def5",
 	"type:feature":                 "a8a56e",
+	"type:smoke-test":              "ededed",
 }
 
 var labelDescriptions = map[string]string{
@@ -121,6 +122,7 @@ var labelDescriptions = map[string]string{
 	"type:bug":                     "Bug report",
 	"type:change-request":          "Change request",
 	"type:feature":                 "Feature request",
+	"type:smoke-test":              "Workflow smoke test; route through roles without implementation work",
 }
 
 func main() {

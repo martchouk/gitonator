@@ -40,6 +40,7 @@ upsert_label "status:rejected" "d6275b" "Issue is rejected or closed without imp
 upsert_label "type:feature" "a8a56e" "Feature request"
 upsert_label "type:bug" "b60205" "Bug report"
 upsert_label "type:change-request" "c5def5" "Change request"
+upsert_label "type:smoke-test" "ededed" "Workflow smoke test; route through roles without implementation work"
 
 upsert_label "priority:high" "e11d48" "High priority"
 upsert_label "priority:medium" "f97316" "Medium priority"

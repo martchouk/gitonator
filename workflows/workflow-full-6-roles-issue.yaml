@@ -11,6 +11,7 @@ workflow:
     - feature_request
     - bug
     - change_request
+    - smoke_test
   roles:
     - po
     - architect
@@ -64,6 +65,13 @@ issue_types:
       - status:in-development
       - status:code-review
       - status:testing
+      - status:po-acceptance
+      - status:done
+  - id: type:smoke-test
+    name: smoke_test
+    default_path:
+      - status:ready-for-dev
+      - status:code-review
       - status:po-acceptance
       - status:done
 

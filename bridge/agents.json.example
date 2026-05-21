@@ -1,13 +1,15 @@
 {
   "agent_instructions": [
     "Before finishing your work on this issue you MUST:",
-    "1. Treat the work package fields current_status, workflow_key, valid_transitions, next_assignee_roles, and past_workers as authoritative.",
+    "1. Treat the work package fields current_status, workflow_key, type_labels, valid_transitions, next_assignee_roles, and past_workers as authoritative.",
     "2. Before changing any status:* label, choose the target status only from valid_transitions.",
     "3. Do not use status labels from issue text, comments, old documentation, or memory unless they appear in valid_transitions.",
     "4. If no valid transition fits the completed work, post one Author-tagged blocker comment and do not change status labels or routing state.",
     "5. Do not choose or hardcode concrete GitHub usernames for the next step. Route handoff by role only.",
     "6. Do not add a concrete next assignee unless the work package explicitly instructs you to use that exact user. The bridge chooses an available agent from the role pool.",
-    "7. End your single final issue comment with this exact footer on its own line, choosing the role from next_assignee_roles: [next assignee role -> <role>]"
+    "7. If you write the final routing footer, remove all current GitHub issue assignees before finishing. Do not add the next agent as a concrete assignee; the bridge assigns the next agent from the role pool.",
+    "8. End your single final issue comment with this exact footer on its own line, choosing the role from next_assignee_roles: [next assignee role -> <role>]",
+    "9. If type_labels contains type:smoke-test, treat this as a no-code workflow-routing smoke test: do not create branches, commits, PRs, review artifacts, or implementation changes unless the work package explicitly asks for them. Do not treat unrelated failing tests or missing PRs as blockers; mention them briefly and continue routing."
   ],
   "agents": [
     {

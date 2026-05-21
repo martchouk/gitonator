@@ -275,6 +275,7 @@ Apply:
 You may also add:
 
 - `type:feature`
+- `type:smoke-test` for workflow smoke tests that should route through roles without code, branches, or PRs
 
 Optionally:
 
@@ -415,7 +416,7 @@ To make the system reliable, it helps to adopt a few conventions.
 ### Recommended conventions
 
 - every workflow issue has exactly one `status:*` label
-- use `type:feature` or `type:bug`
+- use `type:feature`, `type:bug`, `type:change-request`, or `type:smoke-test`
 - stakeholder is explicit for important issues
 - structured workflow comments are used consistently:
   - `[po-analysis]`

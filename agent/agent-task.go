@@ -25,6 +25,7 @@ type WorkPackage struct {
 	LastCommentID     int64    `json:"last_comment_id"`
 	CurrentStatus     string   `json:"current_status"`
 	WorkflowKey       string   `json:"workflow_key"`
+	TypeLabels        []string `json:"type_labels"`
 	ValidTransitions  []string `json:"valid_transitions"`
 	NextAssigneeRoles []string `json:"next_assignee_roles"`
 }
@@ -89,6 +90,7 @@ func showPackage(pkgFile string, pkg WorkPackage) error {
 	fmt.Printf("Last comment:   %d\n", pkg.LastCommentID)
 	fmt.Printf("Current status: %s\n", blankIfEmpty(pkg.CurrentStatus))
 	fmt.Printf("Workflow:       %s\n", blankIfEmpty(pkg.WorkflowKey))
+	fmt.Printf("Type labels:    %s\n", strings.Join(pkg.TypeLabels, ", "))
 	fmt.Printf("Valid next:     %s\n", strings.Join(pkg.ValidTransitions, ", "))
 	fmt.Printf("Next roles:     %s\n", strings.Join(pkg.NextAssigneeRoles, ", "))
 	return nil

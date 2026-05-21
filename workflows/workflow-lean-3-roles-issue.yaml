@@ -14,6 +14,7 @@ workflow:
     - feature_request
     - bug
     - change_request
+    - smoke_test
 
 state_storage:
   type: github_label
@@ -40,6 +41,9 @@ issue_types:
   - id: type:change-request
     name: change_request
     po_definition_output: user_story_or_change_requirement
+  - id: type:smoke-test
+    name: smoke_test
+    po_definition_output: workflow_routing_only
 
 statuses:
   - id: status:new

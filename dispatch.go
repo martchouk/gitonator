@@ -17,6 +17,7 @@ type WorkPackage struct {
 	LastCommentID     int64    `json:"last_comment_id"`
 	CurrentStatus     string   `json:"current_status"`
 	WorkflowKey       string   `json:"workflow_key,omitempty"`
+	TypeLabels        []string `json:"type_labels,omitempty"`
 	ValidTransitions  []string `json:"valid_transitions,omitempty"`
 	NextAssigneeRoles []string `json:"next_assignee_roles,omitempty"`
 }
@@ -125,6 +126,7 @@ func (s *Server) processIssueWith(ctx context.Context, issueNumber int, repo str
 	}
 
 	pkg.WorkflowKey = wd.Workflow.Key
+	pkg.TypeLabels = state.TypeLabels
 	pkg.ValidTransitions = wd.ValidTransitionsFrom(state.StatusLabel)
 	pkg.NextAssigneeRoles = wd.NextRolesFrom(state.StatusLabel)
 	pkg.PastWorkers = pastWorkersFromComments(comments)

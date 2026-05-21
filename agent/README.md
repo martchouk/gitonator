@@ -163,6 +163,7 @@ Implementation finished, opening PR.
   "last_comment_id": 123,
   "current_status": "status:dev-planning",
   "workflow_key": "lean",
+  "type_labels": ["type:smoke-test"],
   "valid_transitions": ["status:plan-review"],
   "next_assignee_roles": ["reviewer"],
   "agent_instructions": [
@@ -182,6 +183,7 @@ Implementation finished, opening PR.
 | `last_comment_id` | Most recent comment ID at queue time — use to know where to start reading |
 | `current_status` | Workflow status label at queue time |
 | `workflow_key` | Active workflow key, for example `lean` |
+| `type_labels` | Current `type:*` labels at queue time. `type:smoke-test` means no-code workflow-routing smoke test. |
 | `valid_transitions` | The only status labels the agent may transition to from `current_status` |
 | `next_assignee_roles` | Roles eligible for the next handoff footer |
 | `agent_instructions` | Bridge-injected mandatory instructions from `agents.json` |

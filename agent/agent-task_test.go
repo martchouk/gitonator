@@ -36,6 +36,7 @@ WORK PACKAGE JSON:
   "role": "reviewer",
   "current_status": "status:code-review",
   "workflow_key": "lean",
+  "type_labels": ["type:smoke-test"],
   "valid_transitions": ["status:po-approval"],
   "next_assignee_roles": ["po"]
 }
@@ -53,6 +54,9 @@ WORK PACKAGE JSON:
 	}
 	if len(pkg.ValidTransitions) != 1 || pkg.ValidTransitions[0] != "status:po-approval" {
 		t.Fatalf("unexpected valid transitions: %+v", pkg.ValidTransitions)
+	}
+	if len(pkg.TypeLabels) != 1 || pkg.TypeLabels[0] != "type:smoke-test" {
+		t.Fatalf("unexpected type labels: %+v", pkg.TypeLabels)
 	}
 	if len(pkg.NextAssigneeRoles) != 1 || pkg.NextAssigneeRoles[0] != "po" {
 		t.Fatalf("unexpected next roles: %+v", pkg.NextAssigneeRoles)

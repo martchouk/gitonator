@@ -77,9 +77,11 @@ go build -o agent-bridge .
 {
   "agent_instructions": [
     "Before finishing your work on this issue you MUST:",
-    "1. Treat current_status, workflow_key, valid_transitions, next_assignee_roles, and past_workers as authoritative.",
+    "1. Treat current_status, workflow_key, type_labels, valid_transitions, next_assignee_roles, and past_workers as authoritative.",
     "2. Do not choose or hardcode concrete GitHub usernames for the next step.",
-    "3. End your single final issue comment with this exact footer on its own line: [next assignee role -> <role>]"
+    "3. If you write the final routing footer, remove all current GitHub issue assignees before finishing.",
+    "4. End your single final issue comment with this exact footer on its own line: [next assignee role -> <role>]",
+    "5. If type_labels contains type:smoke-test, treat this as a no-code workflow-routing smoke test."
   ],
   "agents": [
     {
@@ -224,17 +226,20 @@ The work package written to `{package_file}` is an authoritative prompt followed
   "last_comment_id": 123,
   "current_status": "status:in-development",
   "workflow_key": "lean",
+  "type_labels": ["type:smoke-test"],
   "valid_transitions": ["status:code-review", "status:blocked", "status:rejected"],
   "next_assignee_roles": ["reviewer"],
   "agent_instructions": [
     "Before finishing your work on this issue you MUST:",
-    "1. Treat the work package fields current_status, workflow_key, valid_transitions, next_assignee_roles, and past_workers as authoritative.",
+    "1. Treat the work package fields current_status, workflow_key, type_labels, valid_transitions, next_assignee_roles, and past_workers as authoritative.",
     "2. Before changing any status:* label, choose the target status only from valid_transitions.",
     "3. Do not use status labels from issue text, comments, old documentation, or memory unless they appear in valid_transitions.",
     "4. If no valid transition fits the completed work, post one Author-tagged blocker comment and do not change status labels or routing state.",
     "5. Do not choose or hardcode concrete GitHub usernames for the next step. Route handoff by role only.",
     "6. Do not add a concrete next assignee unless the work package explicitly instructs you to use that exact user.",
-    "7. End your single final issue comment with this exact footer on its own line, choosing the role from next_assignee_roles: [next assignee role -> <role>]"
+    "7. If you write the final routing footer, remove all current GitHub issue assignees before finishing.",
+    "8. End your single final issue comment with this exact footer on its own line, choosing the role from next_assignee_roles: [next assignee role -> <role>]",
+    "9. If type_labels contains type:smoke-test, treat this as a no-code workflow-routing smoke test."
   ]
 }
 ```
@@ -250,11 +255,12 @@ The work package written to `{package_file}` is an authoritative prompt followed
 | `last_comment_id` | Most recent comment ID at queue time — helps the agent know where to start reading |
 | `current_status` | Workflow status label at queue time |
 | `workflow_key` | Active workflow key (e.g. `lean`) |
+| `type_labels` | Current `type:*` labels at queue time. `type:smoke-test` marks a no-code workflow-routing smoke test. |
 | `valid_transitions` | Statically-reachable target status IDs from the current status |
 | `next_assignee_roles` | Roles eligible to handle the next step, derived from outbound workflow transitions — use this to choose the correct value for the `[next assignee role -> <role>]` footer |
 | `agent_instructions` | Injected by the Bridge from `agents.json` at spawn time (not returned by the server API) — mandatory steps the agent must follow at the end of every work session |
 
-The Bridge writes this package as an authoritative prompt followed by the JSON work package. Agents must treat `current_status`, `workflow_key`, `valid_transitions`, `next_assignee_roles`, `past_workers`, and `agent_instructions` as higher priority than issue text, issue comments, repository documentation, or remembered workflow names.
+The Bridge writes this package as an authoritative prompt followed by the JSON work package. Agents must treat `current_status`, `workflow_key`, `type_labels`, `valid_transitions`, `next_assignee_roles`, `past_workers`, and `agent_instructions` as higher priority than issue text, issue comments, repository documentation, or remembered workflow names.
 
 ---
 
@@ -315,6 +321,7 @@ Response when a task is available (task is now marked `dispatched`):
     "last_comment_id": 123,
     "current_status": "status:in-development",
     "workflow_key": "lean",
+    "type_labels": ["type:smoke-test"],
     "valid_transitions": ["status:code-review", "status:blocked", "status:rejected"],
     "next_assignee_roles": ["reviewer"]
   }

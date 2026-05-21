@@ -433,6 +433,7 @@ func TestGetNextWorkPackage_WorkflowContextRoundTrip(t *testing.T) {
 		Role:             "developer",
 		CurrentStatus:    "status:in-development",
 		WorkflowKey:      "lean",
+		TypeLabels:       []string{"type:smoke-test"},
 		ValidTransitions: []string{"status:code-review", "status:blocked"},
 	}
 	if _, err := s.QueueTask(pkg); err != nil {
@@ -445,6 +446,9 @@ func TestGetNextWorkPackage_WorkflowContextRoundTrip(t *testing.T) {
 	}
 	if got.WorkflowKey != "lean" {
 		t.Errorf("WorkflowKey: got %q, want %q", got.WorkflowKey, "lean")
+	}
+	if len(got.TypeLabels) != 1 || got.TypeLabels[0] != "type:smoke-test" {
+		t.Errorf("TypeLabels: got %v, want [type:smoke-test]", got.TypeLabels)
 	}
 	found := map[string]bool{}
 	for _, tgt := range got.ValidTransitions {

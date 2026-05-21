@@ -866,7 +866,7 @@ func TestProcessIssueWith_PopulatesWorkflowContext(t *testing.T) {
 		Number:    77,
 		User:      GitHubUser{Login: "creator"},
 		Assignees: []GitHubUser{{Login: "bud-dev"}},
-		Labels:    []GitHubLabel{{Name: "status:in-development"}},
+		Labels:    []GitHubLabel{{Name: "status:in-development"}, {Name: "type:smoke-test"}},
 	}
 	mock := &mockGitHub{issues: []Issue{issue}}
 	store := tempStore(t)
@@ -897,6 +897,9 @@ func TestProcessIssueWith_PopulatesWorkflowContext(t *testing.T) {
 
 	if pkg.WorkflowKey != "lean" {
 		t.Errorf("WorkflowKey=%q, want %q", pkg.WorkflowKey, "lean")
+	}
+	if len(pkg.TypeLabels) != 1 || pkg.TypeLabels[0] != "type:smoke-test" {
+		t.Errorf("TypeLabels=%v, want [type:smoke-test]", pkg.TypeLabels)
 	}
 	if len(pkg.ValidTransitions) == 0 {
 		t.Error("expected ValidTransitions to be non-empty for status:in-development")
