@@ -444,6 +444,8 @@ function SwimlaneView({
   const gridRef = useRef<HTMLDivElement | null>(null);
   const nodeRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const [connectors, setConnectors] = useState<SwimlaneConnector[]>([]);
+  const [hoveredNodeStatus, setHoveredNodeStatus] = useState<string | null>(null);
+  const [hoveredEdgeID, setHoveredEdgeID] = useState<string | null>(null);
 
   const setNodeRef = useCallback((status: string, element: HTMLButtonElement | null) => {
     if (element) {
@@ -524,15 +526,19 @@ function SwimlaneView({
                   strokeLinejoin="round"
                   pointerEvents="stroke"
                   onClick={() => onSelect({ kind: 'edge', edge: connector.edge })}
+                  onMouseEnter={() => setHoveredEdgeID(connector.id)}
+                  onMouseLeave={() => setHoveredEdgeID((current) => (current === connector.id ? null : current))}
                   aria-label={connector.edge.description || connector.edge.transitionId}
                 />
                 <path
                   d={connector.d}
                   fill="none"
                   stroke={edgeColor(connector.edge)}
-                  strokeWidth={4}
+                  strokeWidth={hoveredEdgeID === connector.id ? 6 : 4}
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  opacity={hoveredEdgeID === connector.id ? 1 : 0.88}
+                  filter={hoveredEdgeID === connector.id ? 'drop-shadow(0 0 5px rgba(46, 255, 140, 0.35))' : 'none'}
                   pointerEvents="none"
                 />
               </g>
@@ -560,7 +566,9 @@ function SwimlaneView({
                         ref={(element) => setNodeRef(status, element)}
                         type="button"
                         onClick={() => onSelect({ kind: 'node', node })}
-                        style={swimlaneNode(node)}
+                        onMouseEnter={() => setHoveredNodeStatus(status)}
+                        onMouseLeave={() => setHoveredNodeStatus((current) => (current === status ? null : current))}
+                        style={swimlaneNode(node, hoveredNodeStatus === status)}
                       >
                         <span style={{ color: categoryColor(node.category) }}>{prettyStatus(status)}</span>
                         <span style={swimlaneNodeMeta}>{node.category}</span>
@@ -1081,7 +1089,7 @@ const swimlaneCell: React.CSSProperties = {
   zIndex: 2,
 };
 
-const swimlaneNode = (node?: GraphNode): React.CSSProperties => ({
+const swimlaneNode = (node?: GraphNode, hovered = false): React.CSSProperties => ({
   width: '100%',
   minHeight: '72px',
   border: `1px solid ${node ? categoryColor(node.category) : 'var(--md-sys-color-outline-variant)'}`,
@@ -1097,6 +1105,10 @@ const swimlaneNode = (node?: GraphNode): React.CSSProperties => ({
   textAlign: 'left',
   position: 'relative',
   zIndex: 3,
+  transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
+  transform: hovered ? 'translateY(-1px)' : 'none',
+  boxShadow: hovered ? '0 6px 16px rgba(0, 0, 0, 0.14)' : 'none',
+  backgroundColor: hovered ? 'var(--md-sys-color-surface-variant)' : 'var(--md-sys-color-surface)',
 });
 
 const swimlaneNodeMeta: React.CSSProperties = {
@@ -1111,7 +1123,7 @@ const swimlaneConnectorLayer: React.CSSProperties = {
   width: '100%',
   height: '100%',
   overflow: 'visible',
-  zIndex: 4,
+  zIndex: 2,
 };
 
 const pathStack: React.CSSProperties = {
