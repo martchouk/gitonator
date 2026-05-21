@@ -470,15 +470,18 @@ function SwimlaneView({
         const targetRect = target.getBoundingClientRect();
         const sourceCenterX = sourceRect.left + sourceRect.width / 2;
         const targetCenterX = targetRect.left + targetRect.width / 2;
-        const sourceCenterY = sourceRect.top + sourceRect.height / 2;
-        const targetCenterY = targetRect.top + targetRect.height / 2;
-        const sourceRightward = targetCenterX >= sourceCenterX;
-        const fromX = (sourceRightward ? sourceRect.right : sourceRect.left) - containerRect.left + (sourceRightward ? 6 : -6);
-        const toX = (sourceRightward ? targetRect.left : targetRect.right) - containerRect.left + (sourceRightward ? -6 : 6);
-        const fromY = sourceCenterY - containerRect.top;
-        const toY = targetCenterY - containerRect.top;
-        const elbowX = fromX + (toX - fromX) / 2;
-        const d = `M ${fromX} ${fromY} H ${elbowX} V ${toY} H ${toX}`;
+        const fromX = sourceCenterX - containerRect.left;
+        const fromY = sourceRect.bottom - containerRect.top;
+        const toX = targetCenterX - containerRect.left;
+        const toY = targetRect.top - containerRect.top;
+        const deltaX = Math.abs(toX - fromX);
+        const deltaY = Math.max(40, Math.abs(toY - fromY));
+        const bend = Math.min(96, Math.max(28, deltaY / 2));
+        const controlOffset = Math.min(88, Math.max(24, deltaX / 2));
+        const d =
+          deltaX < 24
+            ? `M ${fromX} ${fromY} C ${fromX} ${fromY + bend}, ${toX} ${toY - bend}, ${toX} ${toY}`
+            : `M ${fromX} ${fromY} C ${fromX} ${fromY + controlOffset}, ${toX} ${toY - controlOffset}, ${toX} ${toY}`;
         next.push({ id: edge.id, edge, d });
       });
       setConnectors(next);
