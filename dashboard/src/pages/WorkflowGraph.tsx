@@ -401,10 +401,8 @@ function PathView({
                   style={pathNode(node)}
                 >
                   <StatusChip status={status} truncate maxWidth="170px" />
-                  <div style={pathNodeFooter}>
-                    <span style={pathNodeMetaItem}>{node?.category ?? 'terminal'}</span>
-                    <span style={pathNodeMetaItem}>actor {prettyRole(node?.role)}</span>
-                  </div>
+                  <span style={pathNodeMetaItem}>{node?.category ?? 'terminal'}</span>
+                  <span style={pathNodeMetaItem}>{prettyRole(node?.role)}</span>
                 </button>
               </React.Fragment>
             );
@@ -1307,14 +1305,6 @@ const pathNode = (node?: GraphNode): React.CSSProperties => ({
   textAlign: 'center',
   justifyItems: 'center',
 });
-
-const pathNodeFooter: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '8px',
-  flexWrap: 'wrap',
-};
 
 const pathNodeMetaItem: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
