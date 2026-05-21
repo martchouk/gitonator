@@ -7,8 +7,8 @@ import { useSSE } from '../hooks/useSSE';
 
 const NAV_ITEMS: { to: string; label: string; Icon: LucideIcon; exact?: boolean }[] = [
   { to: '/', label: 'Live View', Icon: Activity, exact: true },
-  { to: '/workflows', label: 'Workflows', Icon: GitBranch },
   { to: '/completed', label: 'Completed', Icon: CheckCircle2 },
+  { to: '/workflows', label: 'Workflows', Icon: GitBranch },
   { to: '/docs/setup', label: 'Setup Docs', Icon: BookOpen },
   { to: '/docs/api', label: 'API Docs', Icon: Code2 },
 ];

@@ -251,10 +251,10 @@ function SubTableHeader() {
 
 // Roadmap node: circle with step number + connector lines.
 // First/last circles are amber-filled. Running circle is a spinning arc with no inner content.
-// Connectors leading to/from a running circle are dashed green.
-function StepNode({ step, isFirst, isLast, isRunning, commentUrl, commentId }: {
+// Connectors touching a running circle (the running step's top, or the previous step's bottom) are dotted green.
+function StepNode({ step, isFirst, isLast, isRunning, nextIsRunning, commentUrl, commentId }: {
   step: number; isFirst: boolean; isLast: boolean;
-  isRunning: boolean; commentUrl: string | null; commentId: number | null;
+  isRunning: boolean; nextIsRunning?: boolean; commentUrl: string | null; commentId: number | null;
 }) {
   const [hovered, setHovered] = useState(false);
   const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
@@ -262,14 +262,16 @@ function StepNode({ step, isFirst, isLast, isRunning, commentUrl, commentId }: {
   const connectorBase: React.CSSProperties = {
     position: 'absolute', left: '50%', transform: 'translateX(-50%)', width: '1.5px',
   };
-  const dashedGreen = { backgroundImage: 'repeating-linear-gradient(to bottom, var(--color-neon-green) 0px, var(--color-neon-green) 4px, transparent 4px, transparent 8px)' };
+  const dottedGreen: React.CSSProperties = {
+    backgroundImage: 'repeating-linear-gradient(to bottom, var(--color-neon-green) 0px, var(--color-neon-green) 2px, transparent 2px, transparent 6px)',
+  };
 
   const topConnector = !isFirst ? (
-    <div style={{ ...connectorBase, top: 0, bottom: 'calc(50% + 8.5px)', ...(isRunning ? dashedGreen : { background: 'var(--color-neon-amber)' }) }} />
+    <div style={{ ...connectorBase, top: 0, bottom: 'calc(50% + 8.5px)', ...(isRunning ? dottedGreen : { background: 'var(--color-neon-amber)' }) }} />
   ) : null;
 
   const bottomConnector = !isLast ? (
-    <div style={{ ...connectorBase, top: 'calc(50% + 8.5px)', bottom: 0, ...(isRunning ? dashedGreen : { background: 'var(--color-neon-amber)' }) }} />
+    <div style={{ ...connectorBase, top: 'calc(50% + 8.5px)', bottom: 0, ...((isRunning || nextIsRunning) ? dottedGreen : { background: 'var(--color-neon-amber)' }) }} />
   ) : null;
 
   if (isRunning) {
@@ -352,7 +354,7 @@ function StepNode({ step, isFirst, isLast, isRunning, commentUrl, commentId }: {
   );
 }
 
-function SubTaskRow({ task, step, isFirst, isLast }: { task: TaskRow; step: number; isFirst: boolean; isLast: boolean }) {
+function SubTaskRow({ task, step, isFirst, isLast, nextIsRunning }: { task: TaskRow; step: number; isFirst: boolean; isLast: boolean; nextIsRunning?: boolean }) {
   const isRunning = task.status === 'queued' || task.status === 'dispatched';
   const bridge = nullStr(task.bridge_id);
   const workerLogin = (task.claimed_by?.Valid && task.claimed_by?.String)
@@ -381,7 +383,7 @@ function SubTaskRow({ task, step, isFirst, isLast }: { task: TaskRow; step: numb
     >
       <div style={{ position: 'absolute', bottom: 0, left: isLast ? 0 : '66px', right: 0, height: '1px', background: 'var(--md-sys-color-outline-variant)' }} />
 
-      <StepNode step={step} isFirst={isFirst} isLast={isLast} isRunning={isRunning}
+      <StepNode step={step} isFirst={isFirst} isLast={isLast} isRunning={isRunning} nextIsRunning={nextIsRunning}
         commentUrl={commentUrl} commentId={task.last_comment_id ?? null} />
 
       <div style={cell()}>
@@ -397,7 +399,7 @@ function SubTaskRow({ task, step, isFirst, isLast }: { task: TaskRow; step: numb
         }
       </div>
 
-      <div style={cell()}>
+      <div style={cell({ paddingRight: '16px', overflow: 'hidden' })}>
         {isRunning ? <RotatingWord /> : (
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: taskOutcomeColor(task.status) }}>
             {task.status}
@@ -440,7 +442,12 @@ function ExpandedIssueDetail({ issueNumber }: { issueNumber: number }) {
   );
 
   if (error) {
-    return <div style={{ padding: '8px 16px' }}><ErrorBanner onRetry={() => void mutate()} /></div>;
+    return (
+      <div style={{ padding: '10px 16px', color: 'var(--md-sys-color-error)', fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span>Failed to load tasks.</span>
+        <button onClick={() => void mutate()} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--md-sys-color-error)', fontSize: '0.8125rem', textDecoration: 'underline', padding: 0 }}>Retry</button>
+      </div>
+    );
   }
 
   if (!data) {
@@ -467,10 +474,15 @@ function ExpandedIssueDetail({ issueNumber }: { issueNumber: number }) {
     <div style={{ overflowX: 'auto' }}>
       <div style={{ minWidth: '780px' }}>
         <SubTableHeader />
-        {tasks.map((task, idx) => (
-          <SubTaskRow key={task.id} task={task} step={idx + 1}
-            isFirst={idx === 0} isLast={idx === tasks.length - 1} />
-        ))}
+        {tasks.map((task, idx) => {
+          const nextTask = tasks[idx + 1];
+          const nextIsRunning = nextTask ? (nextTask.status === 'queued' || nextTask.status === 'dispatched') : false;
+          return (
+            <SubTaskRow key={task.id} task={task} step={idx + 1}
+              isFirst={idx === 0} isLast={idx === tasks.length - 1}
+              nextIsRunning={nextIsRunning} />
+          );
+        })}
       </div>
     </div>
   );
@@ -549,7 +561,7 @@ export function LiveView() {
         </div>
       )}
 
-      {issues.length > 0 && (
+      {!error && issues.length > 0 && (
         <div
           style={{
             border: '1px solid var(--md-sys-color-outline-variant)',

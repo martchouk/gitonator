@@ -326,7 +326,12 @@ function ExpandedDetail({ issueNumber }: { issueNumber: number }) {
   );
 
   if (error) {
-    return <div style={{ padding: '8px 16px' }}><ErrorBanner onRetry={() => void mutate()} /></div>;
+    return (
+      <div style={{ padding: '10px 16px', color: 'var(--md-sys-color-error)', fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span>Failed to load tasks.</span>
+        <button onClick={() => void mutate()} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--md-sys-color-error)', fontSize: '0.8125rem', textDecoration: 'underline', padding: 0 }}>Retry</button>
+      </div>
+    );
   }
 
   if (!data) {
@@ -424,7 +429,7 @@ export function CompletedList() {
         </div>
       )}
 
-      {runs.length > 0 && (
+      {!error && runs.length > 0 && (
         <div
           style={{
             border: '1px solid var(--md-sys-color-outline-variant)',
