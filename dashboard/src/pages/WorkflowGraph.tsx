@@ -1111,7 +1111,7 @@ const swimlaneConnectorLayer: React.CSSProperties = {
   width: '100%',
   height: '100%',
   overflow: 'visible',
-  zIndex: 1,
+  zIndex: 4,
 };
 
 const pathStack: React.CSSProperties = {
