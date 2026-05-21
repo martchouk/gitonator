@@ -100,10 +100,24 @@ function StepNode({ step, isFirst, isLast, commentUrl, commentId }: {
 }) {
   const filled = isFirst || isLast;
   const [hovered, setHovered] = useState(false);
+  const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
 
   const hoverBg = filled
     ? 'color-mix(in srgb, var(--color-neon-amber) 75%, white)'
     : 'color-mix(in srgb, var(--color-neon-amber) 22%, transparent)';
+
+  const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
+    setHovered(true);
+    if (commentId) {
+      const r = e.currentTarget.getBoundingClientRect();
+      setTipPos({ x: r.right + 8, y: r.top + r.height / 2 });
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setHovered(false);
+    setTipPos(null);
+  };
 
   const circleStyle: React.CSSProperties = {
     position: 'relative',
@@ -125,12 +139,6 @@ function StepNode({ step, isFirst, isLast, commentUrl, commentId }: {
     cursor: commentUrl ? 'pointer' : 'default',
     transition: 'background 120ms ease',
   };
-
-  const linkProps = commentUrl ? {
-    onMouseEnter: () => setHovered(true),
-    onMouseLeave: () => setHovered(false),
-    title: commentId ? `issuecomment-${commentId}` : 'View GitHub comment',
-  } : {};
 
   return (
     <div style={{
@@ -160,7 +168,8 @@ function StepNode({ step, isFirst, isLast, commentUrl, commentId }: {
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
           style={circleStyle}
-          {...linkProps}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
         >
           {step}
         </a>
@@ -178,6 +187,32 @@ function StepNode({ step, isFirst, isLast, commentUrl, commentId }: {
           width: '1.5px',
           background: 'var(--color-neon-amber)',
         }} />
+      )}
+      {/* Custom styled tooltip — position: fixed escapes overflow clipping */}
+      {hovered && commentId && tipPos && (
+        <div style={{
+          position: 'fixed',
+          left: tipPos.x,
+          top: tipPos.y,
+          transform: 'translateY(-50%)',
+          zIndex: 9999,
+          pointerEvents: 'none',
+          background: 'var(--md-sys-color-inverse-surface)',
+          color: 'var(--md-sys-color-inverse-on-surface)',
+          border: '1px solid var(--md-sys-color-outline-variant)',
+          borderRadius: '0.5rem',
+          padding: '5px 10px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '0.75rem',
+          whiteSpace: 'nowrap',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}>
+          <GithubIcon size={11} color="currentColor" />
+          {`issuecomment-${commentId}`}
+        </div>
       )}
     </div>
   );
