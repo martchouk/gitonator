@@ -25,6 +25,7 @@ import { WorkflowNode, WorkflowNodeData } from '../components/WorkflowNode';
 import { StatusChip } from '../components/StatusChip';
 
 const nodeTypes = { workflowStatus: WorkflowNode };
+const SWIMLANE_STEP_COLUMN_WIDTH = 56;
 
 const categoryColors: Record<string, string> = {
   intake: 'var(--status-color-intake)',
@@ -507,8 +508,8 @@ function SwimlaneView({
           style={{
             position: 'relative',
             display: 'grid',
-            gridTemplateColumns: `132px repeat(${roles.length}, minmax(164px, 1fr))`,
-            minWidth: `${132 + roles.length * 176}px`,
+            gridTemplateColumns: `${SWIMLANE_STEP_COLUMN_WIDTH}px repeat(${roles.length}, minmax(164px, 1fr))`,
+            minWidth: `${SWIMLANE_STEP_COLUMN_WIDTH + roles.length * 176}px`,
             border: '1px solid var(--md-sys-color-outline-variant)',
             borderRadius: 'var(--radius-md)',
             overflow: 'hidden',
@@ -556,7 +557,9 @@ function SwimlaneView({
           {statuses.map((status, index) => (
             <React.Fragment key={`row-${status}-${index}`}>
               <div style={swimlaneStepHeader}>
-                <div style={swimlaneStepBadge}>{index + 1}</div>
+                {index > 0 && <div style={swimlaneStepConnectorTop} />}
+                <div style={swimlaneStepBadge(index === 0 || index === statuses.length - 1)}>{index + 1}</div>
+                {index < statuses.length - 1 && <div style={swimlaneStepConnectorBottom} />}
               </div>
               {roles.map((role) => {
                 const node = nodeByID.get(status);
@@ -1112,34 +1115,54 @@ const swimlaneRoleHeader = (role: string): React.CSSProperties => ({
 
 const swimlaneStepHeader: React.CSSProperties = {
   minHeight: '100px',
-  padding: '12px',
+  padding: '0',
   borderRight: '1px solid var(--md-sys-color-outline-variant)',
   borderBottom: '1px solid var(--md-sys-color-outline-variant)',
   background: 'var(--md-sys-color-surface-variant)',
-  display: 'grid',
-  justifyItems: 'center',
-  alignContent: 'center',
-  gap: '10px',
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
   color: 'var(--md-sys-color-on-surface)',
   fontWeight: 600,
 };
 
-const swimlaneStepBadge: React.CSSProperties = {
+const swimlaneStepBadge = (filled: boolean): React.CSSProperties => ({
   position: 'relative',
   zIndex: 1,
   width: '17px',
   height: '17px',
   borderRadius: '50%',
   border: '1.5px solid var(--color-neon-amber)',
-  background: 'transparent',
+  background: filled ? 'var(--color-neon-amber)' : 'transparent',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   fontFamily: 'var(--font-mono)',
   fontSize: '0.5rem',
   fontWeight: 700,
-  color: 'var(--color-neon-amber)',
+  color: filled ? 'var(--md-sys-color-surface)' : 'var(--color-neon-amber)',
   flexShrink: 0,
+});
+
+const swimlaneStepConnectorTop: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  bottom: 'calc(50% + 9.5px)',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  width: '1.5px',
+  background: 'var(--color-neon-amber)',
+};
+
+const swimlaneStepConnectorBottom: React.CSSProperties = {
+  position: 'absolute',
+  top: 'calc(50% + 9.5px)',
+  bottom: 0,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  width: '1.5px',
+  background: 'var(--color-neon-amber)',
 };
 
 const swimlaneCell: React.CSSProperties = {
