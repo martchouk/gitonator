@@ -1146,6 +1146,7 @@ const mutedText: React.CSSProperties = {
 
 const panelAccentTitle: React.CSSProperties = {
   marginTop: '6px',
+  fontSize: '1rem',
   fontWeight: 600,
   color: 'var(--workflow-title-accent)',
 };
