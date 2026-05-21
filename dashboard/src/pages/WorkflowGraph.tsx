@@ -403,7 +403,7 @@ function PathView({
                   <StatusChip status={status} truncate maxWidth="170px" />
                   <div style={pathNodeFooter}>
                     <span style={pathNodeMetaItem}>{node?.category ?? 'terminal'}</span>
-                    <span style={pathNodeMetaItem}>{node?.role || 'terminal'}</span>
+                    <span style={pathNodeMetaItem}>actor {prettyRole(node?.role)}</span>
                   </div>
                 </button>
               </React.Fragment>
@@ -871,6 +871,29 @@ function prettyStatus(status: string) {
 
 function prettyPresetName(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function prettyRole(role?: string) {
+  switch (role) {
+    case 'po':
+      return 'Product Owner';
+    case 'architect':
+      return 'Architect';
+    case 'uidesigner':
+      return 'UI Designer';
+    case 'developer':
+      return 'Developer';
+    case 'reviewer':
+      return 'Reviewer';
+    case 'tester':
+      return 'Tester';
+    case 'terminal':
+    case undefined:
+    case null:
+      return 'Terminal';
+    default:
+      return role;
+  }
 }
 
 function compactTransitionName(value: string) {
