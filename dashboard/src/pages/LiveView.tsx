@@ -263,7 +263,11 @@ function StepNode({ step, isFirst, isLast, isRunning, nextIsRunning, commentUrl,
     position: 'absolute', left: '50%', transform: 'translateX(-50%)', width: '1.5px',
   };
   const dottedGreen: React.CSSProperties = {
-    backgroundImage: 'repeating-linear-gradient(to bottom, var(--color-neon-green) 0px, var(--color-neon-green) 2px, transparent 2px, transparent 6px)',
+    width: '4px',
+    backgroundImage: 'radial-gradient(circle 1.5px at 50% 50%, color-mix(in srgb, var(--color-neon-green) 40%, transparent) 100%, transparent 0)',
+    backgroundSize: '4px 9px',
+    backgroundRepeat: 'repeat-y',
+    backgroundPosition: 'center',
   };
 
   const topConnector = !isFirst ? (
