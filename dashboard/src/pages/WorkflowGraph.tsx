@@ -382,7 +382,7 @@ function PathView({
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: 'var(--spacing-lg)' }}>
           <Route size={18} style={{ color: 'var(--color-neon-green)' }} />
           <div>
-            <div style={{ fontWeight: 600 }}>{preset?.label ?? 'Workflow path'}</div>
+            <div style={panelAccentTitle}>{preset?.label ?? 'Workflow path'}</div>
             <div style={mutedText}>Normal route with exception paths hidden</div>
           </div>
         </div>
@@ -708,7 +708,7 @@ function DetailsPanel({
               <Info size={16} />
               <span style={{ fontSize: '0.75rem', textTransform: 'uppercase' }}>Details</span>
             </div>
-            <div style={{ marginTop: '6px', fontWeight: 600 }}>
+            <div style={panelAccentTitle}>
               {selection ? selectionTitle(selection) : 'Select a status or transition'}
             </div>
           </div>
@@ -1142,6 +1142,12 @@ const canvasShell: React.CSSProperties = {
 const mutedText: React.CSSProperties = {
   color: 'var(--md-sys-color-on-surface-variant)',
   fontSize: '0.8125rem',
+};
+
+const panelAccentTitle: React.CSSProperties = {
+  marginTop: '6px',
+  fontWeight: 600,
+  color: 'var(--workflow-title-accent)',
 };
 
 const smallCode: React.CSSProperties = {

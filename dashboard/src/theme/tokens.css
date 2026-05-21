@@ -80,6 +80,7 @@
   --md-sys-color-inverse-primary: #818cf8;
   --workflow-selector-active-bg: #dbeafe;
   --workflow-selector-active-fg: #1d4ed8;
+  --workflow-title-accent: #065f2e;
 
   /* MD3 shape compat */
   --md-shape-extra-small: var(--radius-sm);
@@ -152,6 +153,7 @@
   --md-sys-color-inverse-primary: #4f46e5;
   --workflow-selector-active-bg: var(--md-sys-color-primary);
   --workflow-selector-active-fg: var(--md-sys-color-on-primary);
+  --workflow-title-accent: var(--color-neon-green);
 }
 
 * {
