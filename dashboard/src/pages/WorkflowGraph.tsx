@@ -1088,6 +1088,7 @@ const swimlaneCell: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   zIndex: 5,
+  pointerEvents: 'none',
 };
 
 const swimlaneNode = (node?: GraphNode, hovered = false): React.CSSProperties => ({
@@ -1106,6 +1107,7 @@ const swimlaneNode = (node?: GraphNode, hovered = false): React.CSSProperties =>
   textAlign: 'left',
   position: 'relative',
   zIndex: 6,
+  pointerEvents: 'auto',
   transition: 'transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, border-color 120ms ease',
   transform: hovered ? 'translateY(-1px)' : 'none',
   boxShadow: hovered ? '0 6px 16px rgba(0, 0, 0, 0.14)' : 'none',
