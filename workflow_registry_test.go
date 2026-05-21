@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -255,6 +256,58 @@ transitions:
 	_, err := LoadWorkflowRegistry(dir, "test")
 	if err == nil {
 		t.Fatal("expected validation error for duplicate transition id, got nil")
+	}
+}
+
+// TestLoadWorkflowRegistry_ValidationCanonicalPathEdges verifies that documented
+// canonical paths must be executable by declared static transitions.
+func TestLoadWorkflowRegistry_ValidationCanonicalPathEdges(t *testing.T) {
+	dir := t.TempDir()
+	content := `
+workflow:
+  id: test
+  key: test
+statuses:
+  - id: status:new
+    role: po
+    queues_work: true
+  - id: status:story-definition
+    role: po
+    queues_work: true
+  - id: status:dev-planning
+    role: developer
+    queues_work: true
+  - id: status:done
+    terminal: true
+transitions:
+  - id: skip_story_definition
+    from: [status:new]
+    to: status:dev-planning
+    allowed_roles: [po]
+  - id: finish
+    from: [status:dev-planning]
+    to: status:done
+    allowed_roles: [developer]
+  - id: reject_story
+    from: [status:story-definition]
+    to: status:done
+    allowed_roles: [po]
+canonical_paths:
+  feature_request:
+    - status:new
+    - status:story-definition
+    - status:dev-planning
+    - status:done
+`
+	if err := os.WriteFile(filepath.Join(dir, "test.yaml"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadWorkflowRegistry(dir, "test")
+	if err == nil {
+		t.Fatal("expected validation error for non-executable canonical path, got nil")
+	}
+	if !strings.Contains(err.Error(), "canonical path") {
+		t.Fatalf("expected canonical path validation error, got %v", err)
 	}
 }
 

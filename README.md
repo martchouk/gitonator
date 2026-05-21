@@ -259,12 +259,13 @@ go run ./deploy/sync_init_repo_scripts.go -check
 Typical feature flow using the default `lean` workflow:
 
 1. New issue is created → `status:new` → PO task queued
-2. PO defines the story and publishes it to the developer → `status:dev-planning` → Developer task queued
-3. Developer creates a plan → `status:dev-planning` → Developer task queued; transitions to `status:plan-review`
-4. Reviewer approves the plan → `status:ready-for-development` → Developer task queued
-5. Developer implements → `status:in-development` → Developer task queued; transitions to `status:code-review`
-6. Reviewer accepts the code → `status:po-approval` → PO task queued
-7. PO approves rollout → `status:done`
+2. PO starts definition → `status:story-definition` → PO task queued
+3. PO publishes the requirement to the developer → `status:dev-planning` → Developer task queued
+4. Developer creates a plan → `status:dev-planning` → Developer task queued; transitions to `status:plan-review`
+5. Reviewer approves the plan → `status:ready-for-development` → Developer task queued
+6. Developer implements → `status:in-development` → Developer task queued; transitions to `status:code-review`
+7. Reviewer accepts the code → `status:po-approval` → PO task queued
+8. PO approves rollout → `status:done`
 
 ### Review loop
 

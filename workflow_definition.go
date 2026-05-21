@@ -2,10 +2,11 @@ package main
 
 // WorkflowDef is the top-level structure loaded from a workflow YAML file.
 type WorkflowDef struct {
-	Workflow    WorkflowMeta        `yaml:"workflow"`
-	Statuses    []StatusDef         `yaml:"statuses"`
-	Guards      map[string]GuardDef `yaml:"guards"`
-	Transitions []TransitionDef     `yaml:"transitions"`
+	Workflow       WorkflowMeta        `yaml:"workflow"`
+	Statuses       []StatusDef         `yaml:"statuses"`
+	Guards         map[string]GuardDef `yaml:"guards"`
+	Transitions    []TransitionDef     `yaml:"transitions"`
+	CanonicalPaths map[string][]string `yaml:"canonical_paths"`
 }
 
 // WorkflowMeta holds identity fields from the YAML workflow block.

@@ -93,27 +93,27 @@ func TestComputeWorkflowStateFromDef_POStatusesUsePORole(t *testing.T) {
 func TestValidateTransitionFromDef_AllowedTransition(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:new"}}}
-	res := validateTransitionFromDef(wd, issue, nil, "po", "status:dev-planning")
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:story-definition")
 	if !res.Allowed {
 		t.Errorf("expected allowed, violations: %v", res.Violations)
 	}
 }
 
-func TestValidateTransitionFromDef_NoPOStoryDefinitionSelfLoop(t *testing.T) {
+func TestValidateTransitionFromDef_NewDoesNotSkipStoryDefinition(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:new"}}}
-	res := validateTransitionFromDef(wd, issue, nil, "po", "status:story-definition")
+	res := validateTransitionFromDef(wd, issue, nil, "po", "status:dev-planning")
 	if res.Allowed {
-		t.Error("expected status:new -> status:story-definition to be disallowed; PO definition and developer publish should be one transition")
+		t.Error("expected status:new -> status:dev-planning to be disallowed; PO must pass through story-definition")
 	}
 }
 
 func TestValidateTransitionFromDef_WrongRole(t *testing.T) {
 	wd := leanWorkflowForTest(t)
 	issue := Issue{Number: 1, Labels: []GitHubLabel{{Name: "status:new"}}}
-	res := validateTransitionFromDef(wd, issue, nil, "developer", "status:dev-planning")
+	res := validateTransitionFromDef(wd, issue, nil, "developer", "status:story-definition")
 	if res.Allowed {
-		t.Error("expected not allowed: developer cannot drive dev-planning from status:new")
+		t.Error("expected not allowed: developer cannot drive story-definition from status:new")
 	}
 }
 
@@ -772,10 +772,13 @@ func TestNextRolesFrom_FullReadyForDevIncludesReviewer(t *testing.T) {
 
 func TestNextRolesFrom_New(t *testing.T) {
 	wd := leanWorkflowForTest(t)
-	// status:new → po_start_definition → status:dev-planning, so developer is next.
+	// status:new → po_start_definition → status:story-definition, so PO remains next.
 	roles := wd.NextRolesFrom("status:new")
-	if !containsString(roles, "developer") {
-		t.Errorf("expected NextRolesFrom(status:new) to include %q, got %v", "developer", roles)
+	if !containsString(roles, "po") {
+		t.Errorf("expected NextRolesFrom(status:new) to include %q, got %v", "po", roles)
+	}
+	if containsString(roles, "developer") {
+		t.Errorf("expected NextRolesFrom(status:new) not to include %q before story definition, got %v", "developer", roles)
 	}
 }
 

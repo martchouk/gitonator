@@ -141,22 +141,14 @@ transitions:
   - id: po_start_definition
     from:
       - status:new
-    to: status:dev-planning
+    to: status:story-definition
     allowed_roles:
       - po
-    queues_next_role: developer
+    queues_next_role: po
     required_outputs:
-      feature_request:
-        - user_story
-        - acceptance_criteria
-      bug:
-        - requirement_from_bug_report
-        - expected_behavior
-        - reproduction_or_observed_behavior
-      change_request:
-        - change_requirement
-        - acceptance_criteria
-    description: "PO defines the issue requirement and publishes it directly to developer planning."
+      - issue_type_classification
+      - definition_scope
+    description: "PO starts requirement definition and keeps the issue queued for PO definition work."
 
   - id: po_reject_before_planning
     from:
@@ -186,6 +178,9 @@ transitions:
       change_request:
         - change_requirement
         - acceptance_criteria
+      smoke_test:
+        - routing_decision
+        - expected_workflow_path
     description: "PO publishes the issue requirement and asks developer for a development plan."
 
   - id: developer_publish_plan
@@ -360,6 +355,8 @@ transitions:
     allowed_roles:
       - po
     queues_next_role: po
+    required_outputs:
+      - reopen_reason
     reopen_issue: true
     description: "PO reopens completed work for follow-up definition."
 
@@ -370,6 +367,9 @@ transitions:
     allowed_roles:
       - po
     queues_next_role: po
+    required_outputs:
+      - reopen_reason
+      - changed_context
     reopen_issue: true
     description: "PO reopens a rejected issue when circumstances change."
 
@@ -395,6 +395,16 @@ canonical_paths:
     - status:po-approval
     - status:done
   change_request:
+    - status:new
+    - status:story-definition
+    - status:dev-planning
+    - status:plan-review
+    - status:ready-for-development
+    - status:in-development
+    - status:code-review
+    - status:po-approval
+    - status:done
+  smoke_test:
     - status:new
     - status:story-definition
     - status:dev-planning

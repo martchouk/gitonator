@@ -108,6 +108,7 @@ func validateWorkflowDef(wd *WorkflowDef, path string) error {
 
 	hasOutgoing := make(map[string]bool, len(wd.Statuses))
 	transitionSet := make(map[string]bool, len(wd.Transitions))
+	staticEdges := make(map[string]bool, len(wd.Transitions))
 
 	for _, t := range wd.Transitions {
 		if t.ID == "" {
@@ -131,6 +132,9 @@ func validateWorkflowDef(wd *WorkflowDef, path string) error {
 				return fmt.Errorf("%s: transition %q has unknown from_status %q", path, t.ID, f)
 			}
 			hasOutgoing[f] = true
+			if !strings.HasPrefix(t.To, "$") {
+				staticEdges[workflowEdgeKey(f, t.To)] = true
+			}
 		}
 
 		// Validate guard reference.
@@ -151,5 +155,24 @@ func validateWorkflowDef(wd *WorkflowDef, path string) error {
 		}
 	}
 
+	for name, pathStatuses := range wd.CanonicalPaths {
+		for i, status := range pathStatuses {
+			if !statusSet[status] {
+				return fmt.Errorf("%s: canonical path %q references unknown status %q", path, name, status)
+			}
+			if i == 0 {
+				continue
+			}
+			from := pathStatuses[i-1]
+			if !staticEdges[workflowEdgeKey(from, status)] {
+				return fmt.Errorf("%s: canonical path %q has no transition from %q to %q", path, name, from, status)
+			}
+		}
+	}
+
 	return nil
+}
+
+func workflowEdgeKey(from, to string) string {
+	return from + "\x00" + to
 }
