@@ -826,47 +826,52 @@ type CompletedIssueSummary struct {
 	StepCount   int    `json:"stepCount"`
 }
 
-// ListCompletedIssues returns issues that have no remaining active (queued/dispatched)
-// tasks and whose most recent task is in a terminal task state. The final workflow
-// status is taken from _final_status metadata (written by processIssue when it
-// observes a non-queuing label), falling back to the task's current_status.
+// ListCompletedIssues returns issues whose latest successful transition reached a
+// terminal completion status and that have no remaining active queued/dispatched tasks.
 func (s *Store) ListCompletedIssues(limit int) ([]CompletedIssueSummary, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	rows, err := s.db.Query(`
 		SELECT
-			t.issue_number,
-			COALESCE(im_final.value, t.current_status, '') AS final_status,
-			COALESCE(im_final.updated_at, t.finished_at, t.created_at) AS completed_at,
-			COALESCE(t.repo, im_repo.value, '')            AS repo,
-			COALESCE(im.value, '')                         AS workflow_key,
-			COALESCE(sc.cnt, 0)                            AS step_count,
-			COALESCE(im_title.value, '')                   AS title
-		FROM tasks t
+			ta.issue_number,
+			COALESCE(ta.to_status, '')              AS final_status,
+			COALESCE(ta.created_at, '')             AS completed_at,
+			COALESCE(t.repo, im_repo.value, '')     AS repo,
+			COALESCE(im.value, '')                  AS workflow_key,
+			COALESCE(sc.cnt, 0)                     AS step_count,
+			COALESCE(im_title.value, '')            AS title
+		FROM transition_audit ta
 		JOIN (
+			SELECT issue_number, MAX(id) AS max_id
+			FROM transition_audit
+			WHERE result IN ('success', 'applied', 'partially_applied')
+			GROUP BY issue_number
+		) last_ta ON ta.issue_number = last_ta.issue_number AND ta.id = last_ta.max_id
+		LEFT JOIN (
 			SELECT issue_number, MAX(id) AS max_id
 			FROM tasks
 			GROUP BY issue_number
-		) last_t ON t.issue_number = last_t.issue_number AND t.id = last_t.max_id
-		LEFT JOIN issue_metadata im_final
-			ON im_final.issue_id = t.issue_number AND im_final.key = '_final_status'
+		) last_task ON ta.issue_number = last_task.issue_number
+		LEFT JOIN tasks t
+			ON t.issue_number = last_task.issue_number AND t.id = last_task.max_id
 		LEFT JOIN issue_metadata im
-			ON im.issue_id = t.issue_number AND im.key = '_workflow_key'
+			ON im.issue_id = ta.issue_number AND im.key = '_workflow_key'
 		LEFT JOIN issue_metadata im_title
-			ON im_title.issue_id = t.issue_number AND im_title.key = '_title'
+			ON im_title.issue_id = ta.issue_number AND im_title.key = '_title'
 		LEFT JOIN issue_metadata im_repo
-			ON im_repo.issue_id = t.issue_number AND im_repo.key = '_repo'
+			ON im_repo.issue_id = ta.issue_number AND im_repo.key = '_repo'
 		LEFT JOIN (
 			SELECT issue_number, COUNT(*) AS cnt
-			FROM tasks
+			FROM transition_audit
+			WHERE result IN ('success', 'applied', 'partially_applied')
 			GROUP BY issue_number
-		) sc ON sc.issue_number = t.issue_number
-		WHERE t.status IN ('completed', 'superseded', 'failed')
-		  AND t.issue_number NOT IN (
+		) sc ON sc.issue_number = ta.issue_number
+		WHERE ta.to_status IN ('status:done', 'status:rejected')
+		  AND ta.issue_number NOT IN (
 			SELECT DISTINCT issue_number FROM tasks WHERE status IN ('queued', 'dispatched')
 		  )
-		ORDER BY COALESCE(im_final.updated_at, t.finished_at, t.created_at) DESC
+		ORDER BY ta.created_at DESC, ta.id DESC
 		LIMIT ?
 	`, limit)
 	if err != nil {

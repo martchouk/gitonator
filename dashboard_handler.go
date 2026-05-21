@@ -441,11 +441,6 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusNotFound, "no completed run found for this issue")
 		return
 	}
-	if len(tasks) == 0 {
-		writeError(w, http.StatusNotFound, "no completed run found for this issue")
-		return
-	}
-
 	audit, err := d.store.ListTransitionAudit(number, 200)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -466,13 +461,19 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 		}
 	}
 	if finalStatus == "" {
-		// tasks ordered DESC; index 0 is most recent.
-		finalStatus = tasks[0].CurrentStatus
+		// tasks ordered DESC; index 0 is most recent when tasks exist.
+		if len(tasks) > 0 {
+			finalStatus = tasks[0].CurrentStatus
+		}
 	}
-	if completedAt == "" && tasks[0].FinishedAt.Valid {
+	if finalStatus == "" || !isCompletedWorkflowStatus(finalStatus) {
+		writeError(w, http.StatusNotFound, "no completed run found for this issue")
+		return
+	}
+	if completedAt == "" && len(tasks) > 0 && tasks[0].FinishedAt.Valid {
 		completedAt = tasks[0].FinishedAt.String
 	}
-	if completedAt == "" {
+	if completedAt == "" && len(tasks) > 0 {
 		completedAt = tasks[0].CreatedAt
 	}
 
@@ -490,13 +491,18 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 	}
 	workflowKey, _, _ := d.store.GetIssueWorkflowKey(number)
 
+	stepCount := len(tasks)
+	if stepCount == 0 {
+		stepCount = countSuccessfulAuditRows(audit)
+	}
+
 	detail := CompletedRunDetail{
 		IssueNumber: number,
 		Repo:        repo,
 		WorkflowKey: workflowKey,
 		FinalStatus: finalStatus,
 		CompletedAt: completedAt,
-		StepCount:   len(tasks),
+		StepCount:   stepCount,
 		Audit:       audit,
 		Tasks:       tasks,
 	}
@@ -516,7 +522,7 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 }
 
 func isSuccessfulAuditResult(result string) bool {
-	return result == "applied" || result == "partially_applied"
+	return result == "success" || result == "applied" || result == "partially_applied"
 }
 
 func latestSuccessfulCompletedAudit(audit []TransitionAuditRow) *TransitionAuditRow {
