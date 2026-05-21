@@ -395,7 +395,7 @@ function PathView({
                       if (!edge) return;
                       const r = e.currentTarget.getBoundingClientRect();
                       setHoveredEdge(edge);
-                      setTipPos({ x: r.right + 8, y: r.top + r.height / 2 });
+                      setTipPos({ x: r.left + r.width / 2 + 16, y: r.top + r.height / 2 });
                     }}
                     onMouseLeave={() => {
                       setHoveredEdge(null);
@@ -1379,7 +1379,8 @@ const pathTooltip: React.CSSProperties = {
 const pathTooltipBubble: React.CSSProperties = {
   position: 'fixed',
   transform: 'translateY(-50%)',
-  background: 'var(--md-sys-color-inverse-surface)',
+  background: 'var(--md-sys-color-surface)',
+  color: 'var(--md-sys-color-on-surface)',
   border: '1px solid var(--md-sys-color-outline-variant)',
   borderRadius: '0.5rem',
   padding: '5px 10px',
