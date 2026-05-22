@@ -357,8 +357,8 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.debugf("webhook received: delivery=%s event=%s query=%s payload_bytes=%d",
-		deliveryID, eventType, r.URL.RawQuery, len(payload))
+	// s.debugf("webhook received: delivery=%s event=%s query=%s payload_bytes=%d",
+	// 	deliveryID, eventType, r.URL.RawQuery, len(payload))
 	// s.debugf("webhook payload preview: delivery=%s body=%q", deliveryID, truncateForLog(string(payload), 256))
 
 	processed, err := s.store.IsDeliveryProcessed(deliveryID)
