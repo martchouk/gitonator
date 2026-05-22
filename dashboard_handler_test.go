@@ -708,6 +708,23 @@ func TestHandleCompletedList_Empty(t *testing.T) {
 
 func TestHandleCompletedList_WithData(t *testing.T) {
 	d := newTestDashboardServer(t)
+	// The server's ListCompletedIssues query drives off the tasks table, so a
+	// completed task must exist for the issue to appear in the list.
+	if _, err := d.store.QueueTask(WorkPackage{
+		Repo: "owner/repo", IssueID: 42, Role: "developer", CurrentStatus: "status:done",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	task42, err := d.store.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if task42 == nil {
+		t.Fatal("expected task to be dispatched")
+	}
+	if err := d.store.CompleteDispatchedTask(42); err != nil {
+		t.Fatalf("CompleteDispatchedTask: %v", err)
+	}
 	_ = d.store.RecordTransitionAudit(42, "status:open", "status:done",
 		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
 
@@ -745,8 +762,26 @@ func TestHandleCompletedList_MethodNotAllowed(t *testing.T) {
 
 func TestHandleCompletedIssue_Valid(t *testing.T) {
 	d := newTestDashboardServer(t)
+	// A completed task is required for the handler to return 200 (it 404s with
+	// no task history). Use result="applied" so isSuccessfulAuditResult matches
+	// and the audit to_status wins the finalStatus resolution.
+	if _, err := d.store.QueueTask(WorkPackage{
+		Repo: "owner/repo", IssueID: 55, Role: "developer", CurrentStatus: "status:done",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	task55, err := d.store.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if task55 == nil {
+		t.Fatal("expected task to be dispatched")
+	}
+	if err := d.store.CompleteDispatchedTask(55); err != nil {
+		t.Fatalf("CompleteDispatchedTask: %v", err)
+	}
 	_ = d.store.RecordTransitionAudit(55, "status:open", "status:done",
-		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+		"bud-dev", "", "bud-dev", "webhook", nil, "applied", "", nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed/55", nil)
 	w := httptest.NewRecorder()
@@ -796,6 +831,22 @@ func TestHandleCompletedIssue_InvalidNumber(t *testing.T) {
 func TestHandleCompletedIssue_AttachesWorkflowGraph(t *testing.T) {
 	d := newTestDashboardServer(t)
 	_ = d.store.SetIssueWorkflowKey(77, "lean")
+	// Need a completed task so the handler doesn't return 404.
+	if _, err := d.store.QueueTask(WorkPackage{
+		Repo: "owner/repo", IssueID: 77, Role: "developer", CurrentStatus: "status:done",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	task77, err := d.store.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if task77 == nil {
+		t.Fatal("expected task to be dispatched")
+	}
+	if err := d.store.CompleteDispatchedTask(77); err != nil {
+		t.Fatalf("CompleteDispatchedTask: %v", err)
+	}
 	_ = d.store.RecordTransitionAudit(77, "status:open", "status:done",
 		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
 
@@ -860,8 +911,11 @@ func TestHandleCompletedIssue_ReturnsLatestTerminalAuditStatus(t *testing.T) {
 	if err := d.store.CompleteDispatchedTask(91); err != nil {
 		t.Fatalf("CompleteDispatchedTask: %v", err)
 	}
+	// Use result="applied" so isSuccessfulAuditResult recognises the row and
+	// latestSuccessfulCompletedAudit returns it, letting audit to_status win
+	// over the stale task current_status.
 	_ = d.store.RecordTransitionAudit(91, "status:po-approval", "status:done",
-		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+		"bud-dev", "", "bud-dev", "webhook", nil, "applied", "", nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard/completed/91", nil)
 	w := httptest.NewRecorder()
@@ -904,10 +958,25 @@ func TestListCompletedIssues_FiltersByTerminalStatus(t *testing.T) {
 	}
 	defer store.Close()
 
-	// Issue 1: ends with "done" → should appear.
+	// Issue 1: completed task with terminal current_status → should appear.
+	if _, err := store.QueueTask(WorkPackage{
+		Repo: "owner/repo", IssueID: 1, Role: "developer", CurrentStatus: "status:done",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	task1, err := store.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if task1 == nil {
+		t.Fatal("expected task to be dispatched")
+	}
+	if err := store.CompleteDispatchedTask(1); err != nil {
+		t.Fatalf("CompleteDispatchedTask: %v", err)
+	}
 	_ = store.RecordTransitionAudit(1, "status:open", "status:done",
 		"a", "", "a", "webhook", nil, "success", "", nil, nil)
-	// Issue 2: still active → should NOT appear.
+	// Issue 2: no completed task, still active → should NOT appear.
 	_ = store.RecordTransitionAudit(2, "status:new", "status:in-progress",
 		"b", "", "b", "webhook", nil, "success", "", nil, nil)
 
@@ -929,13 +998,30 @@ func TestListCompletedIssues_FiltersByTerminalStatus(t *testing.T) {
 	}
 }
 
-func TestListCompletedIssues_StepCountIncludesAllTransitions(t *testing.T) {
+func TestListCompletedIssues_StepCountReflectsTaskCount(t *testing.T) {
 	store, err := OpenStore(":memory:")
 	if err != nil {
 		t.Fatalf("OpenStore: %v", err)
 	}
 	defer store.Close()
 
+	// The server counts tasks, not audit entries. Create one completed task;
+	// the audit log is written alongside but doesn't affect step_count.
+	if _, err := store.QueueTask(WorkPackage{
+		Repo: "owner/repo", IssueID: 10, Role: "developer", CurrentStatus: "status:done",
+	}); err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	task10, err := store.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+	if task10 == nil {
+		t.Fatal("expected task to be dispatched")
+	}
+	if err := store.CompleteDispatchedTask(10); err != nil {
+		t.Fatalf("CompleteDispatchedTask: %v", err)
+	}
 	_ = store.RecordTransitionAudit(10, "status:new", "status:open",
 		"a", "", "a", "webhook", nil, "success", "", nil, nil)
 	_ = store.RecordTransitionAudit(10, "status:open", "status:in-review",
@@ -950,8 +1036,8 @@ func TestListCompletedIssues_StepCountIncludesAllTransitions(t *testing.T) {
 	if len(runs) != 1 {
 		t.Fatalf("expected 1, got %d", len(runs))
 	}
-	if runs[0].StepCount != 3 {
-		t.Errorf("stepCount: want 3, got %d", runs[0].StepCount)
+	if runs[0].StepCount != 1 {
+		t.Errorf("stepCount: want 1 (task count), got %d", runs[0].StepCount)
 	}
 }
 
@@ -982,6 +1068,12 @@ func TestListCompletedIssues_UsesTerminalAuditStatusWhenTaskStatusIsStale(t *tes
 	}
 	_ = store.RecordTransitionAudit(91, "status:po-approval", "status:done",
 		"bud-dev", "", "bud-dev", "webhook", nil, "success", "", nil, nil)
+	// The server's ListCompletedIssues query resolves finalStatus from
+	// _final_status metadata first. Set it so the audit to_status wins over
+	// the stale task current_status ("status:po-approval").
+	if err := store.SetIssueMetadata(91, "_final_status", "status:done"); err != nil {
+		t.Fatalf("SetIssueMetadata: %v", err)
+	}
 
 	runs, err := store.ListCompletedIssues(100)
 	if err != nil {
