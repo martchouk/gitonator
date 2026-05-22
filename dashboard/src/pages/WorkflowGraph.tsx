@@ -376,6 +376,11 @@ function PathView({
   const [hoveredEdgeID, setHoveredEdgeID] = useState<string | null>(null);
   const [hoveredNodeStatus, setHoveredNodeStatus] = useState<string | null>(null);
   const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
+  // Pre-index edges by "source→target" for O(1) lookup during render.
+  const edgeByPair = useMemo(
+    () => new Map(data.edges.map((e) => [`${e.source}→${e.target}`, e])),
+    [data.edges]
+  );
   return (
     <div style={canvasShell}>
       <div style={{ padding: 'var(--spacing-lg)', overflow: 'auto' }}>
@@ -389,7 +394,7 @@ function PathView({
         <div style={pathStack}>
           {statuses.map((status, index) => {
             const node = nodeByID.get(status);
-            const edge = index > 0 ? findEdge(data.edges, statuses[index - 1], status) : undefined;
+            const edge = index > 0 ? edgeByPair.get(`${statuses[index - 1]}→${status}`) : undefined;
             const edgeSelected = selection?.kind === 'edge' && selection.edge.id === edge?.id;
             const nodeSelected = selection?.kind === 'node' && selection.node.id === status;
             return (
@@ -480,6 +485,13 @@ function SwimlaneView({
   const [hoveredNodeStatus, setHoveredNodeStatus] = useState<string | null>(null);
   const [hoveredEdgeID, setHoveredEdgeID] = useState<string | null>(null);
 
+  // Pre-index edges by "source→target" so the layout effect can look them up in O(1)
+  // instead of scanning all edges for every status pair.
+  const edgeByPair = useMemo(
+    () => new Map(data.edges.map((e) => [`${e.source}→${e.target}`, e])),
+    [data.edges]
+  );
+
   const setNodeRef = useCallback((status: string, element: HTMLButtonElement | null) => {
     if (element) {
       nodeRefs.current.set(status, element);
@@ -496,7 +508,7 @@ function SwimlaneView({
       const next: SwimlaneConnector[] = [];
       statuses.slice(1).forEach((status, index) => {
         const previousStatus = statuses[index];
-        const edge = findEdge(data.edges, previousStatus, status);
+        const edge = edgeByPair.get(`${previousStatus}→${status}`);
         if (!edge) return;
         const source = nodeRefs.current.get(previousStatus);
         const target = nodeRefs.current.get(status);
@@ -530,7 +542,7 @@ function SwimlaneView({
     const handleResize = () => window.requestAnimationFrame(measure);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [data.edges, statuses]);
+  }, [edgeByPair, statuses]);
 
   return (
     <div style={canvasShell}>
@@ -648,7 +660,13 @@ function TransitionStrip({
   onSelect: (selection: DetailSelection) => void;
 }) {
   const [hoveredEdgeID, setHoveredEdgeID] = useState<string | null>(null);
-  const edges = statuses.slice(1).map((status, i) => findEdge(data.edges, statuses[i], status)).filter(Boolean) as GraphEdge[];
+  // Build once per data/statuses change instead of scanning all edges for every status pair.
+  const edges = useMemo(() => {
+    const byPair = new Map(data.edges.map((e) => [`${e.source}→${e.target}`, e]));
+    return statuses.slice(1)
+      .map((status, i) => byPair.get(`${statuses[i]}→${status}`))
+      .filter(Boolean) as GraphEdge[];
+  }, [data.edges, statuses]);
   return (
     <div style={{ marginTop: 'var(--spacing-md)', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
       {edges.map((edge) => (
@@ -831,11 +849,14 @@ function filterEdges(
   path: string[],
   opts: { full: boolean; loops: boolean; exceptions: boolean; terminal: boolean }
 ) {
+  // Pre-index nodes for O(1) category lookup in isException instead of O(nodes) find.
+  const nodeByID = new Map(data.nodes.map((n) => [n.id, n]));
+
   if (opts.full) {
     return data.edges.filter((edge) => {
       if (edge.source === '__bootstrap__') return false;
       if (isLoop(edge) && !opts.loops) return false;
-      if (isException(edge, data) && !opts.exceptions) return false;
+      if (isException(edge, nodeByID) && !opts.exceptions) return false;
       if (isTerminalControl(edge) && !opts.terminal) return false;
       return true;
     });
@@ -849,7 +870,7 @@ function filterEdges(
     const include =
       pathPairs.has(pair) ||
       (opts.loops && path.includes(edge.source) && path.includes(edge.target) && isLoop(edge)) ||
-      (opts.exceptions && path.includes(edge.source) && isException(edge, data)) ||
+      (opts.exceptions && path.includes(edge.source) && isException(edge, nodeByID)) ||
       (opts.terminal && path.includes(edge.source) && isTerminalControl(edge));
     if (include && !edgeIDs.has(edge.id)) {
       edgeIDs.add(edge.id);
@@ -857,10 +878,6 @@ function filterEdges(
     }
   }
   return result;
-}
-
-function findEdge(edges: GraphEdge[], source: string, target: string) {
-  return edges.find((e) => e.source === source && e.target === target);
 }
 
 function orderedRoles(data: WorkflowGraphType, statuses: string[], nodeByID: Map<string, GraphNode>) {
@@ -878,8 +895,10 @@ function isLoop(edge: GraphEdge) {
   return edge.source === edge.target || edge.target === 'status:in-development' || edge.transitionId.includes('reject') || edge.transitionId.includes('request_changes') || edge.transitionId.includes('fail');
 }
 
-function isException(edge: GraphEdge, data?: WorkflowGraphType) {
-  const target = data?.nodes.find((n) => n.id === edge.target);
+function isException(edge: GraphEdge, nodeByID?: Map<string, GraphNode>) {
+  // Use Map.get() for O(1) lookup; callers that omit nodeByID (isLoopOrException,
+  // edgeColor) rely only on the transitionId checks below — same behaviour as before.
+  const target = nodeByID?.get(edge.target);
   return target?.category === 'exception' || edge.transitionId.includes('block') || edge.transitionId.includes('resume');
 }
 

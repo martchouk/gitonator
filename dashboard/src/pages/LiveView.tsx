@@ -4,61 +4,13 @@ import useSWR from 'swr';
 import type { Issue, TaskRow } from '../api/types';
 import { get } from '../api/client';
 import { StatusChip } from '../components/StatusChip';
+import { GithubIcon } from '../components/GithubIcon';
+import { relativeTime, duration, nullStr, taskOutcomeColor, truncate64 } from '../utils/format';
 import { useSSE } from '../hooks/useSSE';
-
-function GithubIcon({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill={color} xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-    </svg>
-  );
-}
 
 function repoFromUrl(url: string): string {
   const m = url.match(/github\.com\/([^/]+\/[^/]+)/);
   return m ? m[1] : '';
-}
-
-function truncate64(str: string): string {
-  return str.length > 64 ? str.slice(0, 64) + '…' : str;
-}
-
-function relativeTime(ts: string): string {
-  if (!ts) return '–';
-  const diff = Date.now() - new Date(ts).getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
-function duration(
-  created: string,
-  finished: { String: string; Valid: boolean } | null | undefined
-): string {
-  if (!finished?.Valid || !finished.String) return '–';
-  const ms = new Date(finished.String).getTime() - new Date(created).getTime();
-  if (ms < 0) return '–';
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
-
-function nullStr(f: { String: string; Valid: boolean } | null | undefined): string {
-  if (!f) return '–';
-  return f.Valid && f.String ? f.String : '–';
-}
-
-function taskOutcomeColor(status: string): string {
-  if (status === 'completed') return 'var(--color-neon-green)';
-  if (status === 'failed') return 'var(--color-neon-magenta)';
-  if (status === 'superseded') return 'var(--color-text-muted)';
-  return 'var(--color-text-muted)';
 }
 
 interface IssueResponse {
@@ -212,7 +164,7 @@ function RunningTimer({ createdAt }: { createdAt: string }) {
         ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m ${s % 60}s`
         : `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h ${Math.floor((s % 3600) / 60)}m ${s % 60}s`;
   return (
-    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-neon-green)' }}>
+    <span className="mono-xs text-green">
       {display}
     </span>
   );
@@ -237,7 +189,7 @@ function SubTableHeader() {
         borderBottom: '1px solid var(--md-sys-color-outline-variant)',
       }}
     >
-      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><GithubIcon size={17} color="var(--color-text-muted)" /></span>
+      <span className="flex-center-all"><GithubIcon size={17} color="var(--color-text-muted)" /></span>
       <span>Role</span>
       <span>Status at Dispatch</span>
       <span>Outcome</span>
@@ -395,7 +347,7 @@ function SubTaskRow({ task, step, isFirst, isLast, nextIsRunning }: { task: Task
         commentUrl={commentUrl} commentId={task.last_comment_id ?? null} />
 
       <div style={cell()}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--color-neon-cyan)' }}>
+        <span className="mono-sm text-cyan">
           {task.role || '–'}
         </span>
       </div>
@@ -403,38 +355,38 @@ function SubTaskRow({ task, step, isFirst, isLast, nextIsRunning }: { task: Task
       <div style={cell()}>
         {task.current_status
           ? <StatusChip status={task.current_status} />
-          : <span style={{ color: 'var(--color-text-muted)' }}>–</span>
+          : <span className="text-muted">–</span>
         }
       </div>
 
       <div style={cell({ paddingRight: '16px', overflow: 'hidden' })}>
         {isRunning ? <RotatingWord /> : (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', fontWeight: 600, color: taskOutcomeColor(task.status) }}>
+          <span className="mono-xs" style={{ fontWeight: 600, color: taskOutcomeColor(task.status) }}>
             {task.status}
           </span>
         )}
       </div>
 
       <div style={cell({ overflow: 'hidden' })}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: workerLogin ? 'var(--color-neon-cyan)' : 'var(--color-neon-yellow)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span className={`mono-xs text-truncate ${workerLogin ? 'text-cyan' : 'text-yellow'}`}>
           {workerLogin || task.role || ''}
         </span>
       </div>
 
       <div style={cell({ overflow: 'hidden' })}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: bridge !== '–' ? 1 : 0.4 }}>
+        <span className="mono-xs text-muted text-truncate" style={{ opacity: bridge !== '–' ? 1 : 0.4 }}>
           {bridge}
         </span>
       </div>
 
       <div style={cell()}>
-        <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+        <span className="text-xs text-muted">
           {relativeTime(task.created_at)}
         </span>
       </div>
 
       <div style={cell()}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+        <span className="mono-xs text-muted">
           {isRunning ? <RunningTimer createdAt={task.created_at} /> : duration(task.created_at, task.finished_at)}
         </span>
       </div>
@@ -451,17 +403,17 @@ function ExpandedIssueDetail({ issueNumber }: { issueNumber: number }) {
 
   if (error) {
     return (
-      <div style={{ padding: '10px 16px', color: 'var(--md-sys-color-error)', fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="flex-center-gap text-error text-xxs" style={{ padding: '10px 16px' }}>
         <span>Failed to load tasks.</span>
-        <button onClick={() => void mutate()} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--md-sys-color-error)', fontSize: '0.8125rem', textDecoration: 'underline', padding: 0 }}>Retry</button>
+        <button onClick={() => void mutate()} className="text-error text-xxs" style={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Retry</button>
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-        <Loader2 size={16} style={{ animation: 'spin 1.2s linear infinite' }} />
+      <div className="flex-center-gap text-muted text-sm" style={{ padding: '14px 16px' }}>
+        <Loader2 size={16} className="spin" />
         Loading tasks…
       </div>
     );
@@ -472,14 +424,14 @@ function ExpandedIssueDetail({ issueNumber }: { issueNumber: number }) {
 
   if (tasks.length === 0) {
     return (
-      <div style={{ padding: '12px 16px', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+      <div className="text-muted text-sm" style={{ padding: '12px 16px' }}>
         No task records found.
       </div>
     );
   }
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className="scroll-x">
       <div style={{ minWidth: '780px' }}>
         <SubTableHeader />
         {tasks.map((task, idx) => {
@@ -544,7 +496,7 @@ export function LiveView() {
             gap: 'var(--spacing-sm)',
           }}
         >
-          <Loader2 size={40} style={{ opacity: 0.5, animation: 'spin 1.2s linear infinite' }} />
+          <Loader2 size={40} className="spin-sm" />
           <span>Loading…</span>
         </div>
       )}
@@ -610,7 +562,7 @@ export function LiveView() {
                     outline: 'none',
                   }}
                 >
-                  <span style={{ color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center' }}>
+                  <span className="flex-center text-muted">
                     {isExpanded
                       ? <ChevronDown size={14} />
                       : <ChevronRight size={14} />
@@ -621,36 +573,15 @@ export function LiveView() {
                     target="_blank"
                     rel="noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.75rem',
-                      color: 'var(--color-neon-amber)',
-                      textDecoration: 'none',
-                    }}
+                    className="mono-sm text-amber"
+                    style={{ textDecoration: 'none' }}
                   >
                     #{issue.number}
                   </a>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.75rem',
-                      color: 'var(--color-text-muted)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <span className="mono-sm text-muted text-truncate">
                     {issue.repo || repoFromUrl(issue.url)}
                   </span>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.75rem',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <span className="mono-sm text-truncate">
                     {truncate64(issue.title || `Issue #${issue.number}`)}
                   </span>
                   <span

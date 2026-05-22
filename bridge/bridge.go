@@ -352,15 +352,19 @@ func must(ok bool, msg string) {
 }
 
 func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *providerCooldowns, selector *agentSelector, now time.Time, wt *worktreeTracker) *Agent {
+	// Build a name→agent index for O(1) lookups in the assignee and past-worker paths.
+	// The roster is small and stable between polls, so the one-time O(n) build is cheap.
+	byName := make(map[string]*Agent, len(roster.Agents))
+	for i := range roster.Agents {
+		byName[roster.Agents[i].Name] = &roster.Agents[i]
+	}
+
 	if pkg.Assignee != "" {
-		for i := range roster.Agents {
-			a := &roster.Agents[i]
-			if a.Role == pkg.Role && a.Name == pkg.Assignee {
-				if agentAvailable(cooldowns, a, now) && !worktreeBusy(wt, a, pkg.Repo) {
-					return a
-				}
-				break
+		if a, ok := byName[pkg.Assignee]; ok && a.Role == pkg.Role {
+			if agentAvailable(cooldowns, a, now) && !worktreeBusy(wt, a, pkg.Repo) {
+				return a
 			}
+			// Assignee found but unavailable — fall through to past-worker and candidate loops.
 		}
 	}
 	for i := len(pkg.PastWorkers) - 1; i >= 0; i-- {
@@ -368,11 +372,8 @@ func selectAgent(roster Roster, pkg *WorkPackage, cooldowns *providerCooldowns, 
 		if worker == "" || worker == pkg.Assignee {
 			continue
 		}
-		for j := range roster.Agents {
-			a := &roster.Agents[j]
-			if a.Role == pkg.Role && a.Name == worker && agentAvailable(cooldowns, a, now) && !worktreeBusy(wt, a, pkg.Repo) {
-				return a
-			}
+		if a, ok := byName[worker]; ok && a.Role == pkg.Role && agentAvailable(cooldowns, a, now) && !worktreeBusy(wt, a, pkg.Repo) {
+			return a
 		}
 	}
 	var candidates []*Agent
