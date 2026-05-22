@@ -706,3 +706,94 @@ func TestBridgeIDStoredOnDispatch(t *testing.T) {
 		t.Errorf("bridge_id: got %q, want %q", bridgeID, "my-bridge")
 	}
 }
+
+func TestReleaseDispatchedTask(t *testing.T) {
+	s := tempStore(t)
+
+	id, err := s.QueueTask(testPkg(42, "developer"))
+	if err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	pkg, err := s.GetNextWorkPackage("bridge-1", []string{"developer"})
+	if err != nil || pkg == nil {
+		t.Fatalf("GetNextWorkPackage: pkg=%v err=%v", pkg, err)
+	}
+
+	released, err := s.ReleaseDispatchedTask(id, "bridge-1", "no_available_agent", "all agents busy")
+	if err != nil {
+		t.Fatalf("ReleaseDispatchedTask: %v", err)
+	}
+	if !released {
+		t.Fatal("expected released=true")
+	}
+
+	found, err := s.FindActiveTaskByIssue(42)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected task to be requeued and active")
+	}
+	if found.Status != "queued" {
+		t.Errorf("status=%s, want queued", found.Status)
+	}
+	if found.BridgeID.Valid && found.BridgeID.String != "" {
+		t.Errorf("bridge_id should be cleared after release, got %q", found.BridgeID.String)
+	}
+}
+
+func TestReleaseDispatchedTask_WrongBridgeReturnsFalse(t *testing.T) {
+	s := tempStore(t)
+
+	id, err := s.QueueTask(testPkg(43, "developer"))
+	if err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	if _, err = s.GetNextWorkPackage("bridge-1", []string{"developer"}); err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+
+	released, err := s.ReleaseDispatchedTask(id, "bridge-2", "no_available_agent", "")
+	if err != nil {
+		t.Fatalf("ReleaseDispatchedTask: %v", err)
+	}
+	if released {
+		t.Error("expected released=false for wrong bridge")
+	}
+}
+
+func TestReleaseDispatchedTask_UnknownIDReturnsFalse(t *testing.T) {
+	s := tempStore(t)
+
+	released, err := s.ReleaseDispatchedTask(99999, "bridge-1", "no_available_agent", "")
+	if err != nil {
+		t.Fatalf("ReleaseDispatchedTask: %v", err)
+	}
+	if released {
+		t.Error("expected released=false for nonexistent task")
+	}
+}
+
+func TestTaskExists(t *testing.T) {
+	s := tempStore(t)
+
+	exists, err := s.TaskExists(99999)
+	if err != nil {
+		t.Fatalf("TaskExists: %v", err)
+	}
+	if exists {
+		t.Error("expected false for nonexistent task")
+	}
+
+	id, err := s.QueueTask(testPkg(44, "developer"))
+	if err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	exists, err = s.TaskExists(id)
+	if err != nil {
+		t.Fatalf("TaskExists after queue: %v", err)
+	}
+	if !exists {
+		t.Error("expected true for existing task")
+	}
+}

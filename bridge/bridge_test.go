@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -212,25 +213,37 @@ func TestSelectAgentRoundRobinRolePool(t *testing.T) {
 // TestWorktreeTracker_TryAcquireAndRelease verifies the basic acquire/release cycle.
 func TestWorktreeTracker_TryAcquireAndRelease(t *testing.T) {
 	wt := newWorktreeTracker()
-	path := "/tmp/repo"
+	path := t.TempDir()
 
 	if wt.isBusy(path) {
 		t.Fatal("expected path to be free initially")
 	}
-	if !wt.tryAcquire(path) {
+	ok, err := wt.tryAcquire(path, "test-bridge", "test-agent")
+	if err != nil {
+		t.Fatalf("tryAcquire: %v", err)
+	}
+	if !ok {
 		t.Fatal("expected first acquire to succeed")
 	}
 	if !wt.isBusy(path) {
 		t.Fatal("expected path to be busy after acquire")
 	}
-	if wt.tryAcquire(path) {
+	ok2, err2 := wt.tryAcquire(path, "test-bridge", "test-agent")
+	if err2 != nil {
+		t.Fatalf("second tryAcquire: %v", err2)
+	}
+	if ok2 {
 		t.Fatal("expected second acquire on same path to fail")
 	}
 	wt.release(path)
 	if wt.isBusy(path) {
 		t.Fatal("expected path to be free after release")
 	}
-	if !wt.tryAcquire(path) {
+	ok3, err3 := wt.tryAcquire(path, "test-bridge", "test-agent")
+	if err3 != nil {
+		t.Fatalf("re-acquire: %v", err3)
+	}
+	if !ok3 {
 		t.Fatal("expected re-acquire after release to succeed")
 	}
 }
@@ -239,16 +252,19 @@ func TestWorktreeTracker_TryAcquireAndRelease(t *testing.T) {
 // is excluded from selection; an alternative agent with a free worktree is chosen instead.
 func TestSelectAgent_BusyWorktreeSkipped(t *testing.T) {
 	wt := newWorktreeTracker()
+	budPath := t.TempDir()
+	elzaPath := t.TempDir()
 
 	roster := Roster{Agents: []Agent{
-		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/bud"}},
-		{Name: "elza-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/elza"}},
+		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": budPath}},
+		{Name: "elza-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": elzaPath}},
 	}}
 	pkg := &WorkPackage{Role: "developer", Repo: "owner/repo"}
 
 	// Mark bud-dev's worktree as busy.
-	if !wt.tryAcquire("/wt/bud") {
-		t.Fatal("tryAcquire should succeed")
+	ok, err := wt.tryAcquire(budPath, "test-bridge", "bud-dev")
+	if err != nil || !ok {
+		t.Fatalf("tryAcquire should succeed: ok=%v err=%v", ok, err)
 	}
 
 	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), wt)
@@ -264,15 +280,17 @@ func TestSelectAgent_BusyWorktreeSkipped(t *testing.T) {
 // a busy worktree, nil is returned — causing the bridge to requeue the work package.
 func TestSelectAgent_AllWorktreesBusyReturnsNil(t *testing.T) {
 	wt := newWorktreeTracker()
+	budPath := t.TempDir()
+	elzaPath := t.TempDir()
 
 	roster := Roster{Agents: []Agent{
-		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/bud"}},
-		{Name: "elza-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/elza"}},
+		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": budPath}},
+		{Name: "elza-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": elzaPath}},
 	}}
 	pkg := &WorkPackage{Role: "developer", Repo: "owner/repo"}
 
-	wt.tryAcquire("/wt/bud")
-	wt.tryAcquire("/wt/elza")
+	_, _ = wt.tryAcquire(budPath, "test-bridge", "bud-dev")
+	_, _ = wt.tryAcquire(elzaPath, "test-bridge", "elza-dev")
 
 	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), wt)
 	if agent != nil {
@@ -284,14 +302,16 @@ func TestSelectAgent_AllWorktreesBusyReturnsNil(t *testing.T) {
 // assignee's worktree is busy, selection falls through to the round-robin pool.
 func TestSelectAgent_AssigneeWithBusyWorktreeFallsToPool(t *testing.T) {
 	wt := newWorktreeTracker()
+	budPath := t.TempDir()
+	elzaPath := t.TempDir()
 
 	roster := Roster{Agents: []Agent{
-		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/bud"}},
-		{Name: "elza-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": "/wt/elza"}},
+		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": budPath}},
+		{Name: "elza-dev", Role: "developer", Worktrees: map[string]string{"owner/repo": elzaPath}},
 	}}
 	pkg := &WorkPackage{Role: "developer", Repo: "owner/repo", Assignee: "bud-dev"}
 
-	wt.tryAcquire("/wt/bud")
+	_, _ = wt.tryAcquire(budPath, "test-bridge", "bud-dev")
 
 	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), wt)
 	if agent == nil {
@@ -306,15 +326,20 @@ func TestSelectAgent_AssigneeWithBusyWorktreeFallsToPool(t *testing.T) {
 // not block agent selection for repo B on the same agent.
 func TestSelectAgent_DifferentRepoDoesNotBlock(t *testing.T) {
 	wt := newWorktreeTracker()
+	pathA := t.TempDir()
+	pathB := t.TempDir()
 
 	roster := Roster{Agents: []Agent{
 		{Name: "bud-dev", Role: "developer", Worktrees: map[string]string{
-			"owner/repo-a": "/wt/repo-a",
-			"owner/repo-b": "/wt/repo-b",
+			"owner/repo-a": pathA,
+			"owner/repo-b": pathB,
 		}},
 	}}
 
-	wt.tryAcquire("/wt/repo-a") // repo-a is busy
+	ok, err := wt.tryAcquire(pathA, "test-bridge", "bud-dev")
+	if err != nil || !ok {
+		t.Fatalf("tryAcquire for repo-a should succeed: ok=%v err=%v", ok, err)
+	}
 
 	pkg := &WorkPackage{Role: "developer", Repo: "owner/repo-b"}
 	agent := selectAgent(roster, pkg, nil, newAgentSelector(), time.Now(), wt)
@@ -468,8 +493,7 @@ func TestResolveRosterEnvPropagatesAgentName(t *testing.T) {
 	}
 }
 
-func TestBuildEnvAgentVarOverridesHost(t *testing.T) {
-	t.Setenv("GH_TOKEN", "host-token")
+func TestBuildEnvAgentVarOverridesMinimalEnv(t *testing.T) {
 	env := buildEnv(map[string]string{"GH_TOKEN": "agent-token"})
 	var found string
 	for _, e := range env {
@@ -478,22 +502,30 @@ func TestBuildEnvAgentVarOverridesHost(t *testing.T) {
 		}
 	}
 	if found != "agent-token" {
-		t.Errorf("expected agent-token to override host-token, got %q", found)
+		t.Errorf("expected agent-token in env, got %q", found)
 	}
 }
 
-func TestBuildEnvEmptyAgentEnvReturnsHostEnv(t *testing.T) {
-	t.Setenv("TEST_SENTINEL_VAR", "present")
+// TestBuildEnvMinimalEnvReturnedWhenAgentEnvNil verifies that the agent subprocess
+// receives a minimal, controlled environment rather than the full parent process env.
+// This prevents accidental PAT and credential leakage into agent processes.
+func TestBuildEnvMinimalEnvReturnedWhenAgentEnvNil(t *testing.T) {
+	t.Setenv("TEST_SENTINEL_VAR", "should-not-leak")
 	env := buildEnv(nil)
-	var found bool
+	envMap := make(map[string]string)
 	for _, e := range env {
-		if e == "TEST_SENTINEL_VAR=present" {
-			found = true
-			break
-		}
+		k, v, _ := strings.Cut(e, "=")
+		envMap[k] = v
 	}
-	if !found {
-		t.Error("expected host env to be present when agent env is nil")
+	if envMap["PATH"] == "" {
+		t.Error("expected PATH to be present in minimal env")
+	}
+	if envMap["LANG"] == "" {
+		t.Error("expected LANG to be present in minimal env")
+	}
+	// Arbitrary host vars must not be inherited.
+	if _, found := envMap["TEST_SENTINEL_VAR"]; found {
+		t.Error("host TEST_SENTINEL_VAR must not leak into agent env")
 	}
 }
 
@@ -506,8 +538,8 @@ func TestResolveModelSelectionUsesRequestedProfile(t *testing.T) {
 	if selection.Model != "gpt-5.3-codex" {
 		t.Fatalf("model=%q, want gpt-5.3-codex", selection.Model)
 	}
-	if selection.Args != "--model gpt-5.3-codex" {
-		t.Fatalf("args=%q", selection.Args)
+	if got := strings.Join(selection.Args, " "); got != "--model gpt-5.3-codex" {
+		t.Fatalf("args=%q, want %q", got, "--model gpt-5.3-codex")
 	}
 	if selection.MatchedProfile != "standard" {
 		t.Fatalf("matched profile=%q, want standard", selection.MatchedProfile)
@@ -550,36 +582,43 @@ func TestResolveModelSelectionMissingProviderErrors(t *testing.T) {
 	}
 }
 
-func TestBuildAgentCommandLineInjectsModelArgs(t *testing.T) {
+// TestBuildAgentCommandInjectsModelArgs verifies that model args are correctly expanded
+// in a legacy shell launch template via buildAgentCommand with legacy=true.
+func TestBuildAgentCommandInjectsModelArgs(t *testing.T) {
 	policy := testModelPolicy()
 	agent := &Agent{
 		Name:           "elza-dev",
 		LLMProvider:    "openai",
 		LaunchTemplate: "codex exec {model_args} -C {worktree} - < {package_file}",
 	}
-	cmd, err := buildAgentCommandLine(agent, "/tmp/work tree", "/tmp/pkg file", &policy, "advanced")
+	sel, err := resolveModelSelection(&policy, "openai", "advanced")
 	if err != nil {
-		t.Fatalf("buildAgentCommandLine: %v", err)
+		t.Fatalf("resolveModelSelection: %v", err)
 	}
-	for _, want := range []string{"--model gpt-5.4", "-C '/tmp/work tree'", "< '/tmp/pkg file'"} {
-		if !strings.Contains(cmd, want) {
-			t.Fatalf("command missing %q: %s", want, cmd)
+	cmd, _, err := buildAgentCommand(context.Background(), agent, "/tmp/work tree", "/tmp/pkg file", sel, true)
+	if err != nil {
+		t.Fatalf("buildAgentCommand: %v", err)
+	}
+	if len(cmd.Args) < 3 {
+		t.Fatalf("expected at least 3 cmd args (sh -c <line>), got %v", cmd.Args)
+	}
+	line := cmd.Args[2]
+	for _, want := range []string{"--model", "gpt-5.4", "-C '/tmp/work tree'", "< '/tmp/pkg file'"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("command missing %q: %s", want, line)
 		}
 	}
-	if strings.Contains(cmd, "{model_args}") {
-		t.Fatalf("command still has placeholder: %s", cmd)
+	if strings.Contains(line, "{model_args}") {
+		t.Fatalf("command still has placeholder: %s", line)
 	}
 }
 
-func TestBuildAgentCommandLineErrorsWhenPolicyMissingForModelPlaceholder(t *testing.T) {
-	agent := &Agent{
-		Name:           "elza-dev",
-		LLMProvider:    "openai",
-		LaunchTemplate: "codex exec {model_args} -C {worktree} - < {package_file}",
-	}
-	_, err := buildAgentCommandLine(agent, "/tmp/work", "/tmp/pkg", nil, "standard")
+// TestResolveModelSelectionErrorsWhenPolicyNil verifies that resolveModelSelection returns
+// an error when no policy is provided, which prevents agents with {model_args} from running.
+func TestResolveModelSelectionErrorsWhenPolicyNil(t *testing.T) {
+	_, err := resolveModelSelection(nil, "openai", "standard")
 	if err == nil {
-		t.Fatal("expected error, got nil")
+		t.Fatal("expected error when policy is nil, got nil")
 	}
 }
 
@@ -598,12 +637,12 @@ func TestValidateModelPolicyForRosterRequiresPolicyWhenPlaceholderUsed(t *testin
 	}
 }
 
-func TestBuildAgentPackageJSON_WithInstructions(t *testing.T) {
+func TestBuildAgentPackagePrompt_WithInstructions(t *testing.T) {
 	pkg := WorkPackage{IssueID: 42, Role: "developer"}
 	instructions := []string{"Step 1: do X", "Step 2: do Y"}
-	data, err := buildAgentPackageJSON(pkg, instructions)
+	data, err := buildAgentPackagePrompt(pkg, instructions)
 	if err != nil {
-		t.Fatalf("buildAgentPackageJSON: %v", err)
+		t.Fatalf("buildAgentPackagePrompt: %v", err)
 	}
 
 	var out WorkPackage
@@ -621,7 +660,7 @@ func TestBuildAgentPackageJSON_WithInstructions(t *testing.T) {
 	}
 }
 
-func TestBuildAgentPackageJSON_WrapsPromptAroundWorkPackage(t *testing.T) {
+func TestBuildAgentPackagePrompt_WrapsPromptAroundWorkPackage(t *testing.T) {
 	pkg := WorkPackage{
 		IssueID:           42,
 		Role:              "developer",
@@ -629,9 +668,9 @@ func TestBuildAgentPackageJSON_WrapsPromptAroundWorkPackage(t *testing.T) {
 		ValidTransitions:  []string{"status:plan-review", "status:blocked", "status:rejected"},
 		NextAssigneeRoles: []string{"reviewer"},
 	}
-	data, err := buildAgentPackageJSON(pkg, []string{"Use valid_transitions only."})
+	data, err := buildAgentPackagePrompt(pkg, []string{"Use valid_transitions only."})
 	if err != nil {
-		t.Fatalf("buildAgentPackageJSON: %v", err)
+		t.Fatalf("buildAgentPackagePrompt: %v", err)
 	}
 	body := string(data)
 	for _, want := range []string{
@@ -646,11 +685,11 @@ func TestBuildAgentPackageJSON_WrapsPromptAroundWorkPackage(t *testing.T) {
 	}
 }
 
-func TestBuildAgentPackageJSON_NoInstructions(t *testing.T) {
+func TestBuildAgentPackagePrompt_NoInstructions(t *testing.T) {
 	pkg := WorkPackage{IssueID: 7, Role: "reviewer"}
-	data, err := buildAgentPackageJSON(pkg, nil)
+	data, err := buildAgentPackagePrompt(pkg, nil)
 	if err != nil {
-		t.Fatalf("buildAgentPackageJSON: %v", err)
+		t.Fatalf("buildAgentPackagePrompt: %v", err)
 	}
 	// agent_instructions must be absent from the JSON (omitempty).
 	raw := workPackageJSONFromPrompt(t, data)
@@ -659,12 +698,12 @@ func TestBuildAgentPackageJSON_NoInstructions(t *testing.T) {
 	}
 }
 
-func TestBuildAgentPackageJSON_DoesNotMutateOriginal(t *testing.T) {
+func TestBuildAgentPackagePrompt_DoesNotMutateOriginal(t *testing.T) {
 	pkg := WorkPackage{IssueID: 99, Role: "po"}
 	instructions := []string{"do something"}
-	_, err := buildAgentPackageJSON(pkg, instructions)
+	_, err := buildAgentPackagePrompt(pkg, instructions)
 	if err != nil {
-		t.Fatalf("buildAgentPackageJSON: %v", err)
+		t.Fatalf("buildAgentPackagePrompt: %v", err)
 	}
 	if len(pkg.AgentInstructions) != 0 {
 		t.Errorf("expected original pkg.AgentInstructions to be unmodified, got %v", pkg.AgentInstructions)
@@ -687,7 +726,7 @@ func TestReportWorkFailurePostsToServer(t *testing.T) {
 
 	cfg := Config{BaseURL: srv.URL, BridgeID: "bigmac", Token: "secret"}
 	pkg := WorkPackage{ID: 6, IssueID: 57, Role: "reviewer"}
-	err := reportWorkFailure(srv.Client(), cfg, pkg, Agent{Name: "mud-rev"}, AgentResult{
+	err := reportWorkFailure(context.Background(), srv.Client(), cfg, pkg, Agent{Name: "mud-rev"}, AgentResult{
 		ExitCode:  1,
 		ErrorText: "You're out of extra usage",
 	})
@@ -704,6 +743,42 @@ func TestReportWorkFailurePostsToServer(t *testing.T) {
 		t.Errorf("auth=%q", auth)
 	}
 	for _, want := range []string{`"task_id":6`, `"issue_id":57`, `"bridge_id":"bigmac"`, `"agent":"mud-rev"`, `"exit_code":1`, "extra usage"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestReportWorkReleasePostsToServer(t *testing.T) {
+	var method, path, auth string
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		path = r.URL.Path
+		auth = r.Header.Get("Authorization")
+		raw, _ := io.ReadAll(r.Body)
+		body = string(raw)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"released":true,"retry_after_seconds":30}`))
+	}))
+	defer srv.Close()
+
+	cfg := Config{BaseURL: srv.URL, BridgeID: "bigmac", Token: "secret"}
+	pkg := WorkPackage{ID: 7, IssueID: 58, Role: "developer"}
+	err := reportWorkRelease(context.Background(), srv.Client(), cfg, pkg, "no_available_agent", "all agents cooling down", 30)
+	if err != nil {
+		t.Fatalf("reportWorkRelease: %v", err)
+	}
+	if method != http.MethodPost {
+		t.Errorf("method=%s, want POST", method)
+	}
+	if path != "/api/v1/work/release" {
+		t.Errorf("path=%s, want /api/v1/work/release", path)
+	}
+	if auth != "Bearer secret" {
+		t.Errorf("auth=%q", auth)
+	}
+	for _, want := range []string{`"task_id":7`, `"issue_id":58`, `"bridge_id":"bigmac"`, `"reason":"no_available_agent"`, `"retry_after_seconds":30`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q: %s", want, body)
 		}
@@ -759,15 +834,15 @@ func testModelPolicy() ModelPolicy {
 		},
 		Providers: map[string]map[string]ModelSpec{
 			"anthropic": {
-				"basic":    {Model: "haiku", Args: "--model haiku"},
-				"standard": {Model: "sonnet", Args: "--model sonnet"},
-				"advanced": {Model: "opus", Args: "--model opus"},
+				"basic":    {Model: "haiku", Args: ArgList{"--model", "haiku"}},
+				"standard": {Model: "sonnet", Args: ArgList{"--model", "sonnet"}},
+				"advanced": {Model: "opus", Args: ArgList{"--model", "opus"}},
 			},
 			"openai": {
-				"basic":    {Model: "gpt-5.4-mini", Args: "--model gpt-5.4-mini"},
-				"standard": {Model: "gpt-5.3-codex", Args: "--model gpt-5.3-codex"},
-				"advanced": {Model: "gpt-5.4", Args: "--model gpt-5.4"},
-				"premium":  {Model: "gpt-5.5", Args: "--model gpt-5.5"},
+				"basic":    {Model: "gpt-5.4-mini", Args: ArgList{"--model", "gpt-5.4-mini"}},
+				"standard": {Model: "gpt-5.3-codex", Args: ArgList{"--model", "gpt-5.3-codex"}},
+				"advanced": {Model: "gpt-5.4", Args: ArgList{"--model", "gpt-5.4"}},
+				"premium":  {Model: "gpt-5.5", Args: ArgList{"--model", "gpt-5.5"}},
 			},
 		},
 	}

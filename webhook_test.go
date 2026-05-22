@@ -537,3 +537,176 @@ func TestTransitionIssue_NoCloseOnNormalTransition(t *testing.T) {
 		t.Errorf("expected CloseIssue NOT to be called for a normal transition, but got calls: %v", mock.closedIssues)
 	}
 }
+
+func TestHandleWorkRelease_Success(t *testing.T) {
+	store := tempStore(t)
+
+	id, err := store.QueueTask(testPkg(55, "developer"))
+	if err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	if _, err = store.GetNextWorkPackage("bigmac", []string{"developer"}); err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+
+	s := &Server{
+		cfg:    Config{AgentSharedToken: "secret"},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"task_id":             id,
+		"issue_id":            55,
+		"bridge_id":           "bigmac",
+		"reason":              "no_available_agent",
+		"detail":              "all agents cooling down",
+		"retry_after_seconds": 30,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/work/release", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	s.handleWorkRelease(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !resp["ok"].(bool) {
+		t.Error("expected ok=true")
+	}
+	if !resp["released"].(bool) {
+		t.Error("expected released=true")
+	}
+	if int(resp["retry_after_seconds"].(float64)) != 30 {
+		t.Errorf("retry_after_seconds=%v, want 30", resp["retry_after_seconds"])
+	}
+
+	found, err := store.FindActiveTaskByIssue(55)
+	if err != nil {
+		t.Fatalf("FindActiveTaskByIssue: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected task to be requeued after release")
+	}
+	if found.Status != "queued" {
+		t.Errorf("status=%s, want queued", found.Status)
+	}
+}
+
+func TestHandleWorkRelease_WrongBridgeReturns409(t *testing.T) {
+	store := tempStore(t)
+
+	id, err := store.QueueTask(testPkg(56, "developer"))
+	if err != nil {
+		t.Fatalf("QueueTask: %v", err)
+	}
+	if _, err = store.GetNextWorkPackage("bigmac", []string{"developer"}); err != nil {
+		t.Fatalf("GetNextWorkPackage: %v", err)
+	}
+
+	s := &Server{
+		cfg:    Config{AgentSharedToken: "secret"},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"task_id":   id,
+		"issue_id":  56,
+		"bridge_id": "other-bridge",
+		"reason":    "no_available_agent",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/work/release", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	s.handleWorkRelease(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("status=%d, want 409 Conflict", w.Code)
+	}
+}
+
+func TestHandleWorkRelease_UnknownTaskReturns404(t *testing.T) {
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{AgentSharedToken: "secret"},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"task_id":   99999,
+		"issue_id":  1,
+		"bridge_id": "bigmac",
+		"reason":    "no_available_agent",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/work/release", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	s.handleWorkRelease(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status=%d, want 404 Not Found", w.Code)
+	}
+}
+
+func TestHandleWorkRelease_MissingFieldsReturn422(t *testing.T) {
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{AgentSharedToken: "secret"},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	cases := []struct {
+		name string
+		body map[string]any
+	}{
+		{"missing task_id", map[string]any{"bridge_id": "b", "reason": "r"}},
+		{"missing bridge_id", map[string]any{"task_id": 1, "reason": "r"}},
+		{"missing reason", map[string]any{"task_id": 1, "bridge_id": "b"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bodyBytes, _ := json.Marshal(tc.body)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/work/release", bytes.NewReader(bodyBytes))
+			req.Header.Set("Authorization", "Bearer secret")
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			s.handleWorkRelease(w, req)
+			if w.Code != http.StatusUnprocessableEntity {
+				t.Errorf("status=%d, want 422; body=%s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestHandleWorkRelease_RequiresBearerToken(t *testing.T) {
+	store := tempStore(t)
+	s := &Server{
+		cfg:    Config{AgentSharedToken: "secret"},
+		store:  store,
+		logger: log.New(&bytes.Buffer{}, "", 0),
+	}
+
+	body, _ := json.Marshal(map[string]any{"task_id": 1, "bridge_id": "b", "reason": "r"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/work/release", bytes.NewReader(body))
+	// No Authorization header.
+
+	w := httptest.NewRecorder()
+	s.handleWorkRelease(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status=%d, want 401", w.Code)
+	}
+}

@@ -730,7 +730,7 @@ func classifyAgentFailure(result AgentResult, err error) failureClass {
 			return configurationFailure
 		}
 	}
-	for _, m := range []string{"quota", "rate limit", "too many requests", "temporarily unavailable", "overloaded", "network is unreachable", "connection refused", "connection reset", "timeout", "deadline exceeded"} {
+	for _, m := range []string{"quota", "rate limit", "too many requests", "temporarily unavailable", "overloaded", "network is unreachable", "connection refused", "connection reset", "timeout", "deadline exceeded", "out of extra usage", "session limit", "usage limit"} {
 		if strings.Contains(text, m) {
 			return transientFailure
 		}

@@ -16,7 +16,10 @@
       "name": "bud-dev",
       "role": "developer",
       "llm_provider": "anthropic",
-      "launch_template": "cd {worktree} && claude {model_args} --dangerously-skip-permissions --print < {package_file}",
+      "command": "claude",
+      "args": ["{model_args}", "--dangerously-skip-permissions", "--print"],
+      "stdin": "{package_file}",
+      "workdir": "{worktree}",
       "env": {
         "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
       },
@@ -28,7 +31,10 @@
       "name": "mud-rev",
       "role": "reviewer",
       "llm_provider": "anthropic",
-      "launch_template": "cd {worktree} && claude {model_args} --dangerously-skip-permissions --print < {package_file}",
+      "command": "claude",
+      "args": ["{model_args}", "--dangerously-skip-permissions", "--print"],
+      "stdin": "{package_file}",
+      "workdir": "{worktree}",
       "env": {
         "GH_TOKEN": "$MUD_REV_GH_TOKEN"
       },

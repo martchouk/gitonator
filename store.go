@@ -399,6 +399,45 @@ func (s *Store) CompleteDispatchedTask(issueNumber int) error {
 	return err
 }
 
+// ReleaseDispatchedTask requeues a dispatched task without recording it as a failure.
+// Called when the bridge discovers that local capacity is temporarily unavailable
+// (all agents cooling, worktree busy, shutting down). Returns (true, nil) when the task
+// was successfully released; (false, nil) when the task is not owned by this bridgeID
+// or is not in dispatched state.
+func (s *Store) ReleaseDispatchedTask(taskID int64, bridgeID, reason, detail string) (bool, error) {
+	msg := reason
+	if detail != "" {
+		msg = reason + ": " + detail
+	}
+	res, err := s.db.Exec(
+		`UPDATE tasks
+		 SET status='queued',
+		     bridge_id=NULL,
+		     claimed_at=NULL,
+		     last_message=?
+		 WHERE id=?
+		   AND status='dispatched'
+		   AND bridge_id=?`,
+		msg, taskID, bridgeID,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// TaskExists reports whether any task with the given ID exists, regardless of status.
+// Used to distinguish 404 (task never existed) from 409 (task exists but wrong bridge/state).
+func (s *Store) TaskExists(taskID int64) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM tasks WHERE id=?`, taskID).Scan(&n)
+	return n > 0, err
+}
+
 // RequeueDispatchedTask moves a bridge-claimed dispatched task back to queued
 // after the bridge reports that its agent could not complete the work.
 func (s *Store) RequeueDispatchedTask(taskID int64, bridgeID, errorText string) (bool, error) {

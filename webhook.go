@@ -21,6 +21,7 @@ func (s *Server) runHTTP(ctx context.Context) error {
 	// Bridge polling endpoint.
 	mux.HandleFunc("/api/v1/work/next", s.handleWorkNext)
 	mux.HandleFunc("/api/v1/work/fail", s.handleWorkFail)
+	mux.HandleFunc("/api/v1/work/release", s.handleWorkRelease)
 
 	// MCP tool inspection and manual override (replaces the removed stdio interface).
 	mux.HandleFunc("/mcp/tools/call", s.handleMCPToolsCall)
@@ -176,6 +177,93 @@ func (s *Server) handleWorkFail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":       true,
 		"requeued": requeued,
+	})
+}
+
+// handleWorkRelease implements POST /api/v1/work/release.
+// Bridges call it when local capacity is temporarily unavailable (all agents busy,
+// provider cooling, worktree locked, bridge shutting down) so the task is returned
+// to the queue without being counted as an agent failure. It must not create
+// user-visible GitHub issue comments and must not increment failure metrics.
+func (s *Server) handleWorkRelease(w http.ResponseWriter, r *http.Request) {
+	if !s.authorizeAgent(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req struct {
+		TaskID            int64  `json:"task_id"`
+		IssueID           int    `json:"issue_id"`
+		BridgeID          string `json:"bridge_id"`
+		Reason            string `json:"reason"`
+		Detail            string `json:"detail"`
+		RetryAfterSeconds int    `json:"retry_after_seconds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	req.BridgeID = strings.TrimSpace(req.BridgeID)
+	req.Reason = strings.TrimSpace(req.Reason)
+	req.Detail = strings.TrimSpace(req.Detail)
+	if req.TaskID <= 0 {
+		writeError(w, http.StatusUnprocessableEntity, "task_id is required")
+		return
+	}
+	if req.BridgeID == "" {
+		writeError(w, http.StatusUnprocessableEntity, "bridge_id is required")
+		return
+	}
+	if req.Reason == "" {
+		writeError(w, http.StatusUnprocessableEntity, "reason is required")
+		return
+	}
+	if req.RetryAfterSeconds < 0 {
+		req.RetryAfterSeconds = 0
+	}
+
+	released, err := s.store.ReleaseDispatchedTask(req.TaskID, req.BridgeID, req.Reason, req.Detail)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !released {
+		exists, err := s.store.TaskExists(req.TaskID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if !exists {
+			writeError(w, http.StatusNotFound, "task not found")
+		} else {
+			writeError(w, http.StatusConflict, "task is not currently dispatched to this bridge")
+		}
+		return
+	}
+
+	s.logger.Printf("work released: bridge=%s task=%d issue=%d reason=%s retry_after=%ds",
+		req.BridgeID, req.TaskID, req.IssueID, req.Reason, req.RetryAfterSeconds)
+
+	if s.hub != nil {
+		s.hub.Broadcast(SSEEvent{
+			Type: "task_released",
+			Data: map[string]interface{}{
+				"issue_number":       req.IssueID,
+				"task_id":            req.TaskID,
+				"bridge_id":          req.BridgeID,
+				"reason":             req.Reason,
+				"retry_after_seconds": req.RetryAfterSeconds,
+			},
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":                  true,
+		"released":            true,
+		"retry_after_seconds": req.RetryAfterSeconds,
 	})
 }
 

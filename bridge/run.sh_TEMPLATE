@@ -10,6 +10,23 @@ export AGENTS_CONFIG="$HOME/agents.json"     # path to agents roster JSON file
 export MODEL="standard"                      # basic, standard, advanced, premium
 export MODEL_POLICY="$HOME/model-policy.json"
 export POLL_SECONDS=5
+export AGENT_TIMEOUT_SECONDS=3600            # kill agent process after this many seconds (default 3600)
 export LOG_LEVEL=DEBUG
+
+# Set to true only if agents.json still uses the legacy launch_template field.
+# The new default format uses command/args/stdin/workdir.
+export ENABLE_LEGACY_LAUNCH_TEMPLATE=false
+
+# When /api/v1/work/release is not yet deployed on the server, fall back to
+# /api/v1/work/fail for capacity-unavailable releases (exit code -2).
+# Set to false once the server supports /work/release.
+export WORK_RELEASE_FALLBACK_TO_FAIL=true
+
+# Agent failure cooldown: pause a provider this many seconds after a transient error.
+export AGENT_FAILURE_COOLDOWN_SECONDS=300
+
+# If agents.json uses $VAR references, export those here:
+# export BUD_DEV_GH_TOKEN="ghp_your_token_here"
+# export MUD_REV_GH_TOKEN="ghp_your_token_here"
 
 exec go run bridge.go
