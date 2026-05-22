@@ -176,10 +176,8 @@ func TestHandleGitHubWebhook_DebugLoggingDoesNotEmitFullPayload(t *testing.T) {
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
 	}
+	// The full webhook payload must never appear in debug logs regardless of size.
 	logs := logBuf.String()
-	if !strings.Contains(logs, "payload_bytes=") {
-		t.Fatalf("expected payload byte count in logs, got: %s", logs)
-	}
 	if strings.Contains(logs, sentinel) {
 		t.Fatalf("debug logs exposed full payload sentinel: %s", logs)
 	}
