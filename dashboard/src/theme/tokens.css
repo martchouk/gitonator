@@ -156,6 +156,22 @@
   --workflow-title-accent: var(--color-neon-green);
 }
 
+/* ── color-scheme: tell the browser which schemes this root supports ─────── */
+/* MANDATORY per modern-web-guidance dark-mode guide:                         */
+/*   - Allows the browser to theme native UI (scrollbars, form controls)      */
+/*   - Prevents the white canvas flash on hard-reload in dark mode             */
+:root {
+  color-scheme: light dark;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }

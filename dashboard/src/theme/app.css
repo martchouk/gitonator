@@ -503,21 +503,38 @@ pre:not([class]) {
   box-shadow: 0 0 8px rgba(255, 45, 120, 0.4);
 }
 
-/* ── Scrollbar (dark only) ──────────────────────────────────── */
+/* ── Scrollbar ──────────────────────────────────────────────── */
+/* Standard scrollbar-color / scrollbar-width (Firefox + Chrome 121+).  */
+/* Pair with scrollbar-width so macOS forces visible (non-overlay) bars. */
+:root {
+  --scrollbar-thumb: rgba(22, 163, 74, 0.25);
+  --scrollbar-track: transparent;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
 
-[data-theme='dark'] ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+[data-theme='dark'] {
+  --scrollbar-thumb: rgba(0, 255, 136, 0.18);
 }
-[data-theme='dark'] ::-webkit-scrollbar-track {
-  background: transparent;
-}
-[data-theme='dark'] ::-webkit-scrollbar-thumb {
-  background: rgba(0, 255, 136, 0.15);
-  border-radius: 3px;
-}
-[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 255, 136, 0.32);
+
+/* Legacy fallback for browsers without scrollbar-color (Safari < 26.2). */
+/* Wrapped in @supports to prevent conflicts in browsers that support     */
+/* both standard and legacy properties at the same time.                 */
+@supports not (scrollbar-color: auto) {
+  [data-theme='dark'] ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  [data-theme='dark'] ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  [data-theme='dark'] ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 3px;
+  }
+  [data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 255, 136, 0.32);
+  }
 }
 
 /* ── Responsive ─────────────────────────────────────────────── */
@@ -550,4 +567,63 @@ pre:not([class]) {
     padding: 5px 8px;
     font-size: 0.6875rem;
   }
+}
+
+/* ── Shared utility classes ─────────────────────────────────── */
+/* Replace repeated inline style={{}}} props across page components */
+
+/* Typography — monospace + size combinations */
+.mono-sm {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.mono-xs {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+/* Text sizes used without monospace */
+.text-sm  { font-size: 0.875rem; }
+.text-xs  { font-size: 0.6875rem; }
+.text-xxs { font-size: 0.8125rem; }
+
+/* Color utilities */
+.text-muted   { color: var(--color-text-muted); }
+.text-error   { color: var(--md-sys-color-error); }
+.text-cyan    { color: var(--color-neon-cyan); }
+.text-amber   { color: var(--color-neon-amber); }
+.text-green   { color: var(--color-neon-green); }
+.text-yellow  { color: var(--color-neon-yellow); }
+
+/* Overflow / truncation */
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Flex helpers */
+.flex-center {
+  display: flex;
+  align-items: center;
+}
+.flex-center-gap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.flex-center-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Scroll */
+.scroll-x { overflow-x: auto; }
+
+/* Spinner animation (Loader2 icon) */
+.spin { animation: spin 1.2s linear infinite; }
+.spin-sm {
+  animation: spin 1.2s linear infinite;
+  opacity: 0.5;
 }

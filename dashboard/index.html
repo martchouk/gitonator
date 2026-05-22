@@ -3,14 +3,53 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Declare color-scheme support before any styles render so the browser
+      can theme its native UI (scrollbars, form controls, canvas background)
+      without a white flash. Per the modern-web-guidance dark-mode guide this
+      meta tag is MANDATORY for FOUC prevention.
+    -->
+    <meta name="color-scheme" content="light dark" />
+    <!--
+      Inline (non-module, non-deferred) script: applies the stored or
+      system-preferred theme before the first paint so there is no flash of
+      the wrong theme. Must NOT use type="module" or defer.
+    -->
+    <script>
+      {
+        const stored = localStorage.getItem('theme');
+        const theme =
+          stored === 'dark' || stored === 'light'
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light';
+        document.documentElement.dataset.theme = theme;
+        // Keep the meta tag in sync so color-scheme reflects the active theme.
+        document.querySelector('meta[name="color-scheme"]').content = theme;
+      }
+    </script>
     <title>github.mcp Dashboard</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Non-render-blocking font load: preload the stylesheet, swap to
+      rel="stylesheet" on load. The <noscript> fallback ensures fonts load
+      in environments with JS disabled.
+    -->
     <link
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>
