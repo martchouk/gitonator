@@ -453,21 +453,12 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	tasks, err := d.store.ListTasksByIssue(number, 100)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	activeTask, err := d.store.FindActiveTaskByIssue(number)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if activeTask != nil {
-		writeError(w, http.StatusNotFound, "no completed run found for this issue")
-		return
-	}
-	if len(tasks) == 0 {
 		writeError(w, http.StatusNotFound, "no completed run found for this issue")
 		return
 	}
@@ -481,25 +472,41 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 		audit = []TransitionAuditRow{}
 	}
 
-	// Resolve final status: prefer _final_status metadata (written by processIssue
-	// when it observes a terminal label), then the best audit row, then task status.
-	finalStatus, _, _ := d.store.GetIssueMetadata(number, "_final_status")
+	tasks, err := d.store.ListTasksByIssue(number, 100)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Require at least one audit entry or one task history record.
+	if len(audit) == 0 && len(tasks) == 0 {
+		writeError(w, http.StatusNotFound, "no completed run found for this issue")
+		return
+	}
+
+	// Resolve final status: prefer the most recent terminal audit entry,
+	// then _final_status metadata (written by processIssue), then the most
+	// recent task's current_status as a last resort.
+	finalStatus := ""
 	completedAt := ""
-	if finalStatus == "" {
-		if ta := latestSuccessfulCompletedAudit(audit); ta != nil {
-			finalStatus = ta.ToStatus
-			completedAt = ta.CreatedAt
-		}
+	if ta := latestSuccessfulCompletedAudit(audit); ta != nil {
+		finalStatus = ta.ToStatus
+		completedAt = ta.CreatedAt
 	}
 	if finalStatus == "" {
-		// tasks ordered DESC; index 0 is most recent.
+		finalStatus, _, _ = d.store.GetIssueMetadata(number, "_final_status")
+	}
+	if finalStatus == "" && len(tasks) > 0 {
 		finalStatus = tasks[0].CurrentStatus
 	}
-	if completedAt == "" && tasks[0].FinishedAt.Valid {
+	if completedAt == "" && len(tasks) > 0 && tasks[0].FinishedAt.Valid {
 		completedAt = tasks[0].FinishedAt.String
 	}
-	if completedAt == "" {
+	if completedAt == "" && len(tasks) > 0 {
 		completedAt = tasks[0].CreatedAt
+	}
+	if completedAt == "" && len(audit) > 0 {
+		completedAt = audit[0].CreatedAt
 	}
 
 	repo := ""
@@ -516,13 +523,20 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 	}
 	workflowKey, _, _ := d.store.GetIssueWorkflowKey(number)
 
+	// StepCount is the number of audit entries (the authoritative record of
+	// workflow transitions); fall back to task count when no audit exists.
+	stepCount := len(audit)
+	if stepCount == 0 {
+		stepCount = len(tasks)
+	}
+
 	detail := CompletedRunDetail{
 		IssueNumber: number,
 		Repo:        repo,
 		WorkflowKey: workflowKey,
 		FinalStatus: finalStatus,
 		CompletedAt: completedAt,
-		StepCount:   len(tasks),
+		StepCount:   stepCount,
 		Audit:       audit,
 		Tasks:       tasks,
 	}
@@ -542,7 +556,7 @@ func (d *DashboardServer) handleCompletedIssue(w http.ResponseWriter, r *http.Re
 }
 
 func isSuccessfulAuditResult(result string) bool {
-	return result == "applied" || result == "partially_applied"
+	return result == "applied" || result == "partially_applied" || result == "success"
 }
 
 func latestSuccessfulCompletedAudit(audit []TransitionAuditRow) *TransitionAuditRow {
