@@ -5,14 +5,20 @@
 
 const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
+function abbreviateRelativeUnits(value: string): string {
+  return value
+    .replace(/\bseconds?\b/g, 'sec')
+    .replace(/\bminutes?\b/g, 'min');
+}
+
 /** Format a UTC timestamp as a human-readable relative time string, e.g. "3 minutes ago". */
 export function relativeTime(ts: string): string {
   if (!ts) return '–';
   const diffMs = Date.now() - new Date(ts).getTime();
   const s = Math.round(diffMs / 1000);
-  if (Math.abs(s) < 60)   return rtf.format(-s, 'seconds');
+  if (Math.abs(s) < 60)   return abbreviateRelativeUnits(rtf.format(-s, 'seconds'));
   const m = Math.round(s / 60);
-  if (Math.abs(m) < 60)   return rtf.format(-m, 'minutes');
+  if (Math.abs(m) < 60)   return abbreviateRelativeUnits(rtf.format(-m, 'minutes'));
   const h = Math.round(m / 60);
   if (Math.abs(h) < 24)   return rtf.format(-h, 'hours');
   return rtf.format(-Math.round(h / 24), 'days');
