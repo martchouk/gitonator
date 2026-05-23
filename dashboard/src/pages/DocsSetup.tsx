@@ -7,7 +7,7 @@ export function DocsSetup() {
       <h2 className="page-title">Setup Guide</h2>
       <p style={{ color: 'var(--md-sys-color-on-surface-variant)', marginBottom: 'var(--spacing-xl)' }}>
         Step-by-step instructions for configuring a GitHub repository to work with
-        github.mcp.
+        gitonator.
       </p>
 
       <Section title="1. Prerequisites">
@@ -32,8 +32,8 @@ export function DocsSetup() {
 
       <Section title="3. Clone the Repository">
         <CodeBlock
-          code={`git clone https://github.com/martchouk/github.mcp.git
-cd github.mcp`}
+          code={`git clone https://github.com/martchouk/gitonator.git
+cd gitonator`}
         />
       </Section>
 
@@ -42,7 +42,7 @@ cd github.mcp`}
           Copy the service template and set your values:
         </p>
         <CodeBlock
-          code={`cp deploy/github.mcp.service_TEMPLATE deploy/github.mcp.service`}
+          code={`cp deploy/gitonator.service_TEMPLATE deploy/gitonator.service`}
         />
         <p>Required environment variables:</p>
         <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 'var(--spacing-md)' }}>
@@ -117,7 +117,7 @@ DASHBOARD_ADDR=127.0.0.1:6666 \\
 ./github-issue-orchestrator`}
         />
         <p>
-          Or use the systemd service unit in <code className="inline-code">deploy/github.mcp.service</code>.
+          Or use the systemd service unit in <code className="inline-code">deploy/gitonator.service</code>.
         </p>
       </Section>
 

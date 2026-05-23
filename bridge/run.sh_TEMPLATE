@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export PATH=$PATH:/usr/local/go/bin
-cd /home/USER_NAME/PATH_TO_THE_REPO/github.mcp/bridge
+cd /home/USER_NAME/PATH_TO_THE_REPO/gitonator/bridge
 
 export ORCH_BASE_URL='https://YOUR_MCP_SERVER_URL'
 export AGENT_SHARED_TOKEN='YOUR_AGENT_SHARED_TOKEN'

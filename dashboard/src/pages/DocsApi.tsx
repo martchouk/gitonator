@@ -22,8 +22,8 @@ const ENDPOINTS: Endpoint[] = [
       issues: [
         {
           number: 59,
-          title: 'Web dashboard for github.mcp server',
-          url: 'https://github.com/martchouk/github.mcp/issues/59',
+          title: 'Web dashboard for gitonator server',
+          url: 'https://github.com/martchouk/gitonator/issues/59',
           currentStatus: 'status:in-development',
           assignees: ['bud-dev'],
           activeTask: {
@@ -68,8 +68,8 @@ const ENDPOINTS: Endpoint[] = [
       completed: [
         {
           issueNumber: 59,
-          title: 'Web dashboard for github.mcp server',
-          repo: 'martchouk/github.mcp',
+          title: 'Web dashboard for gitonator server',
+          repo: 'martchouk/gitonator',
           finalStatus: 'status:done',
           workflowKey: 'lean',
           completedAt: '2026-05-18T10:30:00Z',
@@ -85,7 +85,7 @@ const ENDPOINTS: Endpoint[] = [
     description: 'Completed workflow detail with audit and task history. Returns 404 when the issue has active queued/dispatched work or its latest successful audit transition is non-terminal.',
     responseSchema: JSON.stringify({
       issueNumber: 59,
-      repo: 'martchouk/github.mcp',
+      repo: 'martchouk/gitonator',
       workflowKey: 'lean',
       finalStatus: 'status:done',
       completedAt: '2026-05-18T10:30:00Z',

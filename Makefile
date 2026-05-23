@@ -2,7 +2,7 @@
 
 # Build Go binary
 build:
-	go build -o github-mcp .
+	go build -o gitonator .
 
 # Install JS deps and build the dashboard (produces dashboard/dist/)
 dashboard:

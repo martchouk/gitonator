@@ -1,0 +1,38 @@
+# gitonator systemd service unit
+#
+# Install:
+#   sudo cp deploy/gitonator.service /etc/systemd/system/gitonator.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now gitonator
+#
+# Manage:
+#   sudo systemctl status  gitonator
+#   sudo systemctl restart gitonator
+#   journalctl -u gitonator -f          # follow logs
+
+[Unit]
+Description=gitonator - GitHub Issue Orchestration MCP Service
+After=network.target
+
+[Service]
+Type=simple
+
+# --- User / working directory ---
+User=USER_NAME
+WorkingDirectory=/home/USER_NAME/PATH/gitonator
+
+# --- Command ---
+ExecStart=/home/USER_NAME/PATH/gitonator/run.sh
+
+# --- Environment ---
+
+# --- Restart policy ---
+Restart=on-failure
+RestartSec=5s
+
+# --- Resource limits ---
+# Prevent the process from spawning subprocesses that escape the unit
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -8,7 +8,7 @@ import (
 
 func TestReadWorkPackageReadsRawJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "work.json")
-	if err := os.WriteFile(path, []byte(`{"id":42,"repo":"martchouk/github.mcp","issue_id":8,"role":"developer","current_status":"status:dev-planning"}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"id":42,"repo":"martchouk/gitonator","issue_id":8,"role":"developer","current_status":"status:dev-planning"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -31,7 +31,7 @@ Rules:
 WORK PACKAGE JSON:
 {
   "id": 51,
-  "repo": "martchouk/github.mcp",
+  "repo": "martchouk/gitonator",
   "issue_id": 52,
   "role": "reviewer",
   "current_status": "status:code-review",

@@ -383,7 +383,7 @@ Response when work is available:
   "ok": true,
   "task": {
     "id": 42,
-    "repo": "martchouk/github.mcp",
+    "repo": "martchouk/gitonator",
     "issue_id": 8,
     "role": "developer",
     "assignee": "bud-dev",
@@ -574,15 +574,15 @@ LOG_LEVEL=DEBUG   # set to DEBUG for verbose stderr logs
 
 ## Debug logging
 
-Set `LOG_LEVEL=DEBUG` to enable verbose `DEBUG`-prefixed lines on stderr. All log lines — INFO and DEBUG — include a `YYYY/MM/DD HH:MM:SS` timestamp in the process local time zone and a component identifier (`[github-mcp]` for the server, `[bridge/<bridge_id>]` for the bridge), making concurrent events from multiple processes easy to correlate.
+Set `LOG_LEVEL=DEBUG` to enable verbose `DEBUG`-prefixed lines on stderr. All log lines — INFO and DEBUG — include a `YYYY/MM/DD HH:MM:SS` timestamp in the process local time zone and a component identifier (`[gitonator]` for the server, `[bridge/<bridge_id>]` for the bridge), making concurrent events from multiple processes easy to correlate.
 
 Example lines:
 ```
-2026/05/12 15:04:05 [github-mcp] started: repo=martchouk/github.mcp addr=127.0.0.1:7777 sqlite=orchestrator.db
-2026/05/12 15:04:05 [github-mcp] DEBUG config: stale_after=900s agent_auth=true webhook_secret=true
+2026/05/12 15:04:05 [gitonator] started: repo=martchouk/gitonator addr=127.0.0.1:7777 sqlite=orchestrator.db
+2026/05/12 15:04:05 [gitonator] DEBUG config: stale_after=900s agent_auth=true webhook_secret=true
 2026/05/12 15:04:10 [bridge/home-bridge] DEBUG poll: bridge=home-bridge roles=developer,reviewer
 2026/05/12 15:04:10 [bridge/home-bridge] DEBUG no work available
-2026/05/12 15:04:12 [github-mcp] task queued: issue=8 role=developer assignee=bud-dev task_id=42 status=status:in-development
+2026/05/12 15:04:12 [gitonator] task queued: issue=8 role=developer assignee=bud-dev task_id=42 status=status:in-development
 2026/05/12 15:04:15 [bridge/home-bridge] work claimed: bridge=home-bridge roles=developer task=42 issue=8 role=developer assignee=bud-dev
 2026/05/12 15:04:15 [bridge/home-bridge] DEBUG work received: task=42 issue=8 role=developer assignee=bud-dev status=status:in-development
 ```

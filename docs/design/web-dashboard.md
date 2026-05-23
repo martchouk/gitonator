@@ -1,7 +1,7 @@
 ---
 version: alpha
-name: github.mcp Dashboard
-description: Material Design 3 design system for the github.mcp web dashboard — operational visibility, workflow introspection, and developer documentation.
+name: gitonator Dashboard
+description: Material Design 3 design system for the gitonator web dashboard — operational visibility, workflow introspection, and developer documentation.
 colors:
   primary: "#1a6ef5"
   primary-container: "#d3e4fd"
@@ -155,7 +155,7 @@ components:
     padding: "{spacing.md}"
 ---
 
-# github.mcp Dashboard — Design Specification
+# gitonator Dashboard — Design Specification
 
 **Issue:** #59  
 **Author:** roy-des  
@@ -166,7 +166,7 @@ components:
 
 ## Overview
 
-The github.mcp Dashboard is an **operational tool** for developers and project maintainers — not a consumer product. Its primary users are engineers who need to monitor live workflows, understand workflow state machines, and reference API documentation. The visual language prioritises **scannability, data density, and clarity** over ornamentation.
+The gitonator Dashboard is an **operational tool** for developers and project maintainers — not a consumer product. Its primary users are engineers who need to monitor live workflows, understand workflow state machines, and reference API documentation. The visual language prioritises **scannability, data density, and clarity** over ornamentation.
 
 The dashboard uses **Material Design 3** (`@material/web@2`) as its design system. The design is unapologetically technical: monochrome surfaces, a single blue primary accent, and status colour coding that respects M3 colour roles. The tone is calm, informational, and trustworthy — a control panel, not a marketing site.
 
@@ -347,7 +347,7 @@ The outermost layout component. Combines:
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│ [≡] github.mcp Dashboard           [🌙 theme toggle] │  ← Top App Bar
+│ [≡] gitonator Dashboard           [🌙 theme toggle] │  ← Top App Bar
 ├──────────────────┬───────────────────────────────────┤
 │ ● Live View      │                                   │
 │   Workflows      │      <page content>               │  ← Main area

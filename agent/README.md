@@ -93,9 +93,9 @@ Output:
 ```
 Package file:   /tmp/work-42-issue-8.json
 Task ID:        42
-Repo:           martchouk/github.mcp
+Repo:           martchouk/gitonator
 Issue ID:       8
-Issue URL:      https://github.com/martchouk/github.mcp/issues/8
+Issue URL:      https://github.com/martchouk/gitonator/issues/8
 Role:           developer
 Assignee:       bud-dev
 Last comment:   123
@@ -135,7 +135,7 @@ Example:
 ```bash
 agent-task comment /tmp/work-42-issue-8.json \
   --message "Implementation finished, opening PR." \
-  --field pr="https://github.com/martchouk/github.mcp/pull/5"
+  --field pr="https://github.com/martchouk/gitonator/pull/5"
 ```
 
 Resulting comment body:
@@ -143,7 +143,7 @@ Resulting comment body:
 ```text
 Implementation finished, opening PR.
 
-- pr: https://github.com/martchouk/github.mcp/pull/5
+- pr: https://github.com/martchouk/gitonator/pull/5
 ```
 
 ---
@@ -155,7 +155,7 @@ Implementation finished, opening PR.
 ```json
 {
   "id": 42,
-  "repo": "martchouk/github.mcp",
+  "repo": "martchouk/gitonator",
   "issue_id": 8,
   "role": "developer",
   "assignee": "bud-dev",
@@ -222,8 +222,8 @@ curl -sS -X POST \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -H "Content-Type: application/json" \
-  -d '{"body": "Implementation finished.\n\n- pr: https://github.com/martchouk/github.mcp/pull/5"}' \
-  "https://api.github.com/repos/martchouk/github.mcp/issues/8/comments" | jq
+  -d '{"body": "Implementation finished.\n\n- pr: https://github.com/martchouk/gitonator/pull/5"}' \
+  "https://api.github.com/repos/martchouk/gitonator/issues/8/comments" | jq
 ```
 
 ---

@@ -24,7 +24,7 @@
         "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
       },
       "worktrees": {
-        "martchouk/github.mcp": "/path/to/your/worktree/bud-dev/github.mcp"
+        "martchouk/gitonator": "/path/to/your/worktree/bud-dev/gitonator"
       }
     },
     {
@@ -39,7 +39,7 @@
         "GH_TOKEN": "$MUD_REV_GH_TOKEN"
       },
       "worktrees": {
-        "martchouk/github.mcp": "/path/to/your/worktree/mud-rev/github.mcp"
+        "martchouk/gitonator": "/path/to/your/worktree/mud-rev/gitonator"
       }
     }
   ]

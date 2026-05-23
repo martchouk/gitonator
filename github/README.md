@@ -1,6 +1,6 @@
 # GitHub-side setup
 
-This document explains what must be configured **on the GitHub website** to start using the `github.mcp` orchestrator with a repository.
+This document explains what must be configured **on the GitHub website** to start using the `gitonator` orchestrator with a repository.
 
 It covers:
 
@@ -263,7 +263,7 @@ Test orchestrator onboarding
 ### Example issue body
 
 ```text
-Please verify that the GitHub MCP orchestrator receives this issue and routes it to the PO.
+Please verify that the gitonator orchestrator receives this issue and routes it to the PO.
 ```
 
 ### Initial label
@@ -493,7 +493,7 @@ You can add this short note to the repository README:
 ```md
 ## Workflow
 
-This repository is connected to the GitHub MCP orchestrator.
+This repository is connected to the gitonator orchestrator.
 
 Issue workflow is driven by:
 
@@ -563,7 +563,7 @@ After finishing setup, verify these directly on GitHub:
 
 ## Summary
 
-To start using `github.mcp` with a repository, on GitHub you need to:
+To start using `gitonator` with a repository, on GitHub you need to:
 
 1. give the workflow users access
 2. create the workflow labels

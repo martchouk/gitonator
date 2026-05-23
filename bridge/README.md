@@ -101,7 +101,7 @@ go build -o agent-bridge .
         "GH_TOKEN": "$BUD_DEV_GH_TOKEN"
       },
       "worktrees": {
-        "martchouk/github.mcp": "/home/john/git/agents/bud-dev/github.mcp"
+        "martchouk/gitonator": "/home/john/git/agents/bud-dev/gitonator"
       }
     },
     {
@@ -116,7 +116,7 @@ go build -o agent-bridge .
         "GH_TOKEN": "$MUD_REV_GH_TOKEN"
       },
       "worktrees": {
-        "martchouk/github.mcp": "/home/john/git/agents/mud-rev/github.mcp"
+        "martchouk/gitonator": "/home/john/git/agents/mud-rev/gitonator"
       }
     }
   ]
@@ -268,7 +268,7 @@ The work package written to `{package_file}` is an authoritative prompt followed
 ```json
 {
   "id": 42,
-  "repo": "martchouk/github.mcp",
+  "repo": "martchouk/gitonator",
   "issue_id": 8,
   "role": "developer",
   "assignee": "bud-dev",
@@ -345,7 +345,7 @@ The Bridge logs to stderr. Example lines:
 
 ```
 [bridge/my-bridge] 2026/05/12 10:00:00 started: bridge_id=my-bridge agents=2 roles=developer,reviewer poll=5s timeout=1h0m0s
-[bridge/my-bridge] 2026/05/12 10:00:05 agent started: agent=bud-dev issue=8 task=42 worktree=/home/john/git/agents/bud-dev/github.mcp
+[bridge/my-bridge] 2026/05/12 10:00:05 agent started: agent=bud-dev issue=8 task=42 worktree=/home/john/git/agents/bud-dev/gitonator
 [bridge/my-bridge] 2026/05/12 10:00:05 spawned agent=bud-dev role=developer issue=8 pid=12345
 [bridge/my-bridge] 2026/05/12 10:04:32 agent exited: agent=bud-dev issue=8 exit=0 duration=4m27s
 [bridge/my-bridge] 2026/05/12 10:04:32 agent finished: agent=bud-dev issue=8 task=42
@@ -378,7 +378,7 @@ Response when a task is available (task is now marked `dispatched`):
   "ok": true,
   "task": {
     "id": 42,
-    "repo": "martchouk/github.mcp",
+    "repo": "martchouk/gitonator",
     "issue_id": 8,
     "role": "developer",
     "assignee": "bud-dev",

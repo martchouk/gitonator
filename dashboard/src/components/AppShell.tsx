@@ -45,7 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Logo */}
         <div className="nav-logo">
           <LogoMark size={28} className="nav-logo-icon" />
-          <span className="nav-logo-text">github.mcp</span>
+          <span className="nav-logo-text">gitonator</span>
         </div>
 
         {/* Centered nav pills */}

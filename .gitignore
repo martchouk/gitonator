@@ -1,6 +1,5 @@
 run.sh
-github.mcp
-github-issue-orchestrator
+gitonator
 orchestrator.db*
 bridge/agent-bridge
 agent/agent-task

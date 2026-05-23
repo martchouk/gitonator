@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export PATH=$PATH:/usr/local/go/bin
-cd /home/USER_NAME/PATH_TO_THE_REPO/github.mcp
+cd /home/USER_NAME/PATH_TO_THE_REPO/gitonator
 
-go build -o github-issue-orchestrator .
+go build -o gitonator .
 
 export GITHUB_TOKEN='YOUR_PAT'          # GitHub personal access token or app token
 export GITHUB_OWNER='YOUR_GITHUB_NAME'  # repository owner / org
-export GITHUB_REPO='github.mcp'         # this repository name
+export GITHUB_REPO='gitonator'          # this repository name
 export HTTP_ADDR='127.0.0.1:7777'
 export WEBHOOK_SECRET='YOUR_WEBHOOK_SECRET'
 export SQLITE_PATH=orchestrator.db
@@ -16,4 +16,4 @@ export STALE_AFTER_SECONDS=900          # dispatched tasks older than this are r
 export RECOVER_EVERY_SECONDS=30
 export LOG_LEVEL=DEBUG                  # optional; remove for quieter logs
 
-exec ./github-issue-orchestrator
+exec ./gitonator
